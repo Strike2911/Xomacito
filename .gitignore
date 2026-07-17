@@ -1,0 +1,43 @@
+# Entorno local y dependencias de compilación
+/.tools/
+/bin/
+/dist/
+/release/
+/.build/work/
+
+# Ejecutables generados (los instaladores se publican en GitHub Releases)
+/Xomacito.exe
+*.exe
+*.msi
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Configuración privada y datos del usuario
+.env
+.env.*
+!.env.example
+cookies*.txt
+*.cookies
+app_settings.json
+presets.json
+*.sqlite
+*.db
+
+# Diagnósticos y temporales
+*.log
+*.tmp
+*.bak
+**/ffmpeg_encoders_log.txt
+
+# Editores y Windows
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
