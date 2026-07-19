@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 APP_NAME = "Xomacito"
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.6.2"
 BUILTIN_THEMES = {"blue", "dark-blue", "green"}
 
 FROZEN = bool(getattr(sys, "frozen", False))

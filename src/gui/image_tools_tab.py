@@ -7,11 +7,9 @@ import tkinter
 import tempfile         
 import requests         
 import time  
-from src.core.ytdlp_runtime import load_ytdlp
 from src.core.downloader import extract_info_resilient
 
-yt_dlp = load_ytdlp()
-import time      
+import time
 import gc
 import uuid
 import webbrowser

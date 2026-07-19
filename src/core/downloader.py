@@ -1,11 +1,11 @@
 from .ytdlp_runtime import (
     configure_ytdlp_options,
     is_youtube_access_error,
-    load_ytdlp,
+    lazy_ytdlp,
     youtube_access_fallback_options,
 )
 
-yt_dlp = load_ytdlp()
+yt_dlp = lazy_ytdlp()
 from .exceptions import UserCancelledError, PlaylistDownloadError
 from html import unescape
 from html.parser import HTMLParser

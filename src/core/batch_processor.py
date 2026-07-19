@@ -2,9 +2,9 @@ import threading
 import time
 from uuid import uuid4
 import os
-from .ytdlp_runtime import load_ytdlp
+from .ytdlp_runtime import lazy_ytdlp
 
-yt_dlp = load_ytdlp()
+yt_dlp = lazy_ytdlp()
 import shutil
 
 import requests

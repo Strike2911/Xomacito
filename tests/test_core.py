@@ -275,7 +275,7 @@ class XomacitoWrapperTests(unittest.TestCase):
     def test_xomacito_launcher_and_standalone_runtime_are_present(self):
         launcher_exe = ROOT / "Xomacito.exe"
         app_exe = ROOT / "dist" / "Xomacito" / "Xomacito.exe"
-        installer = ROOT / "release" / "Xomacito-Setup-1.6.0.exe"
+        installer = ROOT / "release" / "Xomacito-Setup-1.6.2.exe"
         self.assertGreater(launcher_exe.stat().st_size, 100_000)
         self.assertGreater(app_exe.stat().st_size, 100_000)
         self.assertGreater(installer.stat().st_size, 100_000)
@@ -309,16 +309,32 @@ class XomacitoWrapperTests(unittest.TestCase):
         helper = (ROOT / "src" / "core" / "ytdlp_runtime.py").read_text(encoding="utf-8")
         self.assertIn("yt-dlp.zip", helper)
         self.assertIn("configure_ytdlp_options", helper)
+        self.assertIn("def lazy_ytdlp", helper)
         for relative in (
             "core/downloader.py",
             "core/batch_processor.py",
-            "gui/main_window.py",
             "gui/single_download_tab.py",
-            "gui/batch_download_tab.py",
-            "gui/image_tools_tab.py",
         ):
             source = (ROOT / "src" / relative).read_text(encoding="utf-8")
-            self.assertIn("load_ytdlp", source, relative)
+            self.assertIn("lazy_ytdlp", source, relative)
+
+        # Abrir el flujo principal no debe cargar el motor antes de que el
+        # usuario analice o descargue una URL.
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; import src.gui.single_download_tab; "
+                "print('yt_dlp' in sys.modules)",
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "False")
 
     def test_youtube_403_uses_an_isolated_embedded_client_retry(self):
         original = {
@@ -381,7 +397,7 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn('"XOMACITO"', visual_shell_py)
         self.assertIn("GATITO DEL DÍA", visual_shell_py)
         self.assertIn('self.tab_view.add("Descargar")', main_window_py)
-        self.assertIn('self.tab_view.add("Estudio de Imagen")', main_window_py)
+        self.assertIn('self._register_lazy_tab("Estudio de Imagen", "image_tab"', main_window_py)
 
     def test_launcher_self_test_finds_exe(self):
         result = subprocess.run(
@@ -456,7 +472,39 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("brand_header.update_theme", source)
         self.assertIn("segmented_button_selected_color", source)
         self.assertIn('self.tab_view.add("Descargar")', source)
-        self.assertIn('self.tab_view.add("Cola")', source)
+        self.assertIn('self._register_lazy_tab("Cola", "batch_tab"', source)
+
+    def test_secondary_tabs_and_heavy_engines_are_loaded_on_demand(self):
+        source = (ROOT / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
+        imports = source.split("class MainWindow", 1)[0]
+        config_source = (ROOT / "src" / "gui" / "config_tab.py").read_text(encoding="utf-8")
+        visual_source = (ROOT / "src" / "gui" / "visual_shell.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("from .batch_download_tab import BatchDownloadTab", imports)
+        self.assertNotIn("from .image_tools_tab import ImageToolsTab", imports)
+        self.assertNotIn("from .config_tab import ConfigTab", imports)
+        self.assertIn('self._register_lazy_tab("Estudio de Imagen", "image_tab"', source)
+        self.assertIn('self._register_lazy_tab("Configuración", "config_tab"', source)
+        self.assertIn('host = ctk.CTkFrame(container, fg_color="transparent")', source)
+        self.assertIn('widget = ConfigTab(master=host, app=self)', source)
+        self.assertIn('spec["host"].pack(expand=True, fill="both")', source)
+        self.assertIn('spec["state"] == "loaded"', source)
+        self.assertIn('Solo tardará la primera vez.', source)
+        self.assertNotIn('Construyendo {tab_name}', source)
+        self.assertIn('deadline = time.monotonic() + 0.008', source)
+        self.assertIn('self.after(180000, self._start_memory_cleaner)', source)
+        self.assertNotIn("EmptyWorkingSet", source)
+
+        clipboard = source.split("def _check_clipboard_and_paste", 1)[1].split(
+            "def on_ffmpeg_check_complete", 1
+        )[0]
+        self.assertNotIn("time.sleep", clipboard)
+        self.assertIn("self.after(", clipboard)
+
+        self.assertIn("self._models_populated = False", config_source)
+        self.assertIn("def _populate_model_sections", config_source)
+        self.assertIn("width // 4", visual_source)
+        self.assertIn("@lru_cache", visual_source)
 
     def test_builtin_blue_theme_drives_shell_and_custom_widgets(self):
         ctk.set_appearance_mode("Dark")
@@ -664,6 +712,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
+        self.assertIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)
         self.assertIn("MainWindowHandle", benchmark_script)
         self.assertIn("ExpectedWindowTitle", benchmark_script)
