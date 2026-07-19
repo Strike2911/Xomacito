@@ -487,6 +487,7 @@ class MainWindow(TkBase):
         self._process_ui_queue()
 
         self.is_shutting_down = False
+        self._update_in_progress = False
         self.cancellation_event = threading.Event()
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.title(f"Xomacito {self.APP_VERSION}")
@@ -805,7 +806,18 @@ class MainWindow(TkBase):
         """
         print("INFO: Configurando UI y lanzando comprobaciones de inicio...")
 
-        # Verificaciones de componentes oficiales; Xomacito ya no consulta el repositorio heredado.
+        # La versión se consulta en segundo plano. Si ya está al día, la UI no
+        # muestra nada; únicamente se pregunta cuando GitHub publica una mayor.
+        from src.core.app_updater import check_for_app_update
+        threading.Thread(
+            target=lambda: self.ui_update_queue.put((
+                self.on_update_check_complete,
+                (check_for_app_update(self.APP_VERSION),),
+            )),
+            daemon=True,
+        ).start()
+
+        # Verificaciones de componentes oficiales.
         from src.core.setup import check_inkscape_status, check_ghostscript_status
         threading.Thread(target=lambda: self.ui_update_queue.put((self.on_inkscape_check_complete, (check_inkscape_status(lambda t, v: None),))), daemon=True).start()
         threading.Thread(target=lambda: self.ui_update_queue.put((self.on_ghostscript_check_complete, (check_ghostscript_status(lambda t, v: None),))), daemon=True).start()
@@ -857,56 +869,40 @@ class MainWindow(TkBase):
         threading.Thread(target=finalize_setup_thread, daemon=True).start()
         
     def on_update_check_complete(self, update_info):
-        """La actualización del antiguo repositorio fue retirada de la interfaz."""
-        return
+        """Ofrece una actualización solamente cuando la versión remota es mayor."""
+        if self.is_shutting_down or getattr(self, "_update_in_progress", False):
+            return
 
-        # Se conserva el código histórico debajo únicamente para facilitar una
-        # migración futura a un canal oficial de Xomacito.
-        def _ui_task():
-            if update_info.get("update_available"):
-                latest_version = update_info.get("latest_version")
-                self.single_tab.release_page_url = update_info.get("release_url") # Guardamos por si acaso
+        if update_info.get("error"):
+            print(f"ADVERTENCIA: {update_info['error']}")
+            return
 
-                is_prerelease = update_info.get("is_prerelease", False)
-                version_type = "Pre-release" if is_prerelease else "versión"
-                status_text = f"¡Nueva {version_type} {latest_version} disponible!"
+        if not update_info.get("update_available"):
+            latest = update_info.get("latest_version", self.APP_VERSION)
+            print(f"INFO: Xomacito {self.APP_VERSION} está al día (última: {latest}).")
+            return
 
-                self.single_tab.app_status_label.configure(text=status_text, text_color="#52a2f2")
+        latest_version = update_info.get("latest_version", "nueva")
+        if not update_info.get("installer_url"):
+            print("ADVERTENCIA: La versión nueva no tiene un instalador válido.")
+            return
 
-                # --- CAMBIO: INICIA EL PROCESO DE ACTUALIZACIÓN ---
-                installer_url = update_info.get("installer_url")
-                if installer_url:
-                    # Preguntar al usuario si quiere actualizar AHORA
-                    Tooltip.hide_all()
-                    user_response = messagebox.askyesno(
-                        "Actualización Disponible",
-                        f"Hay una nueva {version_type} ({latest_version}) de Xomacito disponible.\n\n"
-                        "¿Deseas descargarla e instalarla ahora?\n\n"
-                        "(Xomacito se cerrará para completar la instalación)"
-                    )
-                    self.lift() # Asegura que la ventana principal esté al frente
-                    self.focus_force()
-
-                    if user_response:
-                        # Llamar a la nueva función para descargar y ejecutar
-                        # Pasamos la URL y la versión para mostrar en el progreso
-                        self._iniciar_auto_actualizacion(installer_url, latest_version)
-                    else:
-                        # El usuario dijo NO, solo configuramos el botón para que pueda hacerlo manualmente
-                        self.single_tab.update_app_button.configure(text=f"Descargar v{latest_version}", state="normal", fg_color=self.single_tab.DOWNLOAD_BTN_COLOR)
-                else:
-                    # No se encontró el .exe, solo habilitar el botón para ir a la página
-                    print("ADVERTENCIA: Se detectó una nueva versión pero no se encontró el instalador .exe en los assets.")
-                    self.single_tab.update_app_button.configure(text=f"Ir a Descargas (v{latest_version})", state="normal", fg_color=self.single_tab.DOWNLOAD_BTN_COLOR)
-
-
-            elif "error" in update_info:
-                self.single_tab.app_status_label.configure(text=f"Xomacito v{self.APP_VERSION} - Error al verificar", text_color="orange")
-                self.single_tab.update_app_button.configure(text="Reintentar", state="normal", fg_color="gray")
-            else:
-                self.single_tab.app_status_label.configure(text=f"Xomacito v{self.APP_VERSION} - Estás al día ✅")
-                self.single_tab.update_app_button.configure(text="Sin actualizaciones", state="disabled")
-        self.after(0, _ui_task)
+        Tooltip.hide_all()
+        accepted = messagebox.askyesno(
+            "Nueva versión de Xomacito",
+            f"Hay una nueva versión disponible: {latest_version}\n"
+            f"Tu versión actual: {self.APP_VERSION}\n\n"
+            "¿Quieres descargarla e instalarla ahora?\n\n"
+            "Si eliges Sí, Xomacito verificará el instalador, se cerrará "
+            "durante la actualización y volverá a abrirse al terminar.",
+            parent=self,
+        )
+        self.lift()
+        self.focus_force()
+        if accepted:
+            self._iniciar_auto_actualizacion(update_info)
+        else:
+            print(f"INFO: El usuario pospuso la actualización {latest_version}.")
 
 
     def on_status_check_complete(self, status_info, force_check=False):
@@ -1248,107 +1244,84 @@ class MainWindow(TkBase):
         # 2. SOLUCIÓN: Usar la cola en lugar de self.after
         self.ui_update_queue.put((update_ui, ()))
 
-    def _iniciar_auto_actualizacion(self, installer_url, version_str):
-        """
-        Descarga el ZIP en Descargas, lo extrae en Temp y ejecuta el instalador.
-        """
-        print(f"INFO: Iniciando descarga de actualización v{version_str} (ZIP)...")
+    def _iniciar_auto_actualizacion(self, update_info):
+        """Descarga y verifica el setup; el usuario ya autorizó la instalación."""
+        active_thread = getattr(self.single_tab, "active_operation_thread", None)
+        if active_thread and active_thread.is_alive():
+            Tooltip.hide_all()
+            messagebox.showwarning(
+                "Actualización pendiente",
+                "Espera a que termine la operación activa y vuelve a abrir Xomacito "
+                "para actualizar.",
+                parent=self,
+            )
+            return
 
-        self.single_tab.update_app_button.configure(text=f"Descargando v{version_str}...", state="disabled")
-        self.single_tab.download_button.configure(state="disabled")
+        from src.core.app_updater import download_installer
 
-        self.single_tab.update_progress(0, f"Descargando actualización v{version_str}...")
+        version_str = update_info.get("latest_version", "nueva")
+        self._update_in_progress = True
+        self.single_tab.update_progress(0, f"Descargando Xomacito {version_str}...")
+        try:
+            self.attributes("-disabled", True)
+        except tkinter.TclError:
+            pass
 
-        def download_and_run():
+        def report_progress(downloaded, total):
+            percentage = (downloaded / total * 100.0) if total else -1
+            message = (
+                f"Actualizando: {downloaded / (1024 * 1024):.1f} de "
+                f"{total / (1024 * 1024):.1f} MB"
+            )
+            self.ui_update_queue.put((self.single_tab.update_progress, (percentage, message)))
+
+        def download_worker():
             try:
-                import requests
-                import subprocess
-                import os
-                import zipfile
-                import tempfile
-                from pathlib import Path
+                installer_path = download_installer(update_info, progress_callback=report_progress)
+                self.ui_update_queue.put((
+                    self._ejecutar_instalador_actualizacion,
+                    (installer_path, version_str),
+                ))
+            except Exception as error:
+                self.ui_update_queue.put((self._fallo_auto_actualizacion, (str(error),)))
 
-                # 1. Definir ruta en Descargas (Visible para el usuario)
-                downloads_path = Path.home() / "Downloads"
-                os.makedirs(downloads_path, exist_ok=True)
+        threading.Thread(target=download_worker, daemon=True).start()
 
-                zip_filename = os.path.basename(installer_url) # Ej: Xomacito_v1.3.0_Light_setup.zip
-                zip_path = downloads_path / zip_filename
+    def _ejecutar_instalador_actualizacion(self, installer_path, version_str):
+        """Arranca Inno Setup y cierra esta instancia para reemplazar sus archivos."""
+        from src.core.app_updater import silent_installer_command
 
-                # Manejo de duplicados en Descargas
-                if zip_path.exists():
-                    try:
-                        os.remove(zip_path)
-                    except Exception:
-                        import time
-                        zip_filename = f"{int(time.time())}_{zip_filename}"
-                        zip_path = downloads_path / zip_filename
+        try:
+            self.single_tab.update_progress(100, "Instalador verificado. Actualizando...")
+            self.save_settings()
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+            subprocess.Popen(
+                silent_installer_command(installer_path),
+                cwd=str(Path(installer_path).parent),
+                creationflags=creationflags,
+                close_fds=True,
+            )
+        except OSError as error:
+            self._fallo_auto_actualizacion(str(error))
+            return
 
-                print(f"INFO: Descargando ZIP en: {zip_path}")
+        print(f"INFO: Instalador de Xomacito {version_str} iniciado.")
+        self.is_shutting_down = True
+        self.after(250, self.destroy)
 
-                # 2. Descargar el ZIP
-                with requests.get(installer_url, stream=True, timeout=180) as r:
-                    r.raise_for_status()
-                    total_size = int(r.headers.get('content-length', 0))
-                    downloaded_size = 0
-                    
-                    import time
-                    last_ui_update_time = 0.0
-                    
-                    with open(zip_path, 'wb') as f:
-                        for chunk in r.iter_content(chunk_size=8192 * 4):
-                            if not chunk: continue
-                            f.write(chunk)
-                            downloaded_size += len(chunk)
-                            if total_size > 0:
-                                current_time = time.monotonic()
-                                # Limitar actualizaciones visuales a 10 veces por segundo (cada 0.1 seg)
-                                if current_time - last_ui_update_time >= 0.1 or downloaded_size == total_size:
-                                    last_ui_update_time = current_time
-                                    progress_percent = (downloaded_size / total_size) * 100
-                                    self.after(0, self.single_tab.update_progress, progress_percent / 100.0,
-                                               f"Descargando: {downloaded_size / (1024*1024):.1f} MB")
-
-                self.after(0, self.single_tab.update_progress, 1.0, "Extrayendo instalador...")
-                
-                # 3. Extraer en carpeta TEMPORAL (Oculta)
-                # No extraemos en Descargas para no ensuciar la carpeta del usuario
-                extract_dir = tempfile.mkdtemp(prefix="xomacito_setup_extract_")
-                
-                print(f"INFO: Extrayendo en: {extract_dir}")
-                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                    zip_ref.extractall(extract_dir)
-
-                # 4. Buscar el .exe dentro de la carpeta extraída
-                setup_exe_path = None
-                for root, dirs, files in os.walk(extract_dir):
-                    for file in files:
-                        if file.endswith(".exe"):
-                            setup_exe_path = os.path.join(root, file)
-                            break
-                    if setup_exe_path: break
-                
-                if not setup_exe_path:
-                    raise Exception("No se encontró ningún archivo .exe dentro del ZIP de actualización.")
-
-                self.after(0, self.single_tab.update_progress, 1.0, "Abriendo instalador...")
-                print(f"INFO: Ejecutando instalador: {setup_exe_path}")
-
-                # 5. Ejecutar y Cerrar
-                creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
-                subprocess.Popen([setup_exe_path], creationflags=creationflags)
-
-                print("INFO: Instalador iniciado. Cerrando Xomacito...")
-                self.after(1000, self.destroy)
-
-            except Exception as e:
-                print(f"ERROR: Falló la actualización: {e}")
-                Tooltip.hide_all()
-                self.after(0, lambda: messagebox.showerror("Error", f"No se pudo actualizar:\n{e}"))
-                self.after(0, self.single_tab._reset_buttons_to_original_state)
-                self.after(0, lambda: self.single_tab.update_progress(0, "❌ Error en actualización."))
-
-        threading.Thread(target=download_and_run, daemon=True).start()
+    def _fallo_auto_actualizacion(self, error_message):
+        self._update_in_progress = False
+        try:
+            self.attributes("-disabled", False)
+        except tkinter.TclError:
+            pass
+        self.single_tab.update_progress(0, "No se pudo completar la actualización.")
+        Tooltip.hide_all()
+        messagebox.showerror(
+            "No se pudo actualizar Xomacito",
+            f"La aplicación seguirá abierta y no se modificó.\n\n{error_message}",
+            parent=self,
+        )
 
     def _check_for_ui_requests(self):
         """

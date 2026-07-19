@@ -701,8 +701,10 @@ def check_deno_status(progress_callback):
         return {"status": "error", "message": f"Error en la verificación de Deno: {e}"}
     
 def check_app_update(current_version_str):
-    """Las actualizaciones de Xomacito se gestionan localmente, sin un repositorio heredado."""
-    return {"update_available": False, "managed_locally": True}
+    """Consulta la última versión estable del repositorio oficial de Xomacito."""
+    from src.core.app_updater import check_for_app_update
+
+    return check_for_app_update(current_version_str)
     
 # --- FUNCIONES DE INKSCAPE (NUEVO) ---
 

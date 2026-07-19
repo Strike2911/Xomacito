@@ -1,5 +1,5 @@
 #define MyAppName "Xomacito"
-#define MyAppVersion "1.5.1"
+#define MyAppVersion "1.6.0"
 #define MyAppPublisher "Xomacito"
 #define MyAppExeName "Xomacito.exe"
 #define ProjectRoot ".."
@@ -34,7 +34,7 @@ RestartApplications=no
 Uninstallable=yes
 CreateUninstallRegKey=yes
 MinVersion=10.0.17763
-VersionInfoVersion=1.5.1.0
+VersionInfoVersion=1.6.0.0
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
 VersionInfoDescription=Instalador de Xomacito
@@ -62,6 +62,9 @@ Name: "{autodesktop}\Xomacito"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Abrir Xomacito"; Flags: nowait postinstall skipifsilent
+; La instalación silenciosa iniciada desde Xomacito vuelve a abrir únicamente
+; cuando lleva el parámetro privado del actualizador.
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--updated"; Flags: nowait skipifnotsilent; Check: IsAutoUpdate
 
 [UninstallRun]
 ; Se ejecuta como primer paso del desinstalador. Inno espera a que taskkill
@@ -80,6 +83,11 @@ Type: files; Name: "{app}\*.log"
 Type: files; Name: "{app}\*.tmp"
 
 [Code]
+function IsAutoUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:XOMACITOUPDATE|0}') = '1';
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   UserDataDir: String;

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import subprocess
 import sys
@@ -13,6 +14,12 @@ import customtkinter as ctk
 import launcher
 import main
 from src.core import downloader
+from src.core.app_updater import (
+    AppUpdateError,
+    check_for_app_update,
+    download_installer,
+    silent_installer_command,
+)
 from src.core.daily_icon import CAT_COUNT, daily_cat_assets, daily_cat_number
 from src.core.restart import RESTART_WAIT_ENV, clean_restart_environment, restart_wait_requested
 from src.core.single_instance import SingleInstanceGuard
@@ -29,6 +36,141 @@ LEGACY_APP_NAME = "Do" + "wP"
 
 
 class XomacitoWrapperTests(unittest.TestCase):
+    @staticmethod
+    def _release_payload(tag="v1.6.0", payload_size=512, digest=None):
+        if digest is None:
+            digest = "sha256:" + ("a" * 64)
+        return {
+            "tag_name": tag,
+            "html_url": f"https://github.com/Strike2911/Xomacito/releases/tag/{tag}",
+            "body": "Mejoras de Xomacito",
+            "assets": [
+                {
+                    "name": "setup.exe",
+                    "state": "uploaded",
+                    "size": payload_size,
+                    "digest": digest,
+                    "browser_download_url": (
+                        f"https://github.com/Strike2911/Xomacito/releases/download/{tag}/setup.exe"
+                    ),
+                }
+            ],
+        }
+
+    def test_app_update_only_exists_when_the_remote_version_is_greater(self):
+        class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return self.payload
+
+        class FakeSession:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def get(self, url, headers, timeout):
+                self.assert_api = (url, headers, timeout)
+                return FakeResponse(self.payload)
+
+        equal = check_for_app_update(
+            "1.6.0", session=FakeSession(self._release_payload("v1.6.0"))
+        )
+        newer_local = check_for_app_update(
+            "1.7.0", session=FakeSession(self._release_payload("v1.6.0"))
+        )
+        outdated = check_for_app_update(
+            "1.5.1", session=FakeSession(self._release_payload("v1.6.0"))
+        )
+
+        self.assertFalse(equal["update_available"])
+        self.assertFalse(newer_local["update_available"])
+        self.assertTrue(outdated["update_available"])
+        self.assertEqual(outdated["latest_version"], "1.6.0")
+        self.assertTrue(outdated["installer_url"].endswith("/setup.exe"))
+
+    def test_app_installer_download_checks_size_pe_header_and_sha256(self):
+        payload = b"MZ" + (b"xomacito" * 64)
+        digest = "sha256:" + hashlib.sha256(payload).hexdigest()
+        update_info = {
+            "latest_version": "1.6.1",
+            "installer_url": (
+                "https://github.com/Strike2911/Xomacito/"
+                "releases/download/v1.6.1/setup.exe"
+            ),
+            "installer_size": len(payload),
+            "installer_digest": digest,
+        }
+
+        class FakeDownloadResponse:
+            def raise_for_status(self):
+                return None
+
+            def iter_content(self, chunk_size):
+                self.chunk_size = chunk_size
+                yield payload[:17]
+                yield payload[17:]
+
+            def close(self):
+                self.closed = True
+
+        class FakeDownloadSession:
+            def get(self, url, headers, stream, timeout):
+                self.request = (url, headers, stream, timeout)
+                return FakeDownloadResponse()
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "setup.exe"
+            progress = []
+            result = download_installer(
+                update_info,
+                destination=target,
+                progress_callback=lambda done, total: progress.append((done, total)),
+                session=FakeDownloadSession(),
+            )
+            self.assertEqual(result, target)
+            self.assertEqual(target.read_bytes(), payload)
+            self.assertEqual(progress[-1], (len(payload), len(payload)))
+
+        command = silent_installer_command("C:/Temp/setup.exe")
+        self.assertIn("/SILENT", command)
+        self.assertIn("/XOMACITOUPDATE=1", command)
+
+    def test_app_installer_rejects_a_wrong_digest(self):
+        payload = b"MZinvalid"
+        update_info = {
+            "latest_version": "1.6.1",
+            "installer_url": (
+                "https://github.com/Strike2911/Xomacito/"
+                "releases/download/v1.6.1/setup.exe"
+            ),
+            "installer_size": len(payload),
+            "installer_digest": "sha256:" + ("0" * 64),
+        }
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def iter_content(self, chunk_size):
+                yield payload
+
+            def close(self):
+                return None
+
+        class FakeSession:
+            def get(self, url, headers, stream, timeout):
+                return FakeResponse()
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "setup.exe"
+            with self.assertRaises(AppUpdateError):
+                download_installer(update_info, target, session=FakeSession())
+            self.assertFalse(target.exists())
+
     def test_only_one_xomacito_instance_can_hold_the_lock(self):
         with tempfile.TemporaryDirectory() as directory:
             name = f"Xomacito-test-{uuid.uuid4()}"
@@ -133,7 +275,7 @@ class XomacitoWrapperTests(unittest.TestCase):
     def test_xomacito_launcher_and_standalone_runtime_are_present(self):
         launcher_exe = ROOT / "Xomacito.exe"
         app_exe = ROOT / "dist" / "Xomacito" / "Xomacito.exe"
-        installer = ROOT / "release" / "Xomacito-Setup-1.5.1.exe"
+        installer = ROOT / "release" / "Xomacito-Setup-1.6.0.exe"
         self.assertGreater(launcher_exe.stat().st_size, 100_000)
         self.assertGreater(app_exe.stat().st_size, 100_000)
         self.assertGreater(installer.stat().st_size, 100_000)
@@ -428,6 +570,9 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("Desinstalar Xomacito", installer)
         self.assertIn("{uninstallexe}", installer)
         self.assertIn("UninstallDisplayName={#MyAppName} {#MyAppVersion}", installer)
+        self.assertIn("XOMACITOUPDATE", installer)
+        self.assertIn("skipifnotsilent", installer)
+        self.assertIn("IsAutoUpdate", installer)
         self.assertIn('Name: "{userappdata}\\Xomacito\\encoder_cache.json"', installer)
         self.assertIn('Name: "{app}\\_internal\\bin\\models"', installer)
         self.assertIn("procedure CurUninstallStepChanged", installer)

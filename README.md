@@ -21,6 +21,8 @@ Descarga `setup.exe` desde la versión más reciente, ejecútalo y sigue el asis
 - Sonido de confirmación al finalizar una descarga.
 - Instalación por usuario y desinstalador integrado en Windows.
 - Instancia única: al abrir Xomacito otra vez se enfoca la ventana existente.
+- Aviso de nuevas versiones al iniciar, con elección de actualizar o continuar.
+- Actualización verificada: nunca reinstala si la versión actual ya es la más reciente.
 
 ## Requisitos
 
