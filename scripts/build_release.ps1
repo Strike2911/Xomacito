@@ -68,19 +68,13 @@ if ($LASTEXITCODE -ne 0) {
     throw 'Inno Setup no pudo crear el instalador.'
 }
 
-$Installer = Join-Path $ProjectRoot 'release\Xomacito-Setup-1.6.3.exe'
+$Installer = Join-Path $ProjectRoot 'release\Xomacito-1.6.3-Setup.exe'
 if (-not (Test-Path -LiteralPath $Installer)) {
     throw "No se generó el instalador esperado: $Installer"
 }
 
-# Alias estable usado por el botón de descarga del README. GitHub conserva el
-# nombre del asset, así que publicarlo junto al archivo versionado mantiene una
-# URL que no cambia entre lanzamientos.
-$StableInstaller = Join-Path $ProjectRoot 'release\setup.exe'
-Copy-Item -LiteralPath $Installer -Destination $StableInstaller -Force
-
 $UninstallerLauncher = Join-Path $ProjectRoot 'release\Desinstalar Xomacito.cmd'
 Copy-Item -LiteralPath $UninstallerLauncherSource -Destination $UninstallerLauncher -Force
 
-Get-Item -LiteralPath $Application, $Installer, $StableInstaller, $UninstallerLauncher |
+Get-Item -LiteralPath $Application, $Installer, $UninstallerLauncher |
     Select-Object FullName, Length, LastWriteTime
