@@ -7,9 +7,147 @@ from .ytdlp_runtime import (
 
 yt_dlp = load_ytdlp()
 from .exceptions import UserCancelledError, PlaylistDownloadError
+from html import unescape
+from html.parser import HTMLParser
 import threading 
 import os
+import re
 import sys
+from urllib.parse import parse_qs, urlparse
+
+import requests
+
+
+class _OpenGraphParser(HTMLParser):
+    """Extrae metadatos Open Graph sin añadir otra dependencia al instalador."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.values = {}
+
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() != "meta":
+            return
+        attributes = {str(key).lower(): value for key, value in attrs if key}
+        property_name = str(attributes.get("property") or attributes.get("name") or "").lower()
+        content = attributes.get("content")
+        if property_name in {"og:image", "og:title", "og:description"} and content:
+            self.values.setdefault(property_name, unescape(str(content)).strip())
+
+
+def is_instagram_post_url(url):
+    """Devuelve True solo para publicaciones /p/ alojadas realmente en Instagram."""
+    try:
+        parsed = urlparse(str(url).strip())
+    except (TypeError, ValueError):
+        return False
+    hostname = (parsed.hostname or "").lower()
+    is_instagram = hostname == "instagram.com" or hostname.endswith(".instagram.com")
+    return parsed.scheme in {"http", "https"} and is_instagram and bool(
+        re.match(r"^/p/[^/]+/?$", parsed.path)
+    )
+
+
+def _instagram_image_title(raw_title, shortcode):
+    title = unescape(str(raw_title or "")).strip()
+    match = re.match(r"^.+?\s+on\s+Instagram:\s*[\"“]?(.*?)[\"”]?\s*$", title, re.IGNORECASE)
+    if match and match.group(1).strip():
+        title = match.group(1).strip().strip('"“”')
+    return title or f"Instagram_{shortcode}"
+
+
+def instagram_image_post_info_from_metadata(url, metadata):
+    """Convierte metadatos sin formatos de video en una imagen descargable."""
+    if not is_instagram_post_url(url) or not isinstance(metadata, dict):
+        return None
+
+    selected = metadata
+    entries = metadata.get("entries") or []
+    entry_index = 0
+    if metadata.get("_type") in {"playlist", "multi_video"} and entries:
+        requested_index = parse_qs(urlparse(str(url)).query).get("img_index", ["1"])[0]
+        try:
+            entry_index = max(0, int(requested_index) - 1)
+        except (TypeError, ValueError):
+            entry_index = 0
+        entry_index = min(entry_index, len(entries) - 1)
+        selected = entries[entry_index] or {}
+
+    # Los elementos con formatos reales pertenecen al flujo normal de video.
+    if selected.get("formats") or not selected.get("thumbnail"):
+        return None
+
+    shortcode = urlparse(str(url).strip()).path.strip("/").split("/")[-1]
+    raw_title = str(selected.get("title") or "").strip()
+    description = selected.get("description") or metadata.get("description")
+    title_source = description if raw_title.lower().startswith("video by ") else (raw_title or description)
+    title = _instagram_image_title(title_source, shortcode)
+    if len(entries) > 1:
+        title = f"{title} - {entry_index + 1}"
+
+    return {
+        **selected,
+        "id": selected.get("id") or shortcode,
+        "title": title,
+        "description": selected.get("description") or metadata.get("description") or "",
+        "thumbnail": selected["thumbnail"],
+        "webpage_url": str(url).strip(),
+        "original_url": str(url).strip(),
+        "extractor": "instagram:image",
+        "extractor_key": "InstagramImage",
+        "xomacito_media_type": "image",
+        "formats": [],
+        "subtitles": {},
+        "automatic_captions": {},
+    }
+
+
+def extract_instagram_image_post_info(url, timeout=30, session=None, ydl_options=None):
+    """
+    Crea metadatos sintéticos para una publicación pública de imagen.
+
+    yt-dlp está orientado a audio/video y responde "There is no video in this
+    post" ante fotos. En ese caso se usa la imagen Open Graph publicada por
+    Instagram; Reels y videos continúan en el flujo normal de yt-dlp.
+    """
+    if not is_instagram_post_url(url):
+        return None
+
+    if ydl_options is not None:
+        metadata_options = dict(ydl_options)
+        metadata_options.update({
+            "ignore_no_formats_error": True,
+            "skip_download": True,
+            "noplaylist": False,
+        })
+        try:
+            with yt_dlp.YoutubeDL(metadata_options) as ydl:
+                metadata = ydl.extract_info(str(url).strip(), download=False)
+            image_info = instagram_image_post_info_from_metadata(url, metadata)
+            if image_info:
+                return image_info
+        except Exception:
+            # Respaldo para cambios frecuentes de la API pública de Instagram.
+            pass
+
+    client = session or requests
+    response = client.get(str(url).strip(), timeout=timeout, allow_redirects=True)
+    response.raise_for_status()
+
+    parser = _OpenGraphParser()
+    parser.feed(response.text)
+    image_url = parser.values.get("og:image")
+    if not image_url or urlparse(image_url).scheme != "https":
+        return None
+
+    shortcode = urlparse(str(url).strip()).path.strip("/").split("/")[-1]
+    return instagram_image_post_info_from_metadata(url, {
+        "id": shortcode,
+        "title": _instagram_image_title(parser.values.get("og:title"), shortcode),
+        "description": parser.values.get("og:description", ""),
+        "thumbnail": image_url,
+        "formats": [],
+    })
 
 def get_deno_path():
     """Obtiene la ruta absoluta de la carpeta donde está deno.exe."""

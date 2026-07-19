@@ -780,19 +780,7 @@ class MainWindow(TkBase):
             from tkinter import messagebox
             Tooltip.hide_all()
             if messagebox.askyesno("Reinicio Necesario", "Se actualizó yt-dlp exitosamente.\n\nEs OBLIGATORIO reiniciar Xomacito para evitar fallos. ¿Reiniciar ahora?"):
-                   import sys, os, subprocess, tempfile
-                   from main import PROJECT_ROOT
-                   try:
-                       lockfile = os.path.join(tempfile.gettempdir(), 'xomacito.lock')
-                       if os.path.exists(lockfile):
-                           try: os.remove(lockfile)
-                           except: pass
-                           
-                       subprocess.Popen([sys.executable, os.path.join(PROJECT_ROOT, "main.py")])
-                       self.destroy()
-                       sys.exit(0)
-                   except Exception as e:
-                       print(f"ERROR reiniciando: {e}")
+                self.restart_application()
 
     def _process_ui_queue(self):
         """Revisa la cola de actualizaciones y ejecuta las acciones en el hilo principal."""

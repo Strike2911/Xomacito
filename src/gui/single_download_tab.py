@@ -29,8 +29,11 @@ from src.core.downloader import (
     apply_site_specific_rules,
     apply_yt_patch,
     download_media,
+    extract_instagram_image_post_info,
     extract_info_resilient,
     get_video_info,
+    instagram_image_post_info_from_metadata,
+    is_instagram_post_url,
 )
 from src.core.processor import FFmpegProcessor, CODEC_PROFILES
 from src.core.exceptions import UserCancelledError, LocalRecodeFailedError, PlaylistDownloadError
@@ -129,6 +132,7 @@ class SingleDownloadTab(ctk.CTkFrame):
         self.apply_quick_preset_checkbox_state = False
         self.keep_original_quick_saved = True
         self.analysis_was_playlist = False
+        self.image_post_info = None
         self._last_progress_update_time = 0.0 # Throttling para UI (3fps)
 
         self.active_downloads_state = {
@@ -1998,6 +2002,7 @@ class SingleDownloadTab(ctk.CTkFrame):
         self.force_full_download_check.configure(state="normal")
         
         self.local_file_path = None
+        self.image_post_info = None
         self.url_entry.configure(state="normal")
         self.analyze_button.configure(state="normal")
         self.url_entry.delete(0, 'end')
@@ -4014,6 +4019,73 @@ class SingleDownloadTab(ctk.CTkFrame):
                 self.on_process_finished(True, f"Miniatura guardada en {os.path.basename(save_path)}", save_path)
             except Exception as e: self.on_process_finished(False, f"Error al guardar miniatura: {e}", None)
 
+    def _start_image_post_download(self, output_path):
+        """Descarga una publicación de imagen usando el botón principal."""
+        self.download_button.configure(
+            text="Cancelar",
+            fg_color=self.CANCEL_BTN_COLOR,
+            hover_color=self.CANCEL_BTN_HOVER,
+            command=self.cancel_operation,
+        )
+        self.analyze_button.configure(state="disabled")
+        self.open_folder_button.configure(state="disabled")
+        self.cancellation_event.clear()
+        self.update_progress(0, "Descargando imagen de Instagram...")
+        info = dict(self.image_post_info)
+        self.active_operation_thread = threading.Thread(
+            target=self._download_image_post_worker,
+            args=(info, output_path),
+            daemon=True,
+        )
+        self.active_operation_thread.start()
+
+    def _download_image_post_worker(self, info, output_path):
+        try:
+            if self.cancellation_event.is_set():
+                raise UserCancelledError("Descarga cancelada por el usuario.")
+
+            image_url = info.get("thumbnail")
+            if not image_url:
+                raise ValueError("Instagram no proporcionó una imagen pública.")
+
+            headers = dict(info.get("http_headers") or {})
+            headers.update({
+                "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                "Referer": "https://www.instagram.com/",
+            })
+            response = requests.get(image_url, headers=headers, timeout=30, allow_redirects=True)
+            response.raise_for_status()
+            if self.cancellation_event.is_set():
+                raise UserCancelledError("Descarga cancelada por el usuario.")
+
+            image = Image.open(BytesIO(response.content))
+            image.load()
+            has_alpha = image.mode in {"RGBA", "LA"} or "transparency" in image.info
+            extension = ".png" if has_alpha else ".jpg"
+            output_dir = Path(output_path)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            clean_title = self.sanitize_filename(info.get("title") or f"Instagram_{info.get('id', 'imagen')}")
+            target = output_dir / f"{clean_title}{extension}"
+            copy_number = 2
+            while target.exists():
+                target = output_dir / f"{clean_title} ({copy_number}){extension}"
+                copy_number += 1
+
+            if extension == ".png":
+                image.save(target, "PNG")
+            else:
+                image.convert("RGB").save(target, "JPEG", quality=95)
+
+            self.pil_image = image
+            self.app.after(0, self.update_progress, 100, "Imagen descargada correctamente.")
+            self.app.after(0, self.on_process_finished, True, f"Imagen guardada: {target.name}", str(target))
+        except UserCancelledError as error:
+            self.app.after(0, self.on_process_finished, False, str(error), None, False)
+        except Exception as error:
+            self.app.after(0, self.on_process_finished, False, f"No se pudo descargar la imagen: {error}", None)
+        finally:
+            self.active_operation_thread = None
+
     def _execute_subtitle_download_subprocess(self, url, subtitle_info, save_path, cut_options=None):
         try:
             output_dir = os.path.dirname(save_path)
@@ -4263,6 +4335,10 @@ class SingleDownloadTab(ctk.CTkFrame):
             if not has_input:
                 error_msg = "Error: No se ha proporcionado una URL ni se ha importado un archivo."
             self.progress_label.configure(text=error_msg)
+            return
+
+        if self.image_post_info:
+            self._start_image_post_download(output_path)
             return
         
         # 🆕 VALIDACIÓN: Verificar que hay audio si está en modo Solo Audio
@@ -5525,6 +5601,9 @@ class SingleDownloadTab(ctk.CTkFrame):
         if self.local_file_path:
             button_text = "Iniciar Proceso"
             button_color = self.PROCESS_BTN_COLOR
+        elif self.image_post_info:
+            button_text = "Descargar Imagen"
+            button_color = self.DOWNLOAD_BTN_COLOR
         else:
             button_text = self.original_download_text
             button_color = self.DOWNLOAD_BTN_COLOR
@@ -5820,6 +5899,7 @@ class SingleDownloadTab(ctk.CTkFrame):
 
     def start_analysis_thread(self, event=None):
         self.analysis_is_complete = False
+        self.image_post_info = None
         url = self.url_entry.get()
         if url and self.local_file_path:
             self.reset_to_url_mode()
@@ -5863,6 +5943,7 @@ class SingleDownloadTab(ctk.CTkFrame):
         ✅ MODIFICADO: Solución para YouTube + Cookies
         """
         log_lines = []
+        ydl_opts = None
 
         class AnalysisLogger:
             def debug(self, message):
@@ -5944,6 +6025,9 @@ class SingleDownloadTab(ctk.CTkFrame):
                 info = extract_info_resilient(url, ydl_opts, download=False)
                 if info:
                     info = self._normalize_info_dict(info)
+                    image_info = instagram_image_post_info_from_metadata(url, info)
+                    if image_info:
+                        info = image_info
             
             if self.cancellation_event.is_set():
                 raise UserCancelledError("Análisis cancelado por el usuario.")
@@ -6005,6 +6089,14 @@ class SingleDownloadTab(ctk.CTkFrame):
         except UserCancelledError:
             self.app.after(0, lambda: self.on_process_finished(False, "Análisis cancelado.", None, show_dialog=False))
         except Exception as e:
+            if is_instagram_post_url(url):
+                try:
+                    image_info = extract_instagram_image_post_info(url, ydl_options=ydl_opts or {})
+                    if image_info:
+                        self.app.after(0, self.on_analysis_complete, image_info)
+                        return
+                except Exception as image_error:
+                    log_lines.append(f"Fallback de imagen de Instagram: {image_error}")
             error_message = f"ERROR: {friendly_ytdlp_error(e, log_lines)}"
             if isinstance(e, yt_dlp.utils.DownloadError):
                 error_message = f"ERROR de yt-dlp: {friendly_ytdlp_error(e, log_lines)}"
@@ -6142,6 +6234,8 @@ class SingleDownloadTab(ctk.CTkFrame):
                     print("DEBUG: Se detectó una playlist vacía o no válida.")
                     error_message = "La URL corresponde a una lista vacía o no válida."
                     info = None
+            is_image_post = bool(info and info.get('xomacito_media_type') == 'image')
+            self.image_post_info = info if is_image_post else None
             self.progress_bar.stop()
             if not info or error_message:
                 self.analysis_is_complete = False
@@ -6184,8 +6278,8 @@ class SingleDownloadTab(ctk.CTkFrame):
             self.title_entry.insert(0, clean_title)
             self.video_duration = info.get('duration', 0)
             formats = info.get('formats', [])
-            self.has_video_streams = any(f.get('height') for f in formats)
-            self.has_audio_streams = any(f.get('acodec') != 'none' or (not f.get('height') and f.get('vcodec') == 'none') for f in formats)
+            self.has_video_streams = False if is_image_post else any(f.get('height') for f in formats)
+            self.has_audio_streams = False if is_image_post else any(f.get('acodec') != 'none' or (not f.get('height') and f.get('vcodec') == 'none') for f in formats)
             # ✅ GUARDAR IDIOMA ORIGINAL (Para multiidioma)
             if info:
                 self.original_video_language = info.get('language')
@@ -6195,7 +6289,12 @@ class SingleDownloadTab(ctk.CTkFrame):
 
             thumbnail_url = info.get('thumbnail')
             if thumbnail_url:
-                threading.Thread(target=self.load_thumbnail, args=(thumbnail_url,), daemon=True).start()
+                if is_image_post:
+                    # El fallback ya se ejecuta fuera del hilo principal durante el
+                    # análisis. Cargar aquí evita cruzar llamadas de Tk entre hilos.
+                    self.load_thumbnail(thumbnail_url)
+                else:
+                    threading.Thread(target=self.load_thumbnail, args=(thumbnail_url,), daemon=True).start()
             elif self.has_audio_streams and not self.has_video_streams:
                 self.create_placeholder_label("🎵", font_size=80)
                 self.save_thumbnail_button.configure(state="disabled")
@@ -6203,11 +6302,22 @@ class SingleDownloadTab(ctk.CTkFrame):
                 self.auto_save_thumbnail_check.configure(state="disabled")
             else:
                 self.create_placeholder_label("Miniatura")
-            self.populate_format_menus(info, self.has_video_streams, self.has_audio_streams)
-            self._update_warnings()
+            if is_image_post:
+                self.video_formats, self.audio_formats = {}, {}
+                self.video_quality_menu.configure(values=["Imagen original"], state="disabled")
+                self.video_quality_menu.set("Imagen original")
+                self.audio_quality_menu.configure(values=["-"], state="disabled")
+                self.audio_quality_menu.set("-")
+                self._clear_subtitle_menus()
+                self.auto_save_thumbnail_check.deselect()
+                self.auto_save_thumbnail_check.configure(state="disabled")
+            else:
+                self.populate_format_menus(info, self.has_video_streams, self.has_audio_streams)
+                self._update_warnings()
             self.update_download_button_state()
             self.update_estimated_size()
-            self.update_progress(100, "Análisis completado. ✅ Listo para descargar.")
+            ready_message = "Imagen encontrada. ✅ Lista para descargar." if is_image_post else "Análisis completado. ✅ Listo para descargar."
+            self.update_progress(100, ready_message)
         finally:
             print("DEBUG: Ejecutando bloque 'finally' de on_analysis_complete para resetear la UI.")
             self._reset_buttons_to_original_state()
@@ -6242,7 +6352,7 @@ class SingleDownloadTab(ctk.CTkFrame):
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
                     'Accept-Language': 'en-US,en;q=0.9',
-                    'Referer': 'https://imgur.com/',
+                    'Referer': 'https://www.instagram.com/' if ('cdninstagram.com' in path_or_url or 'fbcdn.net' in path_or_url) else 'https://imgur.com/',
                 }
                 
                 max_retries = 2
@@ -6284,12 +6394,16 @@ class SingleDownloadTab(ctk.CTkFrame):
                 raise Exception("La miniatura descargada está vacía o corrupta")
             
             # ✅ CRÍTICO: Asignar self.pil_image SIEMPRE
-            self.pil_image = Image.open(BytesIO(img_data))
-            display_image = self.pil_image.copy()
+            loaded_image = Image.open(BytesIO(img_data))
+            loaded_image.load()
+            display_image = loaded_image.copy()
             display_image.thumbnail((320, 180), Image.Resampling.LANCZOS)
             ctk_image = ctk.CTkImage(light_image=display_image, dark_image=display_image, size=display_image.size)
 
             def set_new_image():
+                # El placeholder se agenda antes de la descarga y limpia
+                # self.pil_image. Restaurar aquí elimina esa condición de carrera.
+                self.pil_image = loaded_image
                 if self.thumbnail_label: 
                     self.thumbnail_label.destroy()
                 
@@ -6307,6 +6421,10 @@ class SingleDownloadTab(ctk.CTkFrame):
                 # ✅ NUEVO: También habilitar el botón de enviar a H.I.
                 if hasattr(self, 'send_thumbnail_to_imagetools_button'):
                     self.send_thumbnail_to_imagetools_button.configure(state="normal")
+
+                if self.image_post_info:
+                    self.auto_save_thumbnail_check.deselect()
+                    self.auto_save_thumbnail_check.configure(state="disabled")
                 
                 self.toggle_manual_thumbnail_button()
                 
@@ -6329,42 +6447,15 @@ class SingleDownloadTab(ctk.CTkFrame):
                 placeholder_text = "❌"
             
             print(f"⚠️ Error al cargar miniatura: {error_msg} - URL: {path_or_url}")
-            self.app.after(0, self.create_placeholder_label, placeholder_text, font_size=60)
+            self.app.after(0, lambda: self.create_placeholder_label(placeholder_text, font_size=60))
             
         except requests.exceptions.Timeout:
             print(f"⚠️ Timeout al cargar miniatura: {path_or_url}")
-            self.app.after(0, self.create_placeholder_label, "⏱️", font_size=60)
+            self.app.after(0, lambda: self.create_placeholder_label("⏱️", font_size=60))
             
         except Exception as e:
             print(f"⚠️ Error al cargar miniatura: {e}")
-            self.app.after(0, self.create_placeholder_label, "❌", font_size=60)
-            
-        except requests.exceptions.HTTPError as e:
-            status_code = e.response.status_code if hasattr(e, 'response') else 'unknown'
-            error_msg = f"Error HTTP {status_code}"
-            
-            if status_code == 429:
-                error_msg = "Rate limit (429)"
-                placeholder_text = "⏳"
-            elif status_code == 404:
-                error_msg = "Miniatura no encontrada (404)"
-                placeholder_text = "❌"
-            elif status_code in [403, 401]:
-                error_msg = f"Acceso denegado ({status_code})"
-                placeholder_text = "🔒"
-            else:
-                placeholder_text = "❌"
-            
-            print(f"⚠️ Error al cargar miniatura: {error_msg} - URL: {path_or_url}")
-            self.app.after(0, self.create_placeholder_label, placeholder_text, font_size=60)
-            
-        except requests.exceptions.Timeout:
-            print(f"⚠️ Timeout al cargar miniatura: {path_or_url}")
-            self.app.after(0, self.create_placeholder_label, "⏱️", font_size=60)
-            
-        except Exception as e:
-            print(f"⚠️ Error al cargar miniatura: {e}")
-            self.app.after(0, self.create_placeholder_label, "❌", font_size=60)
+            self.app.after(0, lambda: self.create_placeholder_label("❌", font_size=60))
 
     def _classify_format(self, f):
         """

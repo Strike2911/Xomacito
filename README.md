@@ -14,11 +14,13 @@ Descarga `setup.exe` desde la versión más reciente, ejecútalo y sigue el asis
 
 - Descarga individual y por lotes mediante yt-dlp.
 - Video con audio, extracción de audio, miniaturas y subtítulos.
+- Descarga de fotografías públicas de Instagram, incluidas publicaciones con `img_index`.
 - Corte de fragmentos y recodificación mediante FFmpeg.
 - Conversión, optimización y procesamiento de imágenes.
 - Temas claros y oscuros, fondos adaptativos y gatito diario.
 - Sonido de confirmación al finalizar una descarga.
 - Instalación por usuario y desinstalador integrado en Windows.
+- Instancia única: al abrir Xomacito otra vez se enfoca la ventana existente.
 
 ## Requisitos
 
@@ -60,10 +62,9 @@ La creación del instalador requiere además PyInstaller, Inno Setup 6 o 7 y las
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_release.ps1
 ```
 
-Consulta [docs/BENCHMARK.md](docs/BENCHMARK.md) para conocer las mediciones de arranque y las decisiones de distribución de Xomacito 1.5.0.
+Consulta [docs/BENCHMARK.md](docs/BENCHMARK.md) para conocer las mediciones de arranque y las decisiones de distribución de Xomacito.
 
 ## Enlaces
 
 - [YouTube de Strike](https://www.youtube.com/@ElStrikew)
 - [Apoyar en Ko-fi](https://ko-fi.com/strikepoint)
-
