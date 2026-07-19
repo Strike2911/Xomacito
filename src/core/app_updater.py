@@ -42,9 +42,6 @@ def _parsed_version(value: str) -> Version:
 def _select_installer_asset(assets: list[dict]) -> dict | None:
     uploaded = [asset for asset in assets if asset.get("state", "uploaded") == "uploaded"]
     for asset in uploaded:
-        if str(asset.get("name", "")).casefold() == "setup.exe":
-            return asset
-    for asset in uploaded:
         name = str(asset.get("name", "")).casefold()
         if name.endswith(".exe") and "setup" in name and "xomacito" in name:
             return asset
@@ -117,7 +114,7 @@ def check_for_app_update(current_version: str, session=None, timeout: float = 12
         return {
             **result,
             "installer_url": installer_url,
-            "installer_name": str(asset.get("name") or "setup.exe"),
+            "installer_name": str(asset.get("name") or "Xomacito-Setup.exe"),
             "installer_size": installer_size,
             "installer_digest": f"sha256:{installer_sha256}",
         }
@@ -159,7 +156,7 @@ def download_installer(
         # Cada intento recibe su propio nombre. Un setup anterior puede seguir
         # abierto unos segundos y Windows no permite reemplazarlo en ese estado.
         attempt_id = uuid.uuid4().hex[:12]
-        destination_path = update_dir / f"Xomacito-Setup-{version_text}-{attempt_id}.exe"
+        destination_path = update_dir / f"Xomacito-{version_text}-Setup-{attempt_id}.exe"
     else:
         destination_path = Path(destination)
     destination_path.parent.mkdir(parents=True, exist_ok=True)

@@ -41,18 +41,20 @@ class XomacitoWrapperTests(unittest.TestCase):
     def _release_payload(tag="v1.6.0", payload_size=512, digest=None):
         if digest is None:
             digest = "sha256:" + ("a" * 64)
+        release_version = tag.removeprefix("v")
         return {
             "tag_name": tag,
             "html_url": f"https://github.com/Strike2911/Xomacito/releases/tag/{tag}",
             "body": "Mejoras de Xomacito",
             "assets": [
                 {
-                    "name": "setup.exe",
+                    "name": f"Xomacito-{release_version}-Setup.exe",
                     "state": "uploaded",
                     "size": payload_size,
                     "digest": digest,
                     "browser_download_url": (
-                        f"https://github.com/Strike2911/Xomacito/releases/download/{tag}/setup.exe"
+                        f"https://github.com/Strike2911/Xomacito/releases/download/"
+                        f"{tag}/Xomacito-{release_version}-Setup.exe"
                     ),
                 }
             ],
@@ -91,7 +93,7 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertFalse(newer_local["update_available"])
         self.assertTrue(outdated["update_available"])
         self.assertEqual(outdated["latest_version"], "1.6.0")
-        self.assertTrue(outdated["installer_url"].endswith("/setup.exe"))
+        self.assertTrue(outdated["installer_url"].endswith("/Xomacito-1.6.0-Setup.exe"))
 
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
@@ -100,7 +102,7 @@ class XomacitoWrapperTests(unittest.TestCase):
             "latest_version": "1.6.1",
             "installer_url": (
                 "https://github.com/Strike2911/Xomacito/"
-                "releases/download/v1.6.1/setup.exe"
+                "releases/download/v1.6.1/Xomacito-1.6.1-Setup.exe"
             ),
             "installer_size": len(payload),
             "installer_digest": digest,
@@ -146,7 +148,7 @@ class XomacitoWrapperTests(unittest.TestCase):
             "latest_version": "1.6.3",
             "installer_url": (
                 "https://github.com/Strike2911/Xomacito/"
-                "releases/download/v1.6.3/setup.exe"
+                "releases/download/v1.6.3/Xomacito-1.6.3-Setup.exe"
             ),
             "installer_size": len(payload),
             "installer_digest": "sha256:" + hashlib.sha256(payload).hexdigest(),
@@ -172,7 +174,7 @@ class XomacitoWrapperTests(unittest.TestCase):
                 second = download_installer(update_info, session=FakeSession())
 
             self.assertNotEqual(first, second)
-            self.assertRegex(first.name, r"^Xomacito-Setup-1\.6\.3-[0-9a-f]{12}\.exe$")
+            self.assertRegex(first.name, r"^Xomacito-1\.6\.3-Setup-[0-9a-f]{12}\.exe$")
             self.assertTrue(first.exists())
             self.assertTrue(second.exists())
 
@@ -204,7 +206,7 @@ class XomacitoWrapperTests(unittest.TestCase):
             "latest_version": "1.6.1",
             "installer_url": (
                 "https://github.com/Strike2911/Xomacito/"
-                "releases/download/v1.6.1/setup.exe"
+                "releases/download/v1.6.1/Xomacito-1.6.1-Setup.exe"
             ),
             "installer_size": len(payload),
             "installer_digest": "sha256:" + ("0" * 64),
@@ -334,7 +336,9 @@ class XomacitoWrapperTests(unittest.TestCase):
     def test_xomacito_launcher_and_standalone_runtime_are_present(self):
         launcher_exe = ROOT / "Xomacito.exe"
         app_exe = ROOT / "dist" / "Xomacito" / "Xomacito.exe"
-        installer = ROOT / "release" / "Xomacito-Setup-1.6.3.exe"
+        installers = list((ROOT / "release").glob("*Setup*.exe"))
+        self.assertTrue(installers)
+        installer = max(installers, key=lambda candidate: candidate.stat().st_mtime)
         self.assertGreater(launcher_exe.stat().st_size, 100_000)
         self.assertGreater(app_exe.stat().st_size, 100_000)
         self.assertGreater(installer.stat().st_size, 100_000)
@@ -668,6 +672,7 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertNotIn("title_fixer.py", spec)
 
         self.assertIn("PrivilegesRequired=lowest", installer)
+        self.assertIn("OutputBaseFilename=Xomacito-{#MyAppVersion}-Setup", installer)
         self.assertIn("CloseApplications=force", installer)
         self.assertIn("CloseApplicationsFilter=*.*", installer)
         self.assertIn("[UninstallRun]", installer)
@@ -774,7 +779,9 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\setup.exe", build_script)
+        self.assertIn("release\\Xomacito-1.6.3-Setup.exe", build_script)
+        self.assertNotIn("StableInstaller", build_script)
+        self.assertNotIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)
         self.assertIn("MainWindowHandle", benchmark_script)
         self.assertIn("ExpectedWindowTitle", benchmark_script)

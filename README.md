@@ -4,9 +4,9 @@ Aplicación independiente para Windows que permite descargar, convertir y prepar
 
 ## Descargar para Windows
 
-[![Descargar setup.exe](https://img.shields.io/badge/Descargar-setup.exe-2ea44f?style=for-the-badge&logo=windows)](https://github.com/Strike2911/Xomacito/releases/latest/download/setup.exe)
+[![Descargar Xomacito](https://img.shields.io/badge/Descargar-Xomacito-2ea44f?style=for-the-badge&logo=windows)](https://github.com/Strike2911/Xomacito/releases/latest)
 
-Descarga `setup.exe` desde la versión más reciente, ejecútalo y sigue el asistente. El instalador incluye FFmpeg y los componentes necesarios para usar las funciones principales; los modelos de inteligencia artificial se descargan únicamente cuando se solicitan.
+Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión más reciente, ejecútalo y sigue el asistente. El instalador incluye FFmpeg y los componentes necesarios para usar las funciones principales; los modelos de inteligencia artificial se descargan únicamente cuando se solicitan.
 
 > Windows puede mostrar una advertencia de SmartScreen porque el instalador todavía no utiliza un certificado comercial de firma de código. Comprueba que el archivo provenga de este repositorio antes de ejecutarlo.
 
