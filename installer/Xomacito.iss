@@ -1,5 +1,5 @@
 #define MyAppName "Xomacito"
-#define MyAppVersion "1.6.2"
+#define MyAppVersion "1.6.3"
 #define MyAppPublisher "Xomacito"
 #define MyAppExeName "Xomacito.exe"
 #define ProjectRoot ".."
@@ -34,7 +34,7 @@ RestartApplications=no
 Uninstallable=yes
 CreateUninstallRegKey=yes
 MinVersion=10.0.17763
-VersionInfoVersion=1.6.2.0
+VersionInfoVersion=1.6.3.0
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
 VersionInfoDescription=Instalador de Xomacito
@@ -86,6 +86,28 @@ Type: files; Name: "{app}\*.tmp"
 function IsAutoUpdate: Boolean;
 begin
   Result := ExpandConstant('{param:XOMACITOUPDATE|0}') = '1';
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  Result := '';
+  if IsAutoUpdate then
+  begin
+    { Puente para actualizar desde 1.6.2: esa versión podía iniciar el }
+    { setup antes de terminar de cerrar. Detenemos la instancia antigua antes }
+    { de que Inno intente reemplazar Xomacito.exe. }
+    Exec(
+      ExpandConstant('{sys}\taskkill.exe'),
+      '/F /IM "{#MyAppExeName}"',
+      '',
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode
+    );
+    Sleep(1000);
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

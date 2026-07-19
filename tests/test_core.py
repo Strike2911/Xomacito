@@ -17,6 +17,7 @@ from src.core import downloader
 from src.core.app_updater import (
     AppUpdateError,
     check_for_app_update,
+    deferred_installer_command,
     download_installer,
     silent_installer_command,
 )
@@ -138,6 +139,64 @@ class XomacitoWrapperTests(unittest.TestCase):
         command = silent_installer_command("C:/Temp/setup.exe")
         self.assertIn("/SILENT", command)
         self.assertIn("/XOMACITOUPDATE=1", command)
+
+    def test_app_installer_download_uses_a_unique_name_for_each_attempt(self):
+        payload = b"MZ" + (b"unique" * 16)
+        update_info = {
+            "latest_version": "1.6.3",
+            "installer_url": (
+                "https://github.com/Strike2911/Xomacito/"
+                "releases/download/v1.6.3/setup.exe"
+            ),
+            "installer_size": len(payload),
+            "installer_digest": "sha256:" + hashlib.sha256(payload).hexdigest(),
+        }
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def iter_content(self, chunk_size):
+                yield payload
+
+            def close(self):
+                return None
+
+        class FakeSession:
+            def get(self, url, headers, stream, timeout):
+                return FakeResponse()
+
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("src.core.app_updater.tempfile.gettempdir", return_value=directory):
+                first = download_installer(update_info, session=FakeSession())
+                second = download_installer(update_info, session=FakeSession())
+
+            self.assertNotEqual(first, second)
+            self.assertRegex(first.name, r"^Xomacito-Setup-1\.6\.3-[0-9a-f]{12}\.exe$")
+            self.assertTrue(first.exists())
+            self.assertTrue(second.exists())
+
+    def test_deferred_installer_waits_for_xomacito_before_starting_setup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            installer = Path(directory) / "Xomacito Setup.exe"
+            launcher = Path(directory) / "launch update.ps1"
+            installer.write_bytes(b"MZ")
+
+            command = deferred_installer_command(installer, 4321, launcher)
+            script = launcher.read_text(encoding="utf-8-sig")
+
+            self.assertEqual(command[0], "powershell.exe")
+            self.assertIn("4321", command)
+            self.assertIn(str(installer.resolve()), command)
+            self.assertIn("Get-Process -Id $XomacitoProcessId", script)
+            self.assertIn("Stop-Process -Id $XomacitoProcessId", script)
+            self.assertIn("Start-Process -FilePath $InstallerPath", script)
+            self.assertIn("-Wait -PassThru", script)
+            self.assertIn("/XOMACITOUPDATE=1", script)
+
+        main_window = (ROOT / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
+        self.assertIn("deferred_installer_command(installer_path, os.getpid())", main_window)
+        self.assertNotIn("silent_installer_command(installer_path)", main_window)
 
     def test_app_installer_rejects_a_wrong_digest(self):
         payload = b"MZinvalid"
@@ -275,7 +334,7 @@ class XomacitoWrapperTests(unittest.TestCase):
     def test_xomacito_launcher_and_standalone_runtime_are_present(self):
         launcher_exe = ROOT / "Xomacito.exe"
         app_exe = ROOT / "dist" / "Xomacito" / "Xomacito.exe"
-        installer = ROOT / "release" / "Xomacito-Setup-1.6.2.exe"
+        installer = ROOT / "release" / "Xomacito-Setup-1.6.3.exe"
         self.assertGreater(launcher_exe.stat().st_size, 100_000)
         self.assertGreater(app_exe.stat().st_size, 100_000)
         self.assertGreater(installer.stat().st_size, 100_000)
@@ -621,6 +680,9 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("XOMACITOUPDATE", installer)
         self.assertIn("skipifnotsilent", installer)
         self.assertIn("IsAutoUpdate", installer)
+        self.assertIn("function PrepareToInstall", installer)
+        self.assertIn("ewWaitUntilTerminated", installer)
+        self.assertIn("Sleep(1000)", installer)
         self.assertIn('Name: "{userappdata}\\Xomacito\\encoder_cache.json"', installer)
         self.assertIn('Name: "{app}\\_internal\\bin\\models"', installer)
         self.assertIn("procedure CurUninstallStepChanged", installer)

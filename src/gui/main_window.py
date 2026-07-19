@@ -1416,15 +1416,17 @@ class MainWindow(TkBase):
         threading.Thread(target=download_worker, daemon=True).start()
 
     def _ejecutar_instalador_actualizacion(self, installer_path, version_str):
-        """Arranca Inno Setup y cierra esta instancia para reemplazar sus archivos."""
-        from src.core.app_updater import silent_installer_command
+        """Cierra Xomacito y deja que un lanzador independiente inicie el setup."""
+        from src.core.app_updater import deferred_installer_command
 
         try:
             self.single_tab.update_progress(100, "Instalador verificado. Actualizando...")
             self.save_settings()
-            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+            creationflags = 0
+            if os.name == "nt":
+                creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
             subprocess.Popen(
-                silent_installer_command(installer_path),
+                deferred_installer_command(installer_path, os.getpid()),
                 cwd=str(Path(installer_path).parent),
                 creationflags=creationflags,
                 close_fds=True,
@@ -1435,7 +1437,7 @@ class MainWindow(TkBase):
 
         print(f"INFO: Instalador de Xomacito {version_str} iniciado.")
         self.is_shutting_down = True
-        self.after(250, self.destroy)
+        self.after(100, self.destroy)
 
     def _fallo_auto_actualizacion(self, error_message):
         self._update_in_progress = False
