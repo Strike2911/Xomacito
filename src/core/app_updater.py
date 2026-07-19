@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Callable
 from urllib.parse import urlparse
@@ -155,7 +156,10 @@ def download_installer(
     version_text = re.sub(r"[^0-9A-Za-z._-]+", "-", str(update_info.get("latest_version") or "new"))
     if destination is None:
         update_dir = Path(tempfile.gettempdir()) / "Xomacito" / "updates"
-        destination_path = update_dir / f"Xomacito-Setup-{version_text}.exe"
+        # Cada intento recibe su propio nombre. Un setup anterior puede seguir
+        # abierto unos segundos y Windows no permite reemplazarlo en ese estado.
+        attempt_id = uuid.uuid4().hex[:12]
+        destination_path = update_dir / f"Xomacito-Setup-{version_text}-{attempt_id}.exe"
     else:
         destination_path = Path(destination)
     destination_path.parent.mkdir(parents=True, exist_ok=True)
@@ -219,4 +223,80 @@ def silent_installer_command(installer_path: str | Path) -> list[str]:
         "/CLOSEAPPLICATIONS",
         "/NORESTART",
         "/XOMACITOUPDATE=1",
+    ]
+
+
+_DEFERRED_INSTALLER_SCRIPT = r"""param(
+    [Parameter(Mandatory=$true)][int]$XomacitoProcessId,
+    [Parameter(Mandatory=$true)][string]$InstallerPath
+)
+
+$ErrorActionPreference = 'Stop'
+
+# Wait for the application to finish normally. If shutdown gets stuck, force
+# only the exact process that requested this already-authorized update.
+for ($attempt = 0; $attempt -lt 300; $attempt++) {
+    if ($null -eq (Get-Process -Id $XomacitoProcessId -ErrorAction SilentlyContinue)) {
+        break
+    }
+    Start-Sleep -Milliseconds 100
+}
+
+if ($null -ne (Get-Process -Id $XomacitoProcessId -ErrorAction SilentlyContinue)) {
+    Stop-Process -Id $XomacitoProcessId -Force -ErrorAction SilentlyContinue
+    Wait-Process -Id $XomacitoProcessId -ErrorAction SilentlyContinue
+}
+
+if (-not (Test-Path -LiteralPath $InstallerPath -PathType Leaf)) {
+    exit 2
+}
+
+$installerArguments = @(
+    '/SILENT',
+    '/SP-',
+    '/CLOSEAPPLICATIONS',
+    '/NORESTART',
+    '/XOMACITOUPDATE=1'
+)
+$setup = Start-Process -FilePath $InstallerPath -ArgumentList $installerArguments `
+    -WindowStyle Hidden -Wait -PassThru
+$setupExitCode = $setup.ExitCode
+
+if ($setupExitCode -eq 0) {
+    Remove-Item -LiteralPath $InstallerPath -Force -ErrorAction SilentlyContinue
+}
+Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+exit $setupExitCode
+"""
+
+
+def deferred_installer_command(
+    installer_path: str | Path,
+    xomacito_process_id: int,
+    launcher_path: str | Path | None = None,
+) -> list[str]:
+    """Crea un lanzador que espera el cierre real de Xomacito antes de instalar."""
+    installer = Path(installer_path).resolve()
+    if launcher_path is None:
+        launcher = installer.parent / f"xomacito-update-{uuid.uuid4().hex[:12]}.ps1"
+    else:
+        launcher = Path(launcher_path).resolve()
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    launcher.write_text(_DEFERRED_INSTALLER_SCRIPT, encoding="utf-8-sig")
+
+    return [
+        "powershell.exe",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-WindowStyle",
+        "Hidden",
+        "-File",
+        str(launcher),
+        "-XomacitoProcessId",
+        str(int(xomacito_process_id)),
+        "-InstallerPath",
+        str(installer),
     ]

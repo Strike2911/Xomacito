@@ -68,7 +68,7 @@ if ($LASTEXITCODE -ne 0) {
     throw 'Inno Setup no pudo crear el instalador.'
 }
 
-$Installer = Join-Path $ProjectRoot 'release\Xomacito-Setup-1.6.2.exe'
+$Installer = Join-Path $ProjectRoot 'release\Xomacito-Setup-1.6.3.exe'
 if (-not (Test-Path -LiteralPath $Installer)) {
     throw "No se generó el instalador esperado: $Installer"
 }
