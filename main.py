@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 APP_NAME = "Xomacito"
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.5.1"
 BUILTIN_THEMES = {"blue", "dark-blue", "green"}
 
 FROZEN = bool(getattr(sys, "frozen", False))
@@ -240,6 +240,22 @@ def main() -> int:
     if "--self-test" in sys.argv:
         return _run_self_test()
 
+    from src.core.restart import restart_wait_requested
+    from src.core.single_instance import SingleInstanceGuard, focus_existing_window
+
+    instance_guard = SingleInstanceGuard(APP_NAME)
+    restart_wait = 15.0 if restart_wait_requested() else 0.0
+    if not instance_guard.acquire(wait_seconds=restart_wait):
+        focus_existing_window(APP_NAME)
+        return 0
+
+    try:
+        return _run_main_window()
+    finally:
+        instance_guard.release()
+
+
+def _run_main_window() -> int:
     import customtkinter as ctk
 
     settings = _settings()

@@ -2624,19 +2624,7 @@ class ConfigTab(ctk.CTkFrame):
                 from tkinter import messagebox
                 Tooltip.hide_all()
                 if messagebox.askyesno("Reinicio Necesario", "Se actualizó yt-dlp exitosamente.\n\nEs OBLIGATORIO reiniciar Xomacito para evitar fallos. ¿Reiniciar ahora?"):
-                    import sys, os, subprocess, tempfile
-                    try:
-                        # Limpiar el cerrojo de la ventana manualmente antes de invocar la otra
-                        lockfile = os.path.join(tempfile.gettempdir(), 'xomacito.lock')
-                        if os.path.exists(lockfile):
-                            try: os.remove(lockfile)
-                            except: pass
-                            
-                        subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "main.py")])
-                        self.app.destroy()
-                        sys.exit(0)
-                    except Exception as e:
-                        print(f"ERROR reiniciando: {e}")
+                    self.app.restart_application()
         else:
             if key == "ffmpeg" and "ffmpeg_safe" in self.dep_buttons:
                 self.dep_buttons["ffmpeg_safe"].configure(state="normal", text="Restaurar (8.0.1)")

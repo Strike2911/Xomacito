@@ -1,7 +1,9 @@
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
+import uuid
 from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -12,7 +14,8 @@ import launcher
 import main
 from src.core import downloader
 from src.core.daily_icon import CAT_COUNT, daily_cat_assets, daily_cat_number
-from src.core.restart import clean_restart_environment
+from src.core.restart import RESTART_WAIT_ENV, clean_restart_environment, restart_wait_requested
+from src.core.single_instance import SingleInstanceGuard
 from src.core.ytdlp_runtime import (
     configure_ytdlp_options,
     is_youtube_access_error,
@@ -26,10 +29,111 @@ LEGACY_APP_NAME = "Do" + "wP"
 
 
 class XomacitoWrapperTests(unittest.TestCase):
+    def test_only_one_xomacito_instance_can_hold_the_lock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            name = f"Xomacito-test-{uuid.uuid4()}"
+            first = SingleInstanceGuard(name, directory)
+            second = SingleInstanceGuard(name, directory)
+
+            self.assertTrue(first.acquire())
+            self.assertFalse(second.acquire())
+            first.release()
+            self.assertTrue(second.acquire())
+            second.release()
+
+    def test_restart_environment_allows_a_controlled_instance_handoff(self):
+        environment = clean_restart_environment({})
+        self.assertEqual(environment[RESTART_WAIT_ENV], "1")
+        self.assertTrue(restart_wait_requested(environment))
+        self.assertFalse(restart_wait_requested({}))
+
+        main_source = (ROOT / "main.py").read_text(encoding="utf-8")
+        main_window_source = (ROOT / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
+        config_source = (ROOT / "src" / "gui" / "config_tab.py").read_text(encoding="utf-8")
+        self.assertIn("SingleInstanceGuard(APP_NAME)", main_source)
+        self.assertIn("focus_existing_window(APP_NAME)", main_source)
+        self.assertNotIn("xomacito.lock", main_window_source + config_source)
+
+    def test_instagram_photo_posts_have_an_image_fallback(self):
+        class FakeResponse:
+            text = (
+                '<html><head>'
+                '<meta content="Cuenta on Instagram: &quot;Foto bonita&quot;" property="og:title">'
+                '<meta property="og:image" content="https://scontent.cdninstagram.com/photo.webp?a=1&amp;b=2">'
+                '<meta property="og:description" content="Publicación pública">'
+                '</head></html>'
+            )
+
+            @staticmethod
+            def raise_for_status():
+                return None
+
+        class FakeSession:
+            @staticmethod
+            def get(url, timeout, allow_redirects):
+                self.assertEqual(url, "https://www.instagram.com/p/ABC123/")
+                self.assertEqual(timeout, 5)
+                self.assertTrue(allow_redirects)
+                return FakeResponse()
+
+        info = downloader.extract_instagram_image_post_info(
+            "https://www.instagram.com/p/ABC123/",
+            timeout=5,
+            session=FakeSession(),
+        )
+        self.assertEqual(info["xomacito_media_type"], "image")
+        self.assertEqual(info["extractor_key"], "InstagramImage")
+        self.assertEqual(info["title"], "Foto bonita")
+        self.assertEqual(info["thumbnail"], "https://scontent.cdninstagram.com/photo.webp?a=1&b=2")
+        self.assertTrue(downloader.is_instagram_post_url("https://instagram.com/p/ABC123/"))
+        self.assertFalse(downloader.is_instagram_post_url("https://evilinstagram.com/p/ABC123/"))
+
+    def test_instagram_metadata_without_video_formats_becomes_an_image(self):
+        metadata = {
+            "id": "ABC123",
+            "title": "Video by cuenta",
+            "description": "Foto bonita",
+            "thumbnail": "https://instagram.example/photo.jpg",
+            "formats": [],
+            "http_headers": {"User-Agent": "Xomacito test"},
+        }
+        info = downloader.instagram_image_post_info_from_metadata(
+            "https://www.instagram.com/p/ABC123/?img_index=1",
+            metadata,
+        )
+        self.assertEqual(info["xomacito_media_type"], "image")
+        self.assertEqual(info["title"], "Foto bonita")
+        self.assertEqual(info["thumbnail"], metadata["thumbnail"])
+        self.assertEqual(info["http_headers"]["User-Agent"], "Xomacito test")
+
+    def test_instagram_carousel_respects_the_requested_image_index(self):
+        metadata = {
+            "_type": "playlist",
+            "description": "Carrusel",
+            "entries": [
+                {"id": "one", "thumbnail": "https://instagram.example/one.jpg", "formats": []},
+                {"id": "two", "thumbnail": "https://instagram.example/two.jpg", "formats": []},
+            ],
+        }
+        info = downloader.instagram_image_post_info_from_metadata(
+            "https://www.instagram.com/p/ABC123/?img_index=2",
+            metadata,
+        )
+        self.assertEqual(info["id"], "two")
+        self.assertEqual(info["thumbnail"], "https://instagram.example/two.jpg")
+        self.assertTrue(info["title"].endswith(" - 2"))
+
+    def test_instagram_image_fallback_is_available_from_both_buttons(self):
+        source = (ROOT / "src" / "gui" / "single_download_tab.py").read_text(encoding="utf-8")
+        self.assertIn("extract_instagram_image_post_info(url, ydl_options=ydl_opts or {})", source)
+        self.assertIn('button_text = "Descargar Imagen"', source)
+        self.assertIn("def save_thumbnail(self):", source)
+        self.assertIn("def _download_image_post_worker", source)
+
     def test_xomacito_launcher_and_standalone_runtime_are_present(self):
         launcher_exe = ROOT / "Xomacito.exe"
         app_exe = ROOT / "dist" / "Xomacito" / "Xomacito.exe"
-        installer = ROOT / "release" / "Xomacito-Setup-1.5.0.exe"
+        installer = ROOT / "release" / "Xomacito-Setup-1.5.1.exe"
         self.assertGreater(launcher_exe.stat().st_size, 100_000)
         self.assertGreater(app_exe.stat().st_size, 100_000)
         self.assertGreater(installer.stat().st_size, 100_000)
