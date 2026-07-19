@@ -5,9 +5,6 @@ from tkinter import StringVar, Menu
 from customtkinter import filedialog
 from src.core.batch_processor import QueueManager, Job
 import sys
-from src.core.ytdlp_runtime import load_ytdlp
-
-yt_dlp = load_ytdlp()
 import io
 import time
 import queue

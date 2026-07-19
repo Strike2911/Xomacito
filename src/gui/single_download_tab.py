@@ -18,9 +18,9 @@ import json
 import time
 import shutil
 import platform
-from src.core.ytdlp_runtime import configure_ytdlp_options, friendly_ytdlp_error, load_ytdlp
+from src.core.ytdlp_runtime import configure_ytdlp_options, friendly_ytdlp_error, lazy_ytdlp
 
-yt_dlp = load_ytdlp()
+yt_dlp = lazy_ytdlp()
 import io
 from datetime import datetime, timedelta
 

@@ -23,6 +23,9 @@ Descarga `setup.exe` desde la versión más reciente, ejecútalo y sigue el asis
 - Instancia única: al abrir Xomacito otra vez se enfoca la ventana existente.
 - Aviso de nuevas versiones al iniciar, con elección de actualizar o continuar.
 - Actualización verificada: nunca reinstala si la versión actual ya es la más reciente.
+- Inicio rápido con pestañas secundarias y motores pesados cargados bajo demanda.
+- Renderizado visual optimizado para mantener la interfaz fluida al cambiar de tamaño.
+- Las pestañas pesadas se construyen fuera de vista y aparecen completas, sin mezclar pantallas de carga con paneles parciales.
 
 ## Requisitos
 

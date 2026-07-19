@@ -19,11 +19,9 @@ import json
 import time
 import shutil
 import platform
-from src.core.ytdlp_runtime import load_ytdlp
 from src.core.daily_icon import daily_cat_assets
 from src.core.restart import clean_restart_environment
 
-yt_dlp = load_ytdlp()
 import io
 from packaging import version
 
@@ -46,18 +44,10 @@ except ImportError:
     TkBase = ctk.CTk
 
 from datetime import datetime, timedelta
-from src.core.image_converter import ImageConverter
-from src.core.image_processor import ImageProcessor
 from src.core.inkscape_service import InkscapeService
-from src.core.downloader import download_media, extract_info_resilient, get_video_info
-from src.core.processor import FFmpegProcessor, CODEC_PROFILES
-from src.core.exceptions import UserCancelledError, LocalRecodeFailedError
-from src.core.processor import clean_and_convert_vtt_to_srt
+from src.core.processor import FFmpegProcessor
 from contextlib import redirect_stdout
-from .batch_download_tab import BatchDownloadTab
 from .single_download_tab import SingleDownloadTab
-from .image_tools_tab import ImageToolsTab
-from .config_tab import ConfigTab
 from .visual_shell import DailyBrandHeader, GradientBackdrop
 from src.core.text_utils import clean_filename_text
 from .dialogs import (
@@ -262,6 +252,8 @@ class MainWindow(TkBase):
         sobre el mejor formato disponible cuando la selección del usuario falla.
         """
         try:
+            from src.core.downloader import extract_info_resilient
+
             mode = options.get("mode", "Video+Audio")
             
             ydl_opts = {
@@ -666,49 +658,188 @@ class MainWindow(TkBase):
         # (Cargará la clase de nuestro nuevo archivo)
         self.tab_view.add("Descargar")
         self.single_tab = SingleDownloadTab(master=self.tab_view.tab("Descargar"), app=self)
-        
-        # Añadir la pestaña de Lotes (como placeholder)
-        self.tab_view.add("Cola")
-        self.batch_tab = BatchDownloadTab(master=self.tab_view.tab("Cola"), app=self)
 
-        # Añadir la pestaña de Herramientas de Imagen
-        self.tab_view.add("Estudio de Imagen")
-        self.image_tab = ImageToolsTab(master=self.tab_view.tab("Estudio de Imagen"),
-                                       app=self, 
-                                       poppler_path=poppler_path,
-                                       inkscape_path=inkscape_path)
+        # Las pestañas secundarias se importan y construyen cuando se abren.
+        # Esto evita crear cientos de widgets invisibles durante el arranque.
+        self._lazy_tabs = {}
+        self._poppler_path = poppler_path
+        self._inkscape_path = inkscape_path
+        self._register_lazy_tab("Cola", "batch_tab", "src.gui.batch_download_tab")
+        self._register_lazy_tab("Estudio de Imagen", "image_tab", "src.gui.image_tools_tab")
+        self._register_lazy_tab("Configuración", "config_tab", "src.gui.config_tab")
 
-        # Añadir la pestaña de Configuraciones
-        self.tab_view.add("Configuración")
-        self.config_tab = ConfigTab(master=self.tab_view.tab("Configuración"), app=self)
-
-        # ── Consola de Diagnóstico: instalar el logger y conectar a la UI ──
+        # La consola permanece pasiva hasta que Configuración se construya.
         self.console_logger = ConsoleLogger()
-        self.console_logger.connect_ui(
-            after_func=self.after,
-            ui_callback=self.config_tab.append_to_console
-        )
-        if self.console_enabled:
-            self.console_logger.enable()
 
         # Se lanza con un delay para que MainWindow esté mapeada y evitar errores de hilos
         self.after(200, self.run_initial_setup)
         self._check_for_ui_requests()
         self._last_clipboard_check = ""
+        self._clipboard_after_id = None
         self.bind("<FocusIn>", self._on_app_focus)
         self.after(100, self._show_window_when_ready)
-        self._start_memory_cleaner()
-        self.after(500, lambda: threading.Thread(target=self._check_ytdlp_update_bg, daemon=True).start())
+        self.after(180000, self._start_memory_cleaner)
+        self.after(5000, lambda: threading.Thread(target=self._check_ytdlp_update_bg, daemon=True).start())
+
+    def _register_lazy_tab(self, tab_name, attribute_name, module_name):
+        """Crea un contenedor ligero y difiere la pestaña real hasta su uso."""
+        self.tab_view.add(tab_name)
+        container = self.tab_view.tab(tab_name)
+        # El panel real se construye en un host todavía oculto. Así CustomTkinter
+        # puede crear sus widgets sin mezclar una interfaz parcial con el aviso.
+        host = ctk.CTkFrame(container, fg_color="transparent")
+        placeholder = ctk.CTkFrame(container, fg_color="transparent")
+        placeholder.pack(expand=True, fill="both")
+        content = ctk.CTkFrame(
+            placeholder,
+            width=360,
+            height=128,
+            corner_radius=16,
+            border_width=1,
+            border_color=("gray78", "gray28"),
+            fg_color=("gray94", "gray17"),
+        )
+        content.pack_propagate(False)
+        content.place(relx=0.5, rely=0.48, anchor="center")
+        label = ctk.CTkLabel(
+            content,
+            text=f"Abriendo {tab_name}…",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            text_color=("gray25", "gray82"),
+        )
+        label.pack(pady=(24, 4))
+        detail = ctk.CTkLabel(
+            content,
+            text="Solo tardará la primera vez.",
+            font=ctk.CTkFont(size=12),
+            text_color=("gray45", "gray62"),
+        )
+        detail.pack(pady=(0, 12))
+        progress = ctk.CTkProgressBar(content, width=250, height=6, mode="indeterminate")
+        progress.set(0)
+        progress.pack()
+        self._lazy_tabs[tab_name] = {
+            "attribute": attribute_name,
+            "module": module_name,
+            "state": "pending",
+            "container": container,
+            "host": host,
+            "placeholder": placeholder,
+            "label": label,
+            "detail": detail,
+            "progress": progress,
+            "retry": None,
+        }
+
+    def _ensure_lazy_tab(self, tab_name):
+        spec = self._lazy_tabs.get(tab_name)
+        if not spec or spec["state"] in {"loading", "building", "loaded"}:
+            return
+        if spec["state"] == "ready":
+            self._finish_lazy_tab(tab_name)
+            return
+
+        spec["state"] = "loading"
+        retry = spec.get("retry")
+        if retry and retry.winfo_exists():
+            retry.destroy()
+        spec["retry"] = None
+        spec["label"].configure(text=f"Abriendo {tab_name}…")
+        spec["detail"].configure(text="Solo tardará la primera vez.")
+        spec["progress"].start()
+
+        threading.Thread(
+            target=self._import_lazy_tab,
+            args=(tab_name, spec["module"]),
+            daemon=True,
+        ).start()
+
+    def _import_lazy_tab(self, tab_name, module_name):
+        try:
+            import importlib
+
+            importlib.import_module(module_name)
+        except Exception as error:
+            self.ui_update_queue.put((self._fail_lazy_tab, (tab_name, str(error))))
+            return
+        self.ui_update_queue.put((self._finish_lazy_tab, (tab_name,)))
+
+    def _finish_lazy_tab(self, tab_name):
+        if self.is_shutting_down:
+            return
+        spec = self._lazy_tabs[tab_name]
+        if spec["state"] == "loaded":
+            return
+        if self.tab_view.get() != tab_name:
+            spec["state"] = "ready"
+            spec["progress"].stop()
+            spec["label"].configure(text="Lista para abrir.")
+            spec["detail"].configure(text="Selecciona la pestaña para mostrarla.")
+            return
+        spec["state"] = "building"
+        spec["label"].configure(text=f"Abriendo {tab_name}…")
+        spec["detail"].configure(text="Preparando la interfaz.")
+        try:
+            host = spec["host"]
+            if tab_name == "Cola":
+                from .batch_download_tab import BatchDownloadTab
+
+                widget = BatchDownloadTab(master=host, app=self)
+            elif tab_name == "Estudio de Imagen":
+                from .image_tools_tab import ImageToolsTab
+
+                widget = ImageToolsTab(
+                    master=host,
+                    app=self,
+                    poppler_path=self._poppler_path,
+                    inkscape_path=self._inkscape_path,
+                )
+            else:
+                from .config_tab import ConfigTab
+
+                widget = ConfigTab(master=host, app=self)
+        except Exception as error:
+            self._fail_lazy_tab(tab_name, str(error))
+            return
+
+        setattr(self, spec["attribute"], widget)
+        spec["progress"].stop()
+        spec["placeholder"].destroy()
+        spec["host"].pack(expand=True, fill="both")
+        spec["state"] = "loaded"
+
+        if tab_name == "Configuración":
+            self.console_logger.connect_ui(
+                after_func=self.after,
+                ui_callback=self.config_tab.append_to_console,
+            )
+            if self.console_enabled:
+                self.console_logger.enable()
+
+    def _fail_lazy_tab(self, tab_name, error_message):
+        spec = self._lazy_tabs[tab_name]
+        spec["state"] = "error"
+        spec["progress"].stop()
+        host = spec.get("host")
+        if host and host.winfo_exists():
+            host.destroy()
+        spec["host"] = ctk.CTkFrame(spec["container"], fg_color="transparent")
+        spec["label"].configure(
+            text=f"No se pudo abrir {tab_name}.\n{error_message[:180]}",
+            text_color=("#B42318", "#FF8A80"),
+        )
+        spec["detail"].configure(text="Puedes volver a intentarlo.")
+        spec["retry"] = ctk.CTkButton(
+            spec["label"].master,
+            text="Reintentar",
+            width=120,
+            command=lambda: self._ensure_lazy_tab(tab_name),
+        )
+        spec["retry"].pack(pady=(12, 0))
 
     def _on_tab_view_change(self):
-        """Evento dinámico que se dispara al cambiar de pestaña."""
-        if self.tab_view.get() == "Configuración":
-            # Si el usuario entra a Ajustes, forzamos re-escaneo de las carpetas 
-            # de dependencias y modelos para actualizar botones (ej. modelos descargados).
-            if hasattr(self, 'config_tab'):
-                self.config_tab._load_local_versions()
-                if hasattr(self.config_tab, 'refresh_all_models'):
-                    self.config_tab.refresh_all_models()
+        """Carga bajo demanda la pestaña elegida sin penalizar el arranque."""
+        self._ensure_lazy_tab(self.tab_view.get())
 
     def _check_ytdlp_update_bg(self):
         """Busca actualizaciones exclusivas de yt-dlp silenciosamente al iniciar."""
@@ -773,10 +904,11 @@ class MainWindow(TkBase):
         self.single_tab.download_button.configure(state="normal")
         
         if success:
-            if "ytdlp" in self.config_tab.dep_labels:
-                self.config_tab.dep_labels["ytdlp"].configure(text=f"Versión: {latest_v} \n(Actualizado)", text_color="gray50")
-                if "ytdlp" in self.config_tab.dep_buttons:
-                    self.config_tab.dep_buttons["ytdlp"].configure(state="disabled", text="Actualizado")
+            config_tab = getattr(self, "config_tab", None)
+            if config_tab and "ytdlp" in config_tab.dep_labels:
+                config_tab.dep_labels["ytdlp"].configure(text=f"Versión: {latest_v} \n(Actualizado)", text_color="gray50")
+                if "ytdlp" in config_tab.dep_buttons:
+                    config_tab.dep_buttons["ytdlp"].configure(state="disabled", text="Actualizado")
                 
             from tkinter import messagebox
             Tooltip.hide_all()
@@ -784,21 +916,25 @@ class MainWindow(TkBase):
                 self.restart_application()
 
     def _process_ui_queue(self):
-        """Revisa la cola de actualizaciones y ejecuta las acciones en el hilo principal."""
+        """Procesa trabajo de UI con un presupuesto corto para no bloquear frames."""
+        deadline = time.monotonic() + 0.008
+        processed = 0
         try:
-            while True:
-                # Obtener tarea sin bloquear
+            while processed < 48 and time.monotonic() < deadline:
                 task = self.ui_update_queue.get_nowait()
                 func, args = task
                 try:
                     func(*args)
                 except Exception as e:
                     print(f"ERROR al procesar tarea de UI: {e}")
+                processed += 1
         except queue.Empty:
             pass
         finally:
-            # Reprogramar la revisión
-            self.after(100, self._process_ui_queue)
+            # Si quedó trabajo, continuar pronto; en reposo basta con ~30 FPS.
+            delay = 8 if not self.ui_update_queue.empty() else 34
+            if not getattr(self, "is_shutting_down", False):
+                self.after(delay, self._process_ui_queue)
     
     def run_initial_setup(self):
         """
@@ -816,11 +952,6 @@ class MainWindow(TkBase):
             )),
             daemon=True,
         ).start()
-
-        # Verificaciones de componentes oficiales.
-        from src.core.setup import check_inkscape_status, check_ghostscript_status
-        threading.Thread(target=lambda: self.ui_update_queue.put((self.on_inkscape_check_complete, (check_inkscape_status(lambda t, v: None),))), daemon=True).start()
-        threading.Thread(target=lambda: self.ui_update_queue.put((self.on_ghostscript_check_complete, (check_ghostscript_status(lambda t, v: None),))), daemon=True).start()
 
         # 3. COMPROBACIÓN DE DEPENDENCIAS OBLIGATORIAS
         import platform
@@ -849,9 +980,6 @@ class MainWindow(TkBase):
                 # Hacemos una verificación rápida (offline) para llenar las etiquetas de la UI
                 env_status = check_environment_status(lambda t, v: None, check_updates=False)
                 
-                # REFRESCAR LA PESTAÑA: En caso de que se hayan instalado archivos nuevos apenas ahora
-                self.ui_update_queue.put((self.config_tab._load_local_versions, ()))
-
                 # Enviamos la actualización de la UI a la cola principal
                 self.ui_update_queue.put((self.on_status_check_complete, (env_status,)))
                 
@@ -1529,64 +1657,49 @@ class MainWindow(TkBase):
         # Solo chequear si la app no está ocupada procesando
         if self.single_tab.active_operation_thread and self.single_tab.active_operation_thread.is_alive():
             return
-            
-        # Esperar 200ms para asegurar que Windows ha terminado de pintar la ventana
-        self.after(200, self._check_clipboard_and_paste)
+
+        # FocusIn también llega desde widgets hijos. Agrupar esos eventos evita
+        # múltiples lecturas y repintados por un único clic del usuario.
+        if self._clipboard_after_id:
+            try:
+                self.after_cancel(self._clipboard_after_id)
+            except tkinter.TclError:
+                pass
+        self._clipboard_after_id = self.after(140, self._check_clipboard_and_paste)
 
     def _start_memory_cleaner(self):
-        """
-        (NUEVO) Ejecuta recolección de basura cada 60 segundos para liberar RAM
-        y evitar que Windows mande la app al archivo de paginación.
-        """
-        import gc
-        try:
-            # Forzar recolección de objetos no usados
-            gc.collect()
-            # En Windows, esto a veces ayuda a reducir el "Working Set"
-            if os.name == 'nt':
-                try:
-                    # ctypes magic para liberar memoria no usada al sistema
-                    import ctypes
-                    ctypes.windll.psapi.EmptyWorkingSet(ctypes.windll.kernel32.GetCurrentProcess())
-                except:
-                    pass
-        except Exception:
-            pass
-        
-        # Repetir cada 1 minuto (60000 ms)
-        self.after(60000, self._start_memory_cleaner)
+        """Hace mantenimiento ligero sin expulsar páginas útiles de memoria."""
+        if self.is_shutting_down:
+            return
+        active_thread = getattr(self.single_tab, "active_operation_thread", None)
+        if not active_thread or not active_thread.is_alive():
+            try:
+                gc.collect(1)
+            except Exception:
+                pass
+        self.after(180000, self._start_memory_cleaner)
 
     # --- ESTA ES LA FUNCIÓN ANTERIOR RENOMBRADA ---
-    def _check_clipboard_and_paste(self):
+    def _check_clipboard_and_paste(self, retry_count=0):
         """
         Comprueba el portapapeles y pega automáticamente si es una URL.
-        Incluye lógica de reintentos para evitar bloqueos del sistema.
+        Los reintentos usan ``after`` para no detener el hilo gráfico.
         """
-        clipboard_content = ""
-        max_retries = 4  # Intentaremos 4 veces antes de rendirnos
-        
-        for attempt in range(max_retries):
-            try:
-                # Intentamos leer
-                clipboard_content = self.clipboard_get()
-                # Si llegamos aquí, fue exitoso, salimos del bucle
-                break 
-                
-            except tkinter.TclError:
-                # TclError suele significar que está vacío o no es texto. 
-                # No vale la pena reintentar.
-                clipboard_content = ""
-                break
-                
-            except Exception as e:
-                # Cualquier otro error (ej: bloqueo de Windows).
-                # Si es el último intento, imprimimos error y nos rendimos.
-                if attempt == max_retries - 1:
-                    print(f"DEBUG: Portapapeles bloqueado o inaccesible: {e}")
-                    clipboard_content = ""
-                else:
-                    # Esperamos un momento breve (10ms, 20ms...) para dejar que se libere
-                    time.sleep(0.01 * (attempt + 1))
+        self._clipboard_after_id = None
+        try:
+            clipboard_content = self.clipboard_get()
+        except tkinter.TclError:
+            return
+        except Exception as error:
+            if retry_count < 3:
+                self._clipboard_after_id = self.after(
+                    25 * (retry_count + 1),
+                    self._check_clipboard_and_paste,
+                    retry_count + 1,
+                )
+            else:
+                print(f"DEBUG: Portapapeles bloqueado o inaccesible: {error}")
+            return
 
         # 1. Evitar re-pegar si el contenido no ha cambiado
         if not clipboard_content or clipboard_content == self._last_clipboard_check:
@@ -1607,10 +1720,11 @@ class MainWindow(TkBase):
         if active_tab_name == "Descargar":
             target_entry = self.single_tab.url_entry
         elif active_tab_name == "Cola":
-            target_entry = self.batch_tab.url_entry
+            batch_tab = getattr(self, "batch_tab", None)
+            target_entry = batch_tab.url_entry if batch_tab else None
         elif active_tab_name == "Estudio de Imagen":
-            # (Asegúrate de que tu pestaña de imagen se llame self.image_tab)
-            target_entry = self.image_tab.url_entry
+            image_tab = getattr(self, "image_tab", None)
+            target_entry = image_tab.url_entry if image_tab else None
 
         # 5. Pegar la URL, REEMPLAZANDO el contenido
         if target_entry:

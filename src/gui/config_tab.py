@@ -644,15 +644,20 @@ class ConfigTab(ctk.CTkFrame):
         self.rembg_models_frame.pack(fill="x", pady=(0, 20), padx=5)
         self.config_cards.append(self.rembg_models_frame)
         self.model_rows = {}
-
-        self._populate_rembg_model_rows()
+        self._models_populated = False
+        self._models_loading = False
+        self._models_loading_label = ctk.CTkLabel(
+            self.rembg_models_frame,
+            text="Los modelos se cargarán al abrir esta sección.",
+            text_color="gray60",
+        )
+        self._models_loading_label.pack(padx=16, pady=16)
 
         # -- Grupo: Motores de Reescalado (Upscaling) --
         ctk.CTkLabel(frame_models, text="Motores de Reescalado (Upscaling)", font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w", pady=(0, 8))
         self.upscaling_models_frame = ctk.CTkFrame(frame_models, fg_color=self.CONFIG_CARD_BG, corner_radius=self.CONFIG_CARD_RADIUS, border_width=1, border_color=self.CONFIG_CARD_BORDER)
         self.upscaling_models_frame.pack(fill="x", pady=(0, 10), padx=5)
         self.config_cards.append(self.upscaling_models_frame)
-        self._populate_upscaling_model_rows()
 
         # -- Grupo: Modelos Personalizados (Gestión) --
         # No ponemos cabecera nueva para que se sienta parte de la misma sección
@@ -2044,6 +2049,33 @@ class ConfigTab(ctk.CTkFrame):
         if section_name in self.sections:
             self.sections[section_name].grid(row=0, column=0, sticky="nsew")
 
+        if section_name == "models" and not self._models_populated and not self._models_loading:
+            self._models_loading = True
+            self._models_loading_label.configure(text="Cargando modelos instalados...")
+            self.after(30, self._populate_model_sections)
+
+    def _populate_model_sections(self):
+        """Construye las filas costosas después de que la sección ya es visible."""
+        if self._models_populated:
+            self._models_loading = False
+            return
+        try:
+            self._populate_rembg_model_rows()
+            self._populate_upscaling_model_rows()
+            self._models_populated = True
+            if self._models_loading_label.winfo_exists():
+                self._models_loading_label.destroy()
+            self.refresh_all_models()
+        except Exception as error:
+            print(f"ERROR cargando la lista de modelos: {error}")
+            if self._models_loading_label.winfo_exists():
+                self._models_loading_label.configure(
+                    text="No se pudo cargar la lista de modelos. Vuelve a intentarlo.",
+                    text_color=("#B42318", "#FF8A80"),
+                )
+        finally:
+            self._models_loading = False
+
     # ================= LOGICA DE DEPENDENCIAS =================
 
     def update_setup_download_progress(self, key, text, value):
@@ -2358,7 +2390,7 @@ class ConfigTab(ctk.CTkFrame):
 
     def refresh_all_models(self):
         """Refresca visualmente el estado de todos los modelos basándose en si existen en disco."""
-        if hasattr(self, 'model_rows'):
+        if self._models_populated:
             for row_key in self.model_rows:
                 self._refresh_model_row(row_key)
 
@@ -2722,7 +2754,8 @@ class ConfigTab(ctk.CTkFrame):
     def _run_cookie_test_thread(self, ydl_opts):
         import traceback
         try:
-            import yt_dlp
+            from src.core.ytdlp_runtime import load_ytdlp
+            yt_dlp = load_ytdlp()
             # Al invocar el constructor y apelar a 'cookiejar', yt-dlp iniciará forzosamente el desencriptado de la DB.
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 cookies = ydl.cookiejar

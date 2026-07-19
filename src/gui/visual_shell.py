@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import tkinter as tk
+from functools import lru_cache
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps, ImageTk
 
@@ -17,6 +18,7 @@ FONT_FILES = {
 }
 
 
+@lru_cache(maxsize=32)
 def _font(size: int, bold: bool = False, family: str = "Segoe UI Variable Text"):
     regular, bold_file = FONT_FILES.get(family, FONT_FILES["Segoe UI"])
     names = (bold_file, "segoeuib.ttf") if bold else (regular, "segoeui.ttf")
@@ -114,14 +116,14 @@ def _derived_visual(theme_data, dark_mode):
 
 def _vertical_gradient(size, top, bottom):
     width, height = size
-    image = Image.new("RGB", size, top)
-    draw = ImageDraw.Draw(image)
     denominator = max(height - 1, 1)
-    for y in range(height):
-        ratio = y / denominator
-        color = tuple(round(a + (b - a) * ratio) for a, b in zip(top, bottom))
-        draw.line((0, y, width, y), fill=color)
-    return image
+    colors = [
+        tuple(round(a + (b - a) * (y / denominator)) for a, b in zip(top, bottom))
+        for y in range(height)
+    ]
+    column = Image.new("RGB", (1, height))
+    column.putdata(colors)
+    return column.resize((width, height), Image.Resampling.BILINEAR)
 
 
 class GradientBackdrop(tk.Canvas):
@@ -132,10 +134,12 @@ class GradientBackdrop(tk.Canvas):
         self.theme_data = theme_data or {}
         self._image = None
         self._pending = None
+        self._last_size = None
         self.bind("<Configure>", self._schedule_render)
 
     def update_theme(self, theme_data):
         self.theme_data = theme_data or {}
+        self._last_size = None
         self.configure(bg=_theme_value(self.theme_data, "background_top", "#07101F"))
         self._schedule_render()
 
@@ -147,25 +151,35 @@ class GradientBackdrop(tk.Canvas):
     def _render(self):
         self._pending = None
         width, height = max(self.winfo_width(), 2), max(self.winfo_height(), 2)
+        if self._last_size == (width, height):
+            return
+        self._last_size = (width, height)
         top = _rgb(_theme_value(self.theme_data, "background_top", "#050D1B"))
         bottom = _rgb(_theme_value(self.theme_data, "background_bottom", "#0F162A"))
         primary = _rgb(_theme_value(self.theme_data, "glow_primary", "#7356EB"))
         secondary = _rgb(_theme_value(self.theme_data, "glow_secondary", "#28CCBE"))
-        image = _vertical_gradient((width, height), top, bottom).convert("RGBA")
+
+        # Las luces son deliberadamente suaves, así que se calculan a 1/4 de
+        # resolución y se amplían. El coste del blur cae drásticamente sin una
+        # diferencia visual perceptible.
+        render_width = max(64, width // 4)
+        render_height = max(64, height // 4)
+        image = _vertical_gradient((render_width, render_height), top, bottom).convert("RGBA")
 
         glow = Image.new("RGBA", image.size, (0, 0, 0, 0))
         draw = ImageDraw.Draw(glow)
-        radius = max(width, height) // 2
+        radius = max(render_width, render_height) // 2
         draw.ellipse(
-            (width - radius, -radius // 2, width + radius // 2, radius),
+            (render_width - radius, -radius // 2, render_width + radius // 2, radius),
             fill=(*primary, 62),
         )
         draw.ellipse(
-            (-radius // 2, height - radius, radius, height + radius // 2),
+            (-radius // 2, render_height - radius, radius, render_height + radius // 2),
             fill=(*secondary, 44),
         )
-        glow = glow.filter(ImageFilter.GaussianBlur(max(60, radius // 4)))
+        glow = glow.filter(ImageFilter.GaussianBlur(max(15, radius // 4)))
         image = Image.alpha_composite(image, glow)
+        image = image.resize((width, height), Image.Resampling.BILINEAR)
 
         self._image = ImageTk.PhotoImage(image)
         self.delete("all")
@@ -182,10 +196,13 @@ class DailyBrandHeader(tk.Canvas):
         self.theme_data = theme_data or {}
         self._image = None
         self._pending = None
+        self._last_size = None
+        self._daily_cat_image = None
         self.bind("<Configure>", self._schedule_render)
 
     def update_theme(self, theme_data):
         self.theme_data = theme_data or {}
+        self._last_size = None
         self.configure(bg=_theme_value(self.theme_data, "background_top", "#07101F"))
         self._schedule_render()
 
@@ -197,6 +214,9 @@ class DailyBrandHeader(tk.Canvas):
     def _render(self):
         self._pending = None
         width, height = max(self.winfo_width(), 640), max(self.winfo_height(), 78)
+        if self._last_size == (width, height):
+            return
+        self._last_size = (width, height)
         header_top = _rgb(_theme_value(self.theme_data, "header_top", "#141E36"))
         header_bottom = _rgb(_theme_value(self.theme_data, "header_bottom", "#0F2C37"))
         header_glow = _rgb(_theme_value(self.theme_data, "glow_primary", "#7453E1"))
@@ -209,12 +229,18 @@ class DailyBrandHeader(tk.Canvas):
         pill_bg = _rgb(_theme_value(self.theme_data, "pill_bg", "#33295B"))
         pill_text_color = _rgb(_theme_value(self.theme_data, "pill_text", "#E1D8FF"))
         family = _theme_value(self.theme_data, "font_family", "Segoe UI Variable Text")
-        panel = _vertical_gradient((width, height), header_top, header_bottom).convert("RGBA")
+        render_width = max(320, width // 2)
+        render_height = max(39, height // 2)
+        panel = _vertical_gradient((render_width, render_height), header_top, header_bottom).convert("RGBA")
         overlay = Image.new("RGBA", panel.size, (0, 0, 0, 0))
         overlay_draw = ImageDraw.Draw(overlay)
-        overlay_draw.ellipse((width - 420, -180, width + 80, 240), fill=(*header_glow, 58))
-        overlay = overlay.filter(ImageFilter.GaussianBlur(100))
+        overlay_draw.ellipse(
+            (render_width - 210, -90, render_width + 40, 120),
+            fill=(*header_glow, 58),
+        )
+        overlay = overlay.filter(ImageFilter.GaussianBlur(50))
         panel = Image.alpha_composite(panel, overlay)
+        panel = panel.resize((width, height), Image.Resampling.BILINEAR)
 
         rounded_mask = Image.new("L", panel.size, 0)
         ImageDraw.Draw(rounded_mask).rounded_rectangle((1, 1, width - 2, height - 2), radius=16, fill=255)
@@ -224,11 +250,14 @@ class DailyBrandHeader(tk.Canvas):
         draw.rounded_rectangle((1, 1, width - 2, height - 2), radius=16, outline=(*border, 210), width=1)
 
         if self.daily_cat.png_path.exists():
-            cat = ImageOps.fit(
-                Image.open(self.daily_cat.png_path).convert("RGB"),
-                (58, 58),
-                method=Image.Resampling.LANCZOS,
-            )
+            if self._daily_cat_image is None:
+                with Image.open(self.daily_cat.png_path) as source:
+                    self._daily_cat_image = ImageOps.fit(
+                        source.convert("RGB"),
+                        (58, 58),
+                        method=Image.Resampling.LANCZOS,
+                    )
+            cat = self._daily_cat_image
             cat_mask = Image.new("L", cat.size, 0)
             ImageDraw.Draw(cat_mask).ellipse((0, 0, 57, 57), fill=255)
             draw.ellipse((12, 8, 74, 70), fill=(*cat_ring, 255))

@@ -11,6 +11,19 @@ from pathlib import Path
 _LOAD_LOCK = threading.Lock()
 
 
+class _LazyYtDlpModule:
+    """Proxy que evita importar el motor completo hasta su primer uso real."""
+
+    def __getattr__(self, name):
+        return getattr(load_ytdlp(), name)
+
+    def __dir__(self):
+        return sorted(set(super().__dir__()) | set(dir(load_ytdlp())))
+
+
+_LAZY_YTDLP = _LazyYtDlpModule()
+
+
 def _roots() -> list[Path]:
     roots: list[Path] = []
     if getattr(sys, "frozen", False):
@@ -62,6 +75,11 @@ def load_ytdlp():
                     sys.modules.pop(name, None)
             importlib.invalidate_caches()
         return importlib.import_module("yt_dlp")
+
+
+def lazy_ytdlp():
+    """Devuelve un proxy compartido que carga yt-dlp solo cuando se utiliza."""
+    return _LAZY_YTDLP
 
 
 def configure_ytdlp_options(options: dict) -> dict:
