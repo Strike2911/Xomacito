@@ -3,6 +3,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 import uuid
 from datetime import date, timedelta
@@ -16,12 +17,23 @@ import main
 from src.core import downloader
 from src.core.app_updater import (
     AppUpdateError,
+    build_update_prompt,
     check_for_app_update,
     deferred_installer_command,
     download_installer,
     silent_installer_command,
 )
 from src.core.daily_icon import CAT_COUNT, daily_cat_assets, daily_cat_number
+from src.core.processor import (
+    CODEC_PROFILES,
+    ENCODER_CACHE_SCHEMA_VERSION,
+    FFmpegProcessor,
+    encoder_cache_is_valid,
+    normalize_recode_parameters,
+    pixel_format_has_alpha,
+    recode_parameters_preserve_alpha,
+    validate_recode_result_info,
+)
 from src.core.restart import RESTART_WAIT_ENV, clean_restart_environment, restart_wait_requested
 from src.core.single_instance import SingleInstanceGuard
 from src.core.ytdlp_runtime import (
@@ -94,6 +106,21 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertTrue(outdated["update_available"])
         self.assertEqual(outdated["latest_version"], "1.6.0")
         self.assertTrue(outdated["installer_url"].endswith("/Xomacito-1.6.0-Setup.exe"))
+
+    def test_update_prompt_displays_the_release_message(self):
+        prompt = build_update_prompt(
+            {
+                "latest_version": "1.6.4",
+                "release_notes": (
+                    "Playera encontró un fallo en la recodificación.\n"
+                    "ᗧ • • •  VIVA LA GRASA!!! :V"
+                ),
+            },
+            "1.6.3",
+        )
+        self.assertIn("Playera encontró", prompt)
+        self.assertIn("VIVA LA GRASA!!! :V", prompt)
+        self.assertIn("¿Quieres descargarla e instalarla ahora?", prompt)
 
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
@@ -347,6 +374,198 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertTrue((ROOT / "dist" / "Xomacito" / "_internal" / "python311.dll").exists())
         self.assertTrue((ROOT / "src" / "gui" / "main_window.py").exists())
         self.assertTrue((ROOT / "bin" / "ffmpeg" / "ffmpeg.exe").exists())
+
+    def test_recode_profiles_preserve_quality_and_compatibility(self):
+        x265_profiles = CODEC_PROFILES["Video"]["H.265 (x265)"]["libx265"]
+        for profile_name in (
+            "Calidad Máxima (CRF 16)",
+            "Calidad Alta (CRF 20)",
+            "Calidad Equilibrada (CRF 20)",
+            "Calidad Media (CRF 24)",
+        ):
+            params = x265_profiles[profile_name]
+            self.assertEqual(params[params.index("-pix_fmt") + 1], "yuv420p")
+
+        prores_profiles = CODEC_PROFILES["Video"][
+            "Apple ProRes (prores_ks) (Precisión)"
+        ]["prores_ks"]
+        self.assertEqual(
+            prores_profiles["4444"][prores_profiles["4444"].index("-pix_fmt") + 1],
+            "yuva444p10le",
+        )
+        light_alpha_params = prores_profiles["4444 Liviano (Alpha 8-bit)"]
+        self.assertTrue(recode_parameters_preserve_alpha(light_alpha_params))
+        self.assertFalse(recode_parameters_preserve_alpha(prores_profiles["422 Proxy"]))
+        self.assertTrue(pixel_format_has_alpha("argb"))
+        self.assertTrue(pixel_format_has_alpha("yuva444p12le"))
+        self.assertFalse(pixel_format_has_alpha("yuv422p10le"))
+
+        normalized = normalize_recode_parameters(["-c:v", "libx265"], ".mp4")
+        self.assertIn("-map_metadata", normalized)
+        self.assertIn("-map_chapters", normalized)
+        self.assertIn("-movflags", normalized)
+        self.assertEqual(normalized.count("-movflags"), 1)
+
+    def test_old_encoder_cache_cannot_restore_obsolete_recode_profiles(self):
+        cache = {
+            "ffmpeg_version": "ffmpeg test",
+            "app_version": "1.6.3",
+            "encoders": {"CPU": {"Video": {"H.265 (x265)": {}}}},
+        }
+        self.assertFalse(encoder_cache_is_valid(cache, "ffmpeg test", "1.6.3"))
+
+        cache["schema_version"] = ENCODER_CACHE_SCHEMA_VERSION
+        self.assertTrue(encoder_cache_is_valid(cache, "ffmpeg test", "1.6.3"))
+
+    def test_recode_result_validation_rejects_incomplete_outputs(self):
+        valid = {
+            "format": {"duration": "5.0"},
+            "streams": [{"codec_type": "video"}],
+        }
+        self.assertTrue(validate_recode_result_info(valid, "Video+Audio", 5.0))
+
+        with self.assertRaisesRegex(ValueError, "pista de video"):
+            validate_recode_result_info(
+                {"format": {"duration": "5.0"}, "streams": [{"codec_type": "audio"}]},
+                "Video+Audio",
+                5.0,
+            )
+        with self.assertRaisesRegex(ValueError, "duración"):
+            validate_recode_result_info(valid, "Video+Audio", 20.0)
+
+    def test_h265_recode_keeps_60_fps_and_generates_a_compatible_mp4(self):
+        ffmpeg_path = ROOT / "bin" / "ffmpeg" / "ffmpeg.exe"
+        ffprobe_path = ffmpeg_path.with_name("ffprobe.exe")
+        if not ffmpeg_path.exists() or not ffprobe_path.exists():
+            self.skipTest("FFmpeg no está disponible en este entorno.")
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.mkv"
+            output = Path(directory) / "output.mp4.temp"
+            generated = subprocess.run(
+                [
+                    str(ffmpeg_path), "-hide_banner", "-loglevel", "error", "-y",
+                    "-f", "lavfi", "-i", "testsrc2=size=180x320:rate=60:duration=1",
+                    "-c:v", "ffv1", "-pix_fmt", "yuv444p", str(source),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            self.assertEqual(generated.returncode, 0, generated.stderr)
+
+            processor = FFmpegProcessor(app_version="test")
+            profile = CODEC_PROFILES["Video"]["H.265 (x265)"]["libx265"][
+                "Calidad Equilibrada (CRF 20)"
+            ]
+            processor.execute_recode(
+                {
+                    "input_file": str(source),
+                    "output_file": str(output),
+                    "output_container": ".mp4",
+                    "duration": 1,
+                    "ffmpeg_params": ["-f", "mp4", *profile, "-an"],
+                    "mode": "Video+Audio",
+                    "selected_video_stream_index": 0,
+                    "selected_audio_stream_index": None,
+                },
+                lambda *_args: None,
+                threading.Event(),
+            )
+
+            probed = subprocess.run(
+                [
+                    str(ffprobe_path), "-v", "error", "-select_streams", "v:0",
+                    "-show_entries", "stream=pix_fmt,avg_frame_rate",
+                    "-of", "json", str(output),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=False,
+            )
+            self.assertEqual(probed.returncode, 0, probed.stderr)
+            stream = json.loads(probed.stdout)["streams"][0]
+            self.assertEqual(stream["pix_fmt"], "yuv420p")
+            self.assertEqual(stream["avg_frame_rate"], "60/1")
+
+            mp4_header = output.read_bytes()[:128_000]
+            moov_position = mp4_header.find(b"moov")
+            mdat_position = mp4_header.find(b"mdat")
+            self.assertGreaterEqual(moov_position, 0)
+            self.assertGreaterEqual(mdat_position, 0)
+            self.assertLess(moov_position, mdat_position)
+
+    def test_prores_4444_light_preserves_alpha_and_422_is_rejected(self):
+        ffmpeg_path = ROOT / "bin" / "ffmpeg" / "ffmpeg.exe"
+        ffprobe_path = ffmpeg_path.with_name("ffprobe.exe")
+        if not ffmpeg_path.exists() or not ffprobe_path.exists():
+            self.skipTest("FFmpeg no está disponible en este entorno.")
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "alpha-source.mov"
+            output = Path(directory) / "alpha-output.mov.temp"
+            generated = subprocess.run(
+                [
+                    str(ffmpeg_path), "-hide_banner", "-loglevel", "error", "-y",
+                    "-f", "lavfi", "-i", "color=c=red@0.25:s=64x64:r=30:d=0.5,format=rgba",
+                    "-c:v", "qtrle", "-pix_fmt", "argb", str(source),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            self.assertEqual(generated.returncode, 0, generated.stderr)
+
+            processor = FFmpegProcessor(app_version="test")
+            profiles = CODEC_PROFILES["Video"][
+                "Apple ProRes (prores_ks) (Precisión)"
+            ]["prores_ks"]
+            processor.execute_recode(
+                {
+                    "input_file": str(source),
+                    "output_file": str(output),
+                    "output_container": ".mov",
+                    "duration": 0.5,
+                    "ffmpeg_params": ["-f", "mov", *profiles["4444 Liviano (Alpha 8-bit)"], "-an"],
+                    "mode": "Video+Audio",
+                    "selected_video_stream_index": 0,
+                    "selected_audio_stream_index": None,
+                },
+                lambda *_args: None,
+                threading.Event(),
+            )
+            probe = subprocess.run(
+                [
+                    str(ffprobe_path), "-v", "error", "-select_streams", "v:0",
+                    "-show_entries", "stream=pix_fmt", "-of", "default=nw=1:nk=1",
+                    str(output),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=False,
+            )
+            self.assertEqual(probe.returncode, 0, probe.stderr)
+            self.assertTrue(pixel_format_has_alpha(probe.stdout.strip()))
+
+            with self.assertRaisesRegex(Exception, "perfil seleccionado la eliminaría"):
+                processor.execute_recode(
+                    {
+                        "input_file": str(source),
+                        "output_file": str(Path(directory) / "invalid.mov.temp"),
+                        "output_container": ".mov",
+                        "duration": 0.5,
+                        "ffmpeg_params": ["-f", "mov", *profiles["422 Proxy"], "-an"],
+                        "mode": "Video+Audio",
+                        "selected_video_stream_index": 0,
+                        "selected_audio_stream_index": None,
+                    },
+                    lambda *_args: None,
+                    threading.Event(),
+                )
 
     def test_branding_is_xomacito(self):
         main_window_py = (ROOT / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
@@ -779,7 +998,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-1.6.3-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-1.6.4-Setup.exe", build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)

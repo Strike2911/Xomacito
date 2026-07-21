@@ -35,7 +35,7 @@ from src.core.downloader import (
     instagram_image_post_info_from_metadata,
     is_instagram_post_url,
 )
-from src.core.processor import FFmpegProcessor, CODEC_PROFILES
+from src.core.processor import FFmpegProcessor, CODEC_PROFILES, pixel_format_has_alpha
 from src.core.exceptions import UserCancelledError, LocalRecodeFailedError, PlaylistDownloadError
 from src.core.processor import clean_and_convert_vtt_to_srt, slice_subtitle
 from .dialogs import ConflictDialog, LoadingWindow, CompromiseDialog, SimpleMessageDialog, SavePresetDialog, PlaylistErrorDialog, Tooltip
@@ -47,6 +47,9 @@ from src.core.constants import (
     UPSCALING_TOOLS, AI_ENGINE_HOLDER, AI_MODEL_HOLDER,
 )
 from contextlib import redirect_stdout
+
+ALPHA_SAFE_QUICK_PRESET = "Edición - ProRes 4444 Liviano (Transparencia)"
+
 def resource_path(relative_path):
     candidates = []
     if getattr(sys, "frozen", False):
@@ -116,6 +119,7 @@ class SingleDownloadTab(ctk.CTkFrame):
         self.audio_formats = {}
         self.subtitle_formats = {} 
         self.local_file_path = None
+        self.local_source_has_alpha = False
         self.thumbnail_label = None
         self.pil_image = None
         self.last_download_path = None
@@ -1605,7 +1609,9 @@ class SingleDownloadTab(ctk.CTkFrame):
             self.recode_preset_menu.configure(values=compatible_presets, state="normal")
             
             saved_preset = self.app.quick_preset_saved
-            if saved_preset and saved_preset in compatible_presets:
+            if self.local_source_has_alpha and ALPHA_SAFE_QUICK_PRESET in compatible_presets:
+                self.recode_preset_menu.set(ALPHA_SAFE_QUICK_PRESET)
+            elif saved_preset and saved_preset in compatible_presets:
                 self.recode_preset_menu.set(saved_preset)
             else:
                 self.recode_preset_menu.set(compatible_presets[0])
@@ -1868,6 +1874,9 @@ class SingleDownloadTab(ctk.CTkFrame):
             self.save_in_same_folder_check.select()
             video_stream = next((s for s in info.get('streams', []) if s.get('codec_type') == 'video'), None)
             audio_stream = next((s for s in info.get('streams', []) if s.get('codec_type') == 'audio'), None)
+            self.local_source_has_alpha = pixel_format_has_alpha(
+                (video_stream or {}).get('pix_fmt')
+            )
             if video_stream:
                 self.original_video_width = video_stream.get('width', 0)
                 self.original_video_height = video_stream.get('height', 0)
@@ -1903,6 +1912,7 @@ class SingleDownloadTab(ctk.CTkFrame):
                     'width': self.original_video_width, 
                     'height': self.original_video_height, 
                     'vcodec': v_codec, 
+                    'pix_fmt': v_pix_fmt,
                     'ext': ext
                 }}
                 self.video_quality_menu.configure(values=[v_label], state="normal")
@@ -2002,6 +2012,7 @@ class SingleDownloadTab(ctk.CTkFrame):
         self.force_full_download_check.configure(state="normal")
         
         self.local_file_path = None
+        self.local_source_has_alpha = False
         self.image_post_info = None
         self.url_entry.configure(state="normal")
         self.analyze_button.configure(state="normal")
@@ -3119,11 +3130,22 @@ class SingleDownloadTab(ctk.CTkFrame):
         if mode == "Video+Audio":
             video_info = self.video_formats.get(self.video_quality_menu.get())
             audio_info = self.audio_formats.get(self.audio_quality_menu.get())
-            if not video_info or not audio_info: return
-            virtual_format = {'vcodec': video_info.get('vcodec'), 'acodec': audio_info.get('acodec'), 'ext': video_info.get('ext')}
+            if not video_info:
+                return
+            virtual_format = {
+                'vcodec': video_info.get('vcodec'),
+                'acodec': audio_info.get('acodec') if audio_info else 'none',
+                'ext': video_info.get('ext'),
+            }
             compatibility_issues, unknown_issues = self._get_format_compatibility_issues(virtual_format)
             if "Lento" in self.video_quality_menu.get():
                 warnings.append("• Formato de video lento para recodificar.")
+            pixel_format = str(video_info.get('pix_fmt') or '').lower()
+            if pixel_format_has_alpha(pixel_format):
+                warnings.append(
+                    "• Este video contiene transparencia. Para conservarla usa "
+                    f"“{ALPHA_SAFE_QUICK_PRESET}”; ProRes 422 y MP4/H.264/H.265 la eliminan."
+                )
         elif mode == "Solo Audio":
             audio_info = self.audio_formats.get(self.audio_quality_menu.get())
             if not audio_info: return
@@ -3179,7 +3201,7 @@ class SingleDownloadTab(ctk.CTkFrame):
                         "keep_original_file": True,
                         "recode_proc": "CPU",
                         "recode_codec_name": "H.265 (x265)",
-                        "recode_profile_name": "Calidad Media (CRF 24)",
+                        "recode_profile_name": "Calidad Equilibrada (CRF 20)",
                         "recode_audio_codec_name": "AAC",
                         "recode_audio_profile_name": "Buena Calidad (~192kbps)",
                         "recode_container": ".mp4"
@@ -3191,7 +3213,7 @@ class SingleDownloadTab(ctk.CTkFrame):
                         "keep_original_file": True,
                         "recode_proc": "CPU",
                         "recode_codec_name": "H.265 (x265)",
-                        "recode_profile_name": "Calidad Alta (CRF 20)",
+                        "recode_profile_name": "Calidad Máxima (CRF 16)",
                         "recode_audio_codec_name": "AAC",
                         "recode_audio_profile_name": "Máxima Calidad (~320kbps)",
                         "recode_container": ".mp4"
@@ -3252,6 +3274,18 @@ class SingleDownloadTab(ctk.CTkFrame):
                         "recode_proc": "CPU",
                         "recode_codec_name": "Apple ProRes (prores_ks) (Precisión)",
                         "recode_profile_name": "422 HQ",
+                        "recode_audio_codec_name": "WAV (Sin Comprimir)",
+                        "recode_audio_profile_name": "PCM 16-bit",
+                        "recode_container": ".mov"
+                    },
+                    ALPHA_SAFE_QUICK_PRESET: {
+                        "mode_compatibility": "Video+Audio",
+                        "recode_video_enabled": True,
+                        "recode_audio_enabled": True,
+                        "keep_original_file": True,
+                        "recode_proc": "CPU",
+                        "recode_codec_name": "Apple ProRes (prores_ks) (Precisión)",
+                        "recode_profile_name": "4444 Liviano (Alpha 8-bit)",
                         "recode_audio_codec_name": "WAV (Sin Comprimir)",
                         "recode_audio_profile_name": "PCM 16-bit",
                         "recode_container": ".mov"
@@ -3389,6 +3423,59 @@ class SingleDownloadTab(ctk.CTkFrame):
         else:
             print(f"DEBUG: presets.json ya existe. Cargando...")
 
+        self._migrate_built_in_recode_presets()
+
+    def _migrate_built_in_recode_presets(self):
+        """Actualiza sólo los presets integrados; nunca modifica los del usuario."""
+        try:
+            with open(self.app.PRESETS_FILE, 'r', encoding='utf-8') as preset_file:
+                presets_data = json.load(preset_file)
+        except (OSError, json.JSONDecodeError):
+            return
+
+        built_in = presets_data.setdefault("built_in_presets", {})
+        changed = False
+
+        profile_updates = {
+            "Archivo - H.265 Normal": "Calidad Equilibrada (CRF 20)",
+            "Archivo - H.265 Máxima": "Calidad Máxima (CRF 16)",
+        }
+        for preset_name, profile_name in profile_updates.items():
+            preset = built_in.get(preset_name)
+            if preset and preset.get("recode_profile_name") != profile_name:
+                preset["recode_profile_name"] = profile_name
+                changed = True
+
+        old_alpha_preset_name = "Edición - ProRes 4444 (Transparencia)"
+        if old_alpha_preset_name in built_in:
+            del built_in[old_alpha_preset_name]
+            changed = True
+
+        alpha_preset_name = ALPHA_SAFE_QUICK_PRESET
+        alpha_preset = {
+            "mode_compatibility": "Video+Audio",
+            "recode_video_enabled": True,
+            "recode_audio_enabled": True,
+            "keep_original_file": True,
+            "recode_proc": "CPU",
+            "recode_codec_name": "Apple ProRes (prores_ks) (Precisión)",
+            "recode_profile_name": "4444 Liviano (Alpha 8-bit)",
+            "recode_audio_codec_name": "WAV (Sin Comprimir)",
+            "recode_audio_profile_name": "PCM 16-bit",
+            "recode_container": ".mov",
+        }
+        if built_in.get(alpha_preset_name) != alpha_preset:
+            built_in[alpha_preset_name] = alpha_preset
+            changed = True
+
+        if changed:
+            try:
+                with open(self.app.PRESETS_FILE, 'w', encoding='utf-8') as preset_file:
+                    json.dump(presets_data, preset_file, indent=4, ensure_ascii=False)
+                print("INFO: Presets integrados de recodificación actualizados.")
+            except OSError as error:
+                print(f"ADVERTENCIA: No se pudieron actualizar los presets integrados: {error}")
+
     def _load_presets(self):
         """
         Carga los presets desde presets.json.
@@ -3396,7 +3483,7 @@ class SingleDownloadTab(ctk.CTkFrame):
         """
         try:
             if os.path.exists(self.app.PRESETS_FILE):
-                with open(self.app.PRESETS_FILE, 'r') as f:
+                with open(self.app.PRESETS_FILE, 'r', encoding='utf-8') as f:
                     presets_data = json.load(f)
                     return presets_data
             else:
@@ -4986,6 +5073,7 @@ class SingleDownloadTab(ctk.CTkFrame):
                 "duration": recode_options.get('duration', 0), 
                 "ffmpeg_params": final_ffmpeg_params,
                 "pre_params": pre_params, 
+                "output_container": container_ext,
                 "mode": recode_options.get('mode'),
                 "selected_video_stream_index": None if "-filter_complex" in final_ffmpeg_params else recode_options.get('selected_video_stream_index'),
                 "selected_audio_stream_index": None if is_gif_format else recode_options.get('selected_audio_stream_index')

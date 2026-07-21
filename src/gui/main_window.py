@@ -1015,14 +1015,12 @@ class MainWindow(TkBase):
             print("ADVERTENCIA: La versión nueva no tiene un instalador válido.")
             return
 
+        from src.core.app_updater import build_update_prompt
+
         Tooltip.hide_all()
         accepted = messagebox.askyesno(
             "Nueva versión de Xomacito",
-            f"Hay una nueva versión disponible: {latest_version}\n"
-            f"Tu versión actual: {self.APP_VERSION}\n\n"
-            "¿Quieres descargarla e instalarla ahora?\n\n"
-            "Si eliges Sí, Xomacito verificará el instalador, se cerrará "
-            "durante la actualización y volverá a abrirse al terminar.",
+            build_update_prompt(update_info, self.APP_VERSION),
             parent=self,
         )
         self.lift()

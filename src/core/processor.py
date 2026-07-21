@@ -22,8 +22,10 @@ CODEC_PROFILES = {
         },
         "H.265 (x265)": {
             "libx265": {
-                "Calidad Alta (CRF 20)": ['-c:v', 'libx265', '-preset', 'slow', '-crf', '20', '-tag:v', 'hvc1'],
-                "Calidad Media (CRF 24)": ['-c:v', 'libx265', '-preset', 'medium', '-crf', '24', '-tag:v', 'hvc1'],
+                "Calidad Máxima (CRF 16)": ['-c:v', 'libx265', '-preset', 'slow', '-crf', '16', '-tag:v', 'hvc1', '-pix_fmt', 'yuv420p'],
+                "Calidad Alta (CRF 20)": ['-c:v', 'libx265', '-preset', 'slow', '-crf', '20', '-tag:v', 'hvc1', '-pix_fmt', 'yuv420p'],
+                "Calidad Equilibrada (CRF 20)": ['-c:v', 'libx265', '-preset', 'medium', '-crf', '20', '-tag:v', 'hvc1', '-pix_fmt', 'yuv420p'],
+                "Calidad Media (CRF 24)": ['-c:v', 'libx265', '-preset', 'medium', '-crf', '24', '-tag:v', 'hvc1', '-pix_fmt', 'yuv420p'],
                 "Bitrate Personalizado (VBR)": "CUSTOM_BITRATE_VBR",
                 "Bitrate Personalizado (CBR)": "CUSTOM_BITRATE_CBR"
             }, "container": ".mp4"
@@ -34,8 +36,8 @@ CODEC_PROFILES = {
                 "422 LT":       ['-c:v', 'prores_aw', '-profile:v', '1', '-pix_fmt', 'yuv422p10le', '-threads', '0'],
                 "422 Standard": ['-c:v', 'prores_aw', '-profile:v', '2', '-pix_fmt', 'yuv422p10le', '-threads', '0'],
                 "422 HQ":       ['-c:v', 'prores_aw', '-profile:v', '3', '-pix_fmt', 'yuv422p10le', '-threads', '0'],
-                "4444":         ['-c:v', 'prores_aw', '-profile:v', '4', '-pix_fmt', 'yuv444p10le', '-threads', '0'],
-                "4444 XQ":      ['-c:v', 'prores_aw', '-profile:v', '5', '-pix_fmt', 'yuv444p10le', '-threads', '0']
+                "4444":         ['-c:v', 'prores_aw', '-profile:v', '4', '-pix_fmt', 'yuva444p10le', '-threads', '0'],
+                "4444 XQ":      ['-c:v', 'prores_aw', '-profile:v', '5', '-pix_fmt', 'yuva444p10le', '-threads', '0']
             }, "container": ".mov"
         },
         "Apple ProRes (prores_ks) (Precisión)": {
@@ -44,8 +46,9 @@ CODEC_PROFILES = {
                 "422 LT":       ['-c:v', 'prores_ks', '-profile:v', '1', '-pix_fmt', 'yuv422p10le', '-threads', '0'],
                 "422 Standard": ['-c:v', 'prores_ks', '-profile:v', '2', '-pix_fmt', 'yuv422p10le', '-threads', '0'],
                 "422 HQ":       ['-c:v', 'prores_ks', '-profile:v', '3', '-pix_fmt', 'yuv422p10le', '-threads', '0'],
-                "4444":         ['-c:v', 'prores_ks', '-profile:v', '4', '-pix_fmt', 'yuv444p10le', '-threads', '0'],
-                "4444 XQ":      ['-c:v', 'prores_ks', '-profile:v', '5', '-pix_fmt', 'yuv444p10le', '-threads', '0']
+                "4444 Liviano (Alpha 8-bit)": ['-c:v', 'prores_ks', '-profile:v', '4', '-pix_fmt', 'yuva444p10le', '-alpha_bits', '8', '-quant_mat', 'proxy', '-bits_per_mb', '128', '-threads', '0'],
+                "4444":         ['-c:v', 'prores_ks', '-profile:v', '4', '-pix_fmt', 'yuva444p10le', '-threads', '0'],
+                "4444 XQ":      ['-c:v', 'prores_ks', '-profile:v', '5', '-pix_fmt', 'yuva444p10le', '-threads', '0']
             }, "container": ".mov"
         },
         "DNxHD (dnxhd)": {
@@ -225,16 +228,19 @@ CODEC_PROFILES = {
     "Audio": {
         "AAC": {
             "aac": {
+                "Máxima Calidad (~320kbps)": ['-c:a', 'aac', '-b:a', '320k'],
                 "Alta Calidad (~256kbps)": ['-c:a', 'aac', '-b:a', '256k'],
                 "Buena Calidad (~192kbps)": ['-c:a', 'aac', '-b:a', '192k'],
-                "Calidad Media (~128kbps)": ['-c:a', 'aac', '-b:a', '128k']
+                "Calidad Media (~128kbps)": ['-c:a', 'aac', '-b:a', '128k'],
+                "Calidad Baja (~128kbps)": ['-c:a', 'aac', '-b:a', '128k']
             }, "container": ".m4a"
         },
         "MP3 (libmp3lame)": {
             "libmp3lame": {
                 "320kbps (CBR)": ['-c:a', 'libmp3lame', '-b:a', '320k'],
                 "256kbps (VBR)": ['-c:a', 'libmp3lame', '-q:a', '0'],
-                "192kbps (CBR)": ['-c:a', 'libmp3lame', '-b:a', '192k']
+                "192kbps (CBR)": ['-c:a', 'libmp3lame', '-b:a', '192k'],
+                "128kbps (CBR)": ['-c:a', 'libmp3lame', '-b:a', '128k']
             }, "container": ".mp3"
         },
         "Opus (libopus)": {
@@ -285,6 +291,95 @@ CODEC_PROFILES = {
     }
 }
 
+
+ENCODER_CACHE_SCHEMA_VERSION = 3
+FASTSTART_CONTAINERS = {".mp4", ".m4a", ".m4v"}
+
+
+def encoder_cache_is_valid(cache_data, ffmpeg_version, app_version):
+    return bool(
+        isinstance(cache_data, dict)
+        and cache_data.get("schema_version") == ENCODER_CACHE_SCHEMA_VERSION
+        and cache_data.get("ffmpeg_version") == ffmpeg_version
+        and cache_data.get("app_version") == app_version
+        and cache_data.get("encoders")
+    )
+
+
+def pixel_format_has_alpha(pixel_format):
+    normalized = str(pixel_format or "").strip().lower()
+    return any(
+        alpha_marker in normalized
+        for alpha_marker in ("argb", "abgr", "rgba", "bgra", "yuva", "gbrap")
+    )
+
+
+def recode_parameters_preserve_alpha(ffmpeg_params):
+    params = list(ffmpeg_params or [])
+
+    def option_value(option):
+        try:
+            return str(params[params.index(option) + 1]).lower()
+        except (ValueError, IndexError):
+            return ""
+
+    video_codec = option_value("-c:v")
+    if video_codec in {"copy", "qtrle"}:
+        return True
+    if video_codec == "hap" and option_value("-format") == "hap_alpha":
+        return True
+    return pixel_format_has_alpha(option_value("-pix_fmt"))
+
+
+def normalize_recode_parameters(ffmpeg_params, output_container=None):
+    """Añade opciones seguras que deben compartir todos los flujos de recodificación."""
+    params = list(ffmpeg_params or [])
+
+    if "-map_metadata" not in params:
+        params.extend(["-map_metadata", "0"])
+    if "-map_chapters" not in params:
+        params.extend(["-map_chapters", "0"])
+
+    normalized_container = str(output_container or "").strip().lower()
+    if normalized_container in FASTSTART_CONTAINERS and "-movflags" not in params:
+        params.extend(["-movflags", "+faststart"])
+
+    return params
+
+
+def validate_recode_result_info(media_info, mode, expected_duration=0):
+    """Valida que FFmpeg haya generado un medio reproducible y completo."""
+    if not isinstance(media_info, dict):
+        raise ValueError("FFprobe no devolvió información del archivo recodificado.")
+
+    streams = media_info.get("streams") or []
+    if mode == "Solo Audio":
+        if not any(stream.get("codec_type") == "audio" for stream in streams):
+            raise ValueError("El archivo recodificado no contiene una pista de audio válida.")
+    elif not any(stream.get("codec_type") == "video" for stream in streams):
+        raise ValueError("El archivo recodificado no contiene una pista de video válida.")
+
+    try:
+        output_duration = float((media_info.get("format") or {}).get("duration") or 0)
+        target_duration = float(expected_duration or 0)
+    except (TypeError, ValueError):
+        output_duration = 0
+        target_duration = 0
+
+    if output_duration <= 0:
+        raise ValueError("El archivo recodificado tiene una duración inválida.")
+
+    if target_duration > 0:
+        tolerance = max(2.0, min(10.0, target_duration * 0.02))
+        if abs(output_duration - target_duration) > tolerance:
+            raise ValueError(
+                "La duración del archivo recodificado no coincide con el original "
+                f"({output_duration:.2f}s frente a {target_duration:.2f}s)."
+            )
+
+    return True
+
+
 class FFmpegProcessor:
     def __init__(self, app_version=None, cache_dir=None):
         ffmpeg_exe_name = "ffmpeg.exe" if os.name == 'nt' else "ffmpeg"
@@ -334,10 +429,10 @@ class FFmpegProcessor:
                     if os.path.exists(cache_path):
                         with open(cache_path, 'r', encoding='utf-8') as f:
                             cache_data = json.load(f)
-                        if (
-                            cache_data.get("ffmpeg_version") == ffmpeg_version_str
-                            and cache_data.get("app_version") == self.app_version
-                            and cache_data.get("encoders")
+                        if encoder_cache_is_valid(
+                            cache_data,
+                            ffmpeg_version_str,
+                            self.app_version,
                         ):
                             self.available_encoders = cache_data["encoders"]
                             self.gpu_vendor = cache_data.get("gpu_vendor")
@@ -395,6 +490,7 @@ class FFmpegProcessor:
                 cache_path = os.path.join(self.cache_dir, "encoder_cache.json")
                 try:
                     cache_data = {
+                        "schema_version": ENCODER_CACHE_SCHEMA_VERSION,
                         "ffmpeg_version": ffmpeg_version_str,
                         "app_version": self.app_version,
                         "gpu_vendor": self.gpu_vendor,
@@ -483,21 +579,49 @@ class FFmpegProcessor:
             input_file = options['input_file']
             output_file = os.path.normpath(options['output_file'])
             try:
+                requested_duration = float(options.get('duration') or 0)
+            except (TypeError, ValueError):
+                requested_duration = 0
+            media_info = None
+            try:
                 media_info = self.get_local_media_info(input_file)
-                actual_duration = float(media_info['format']['duration'])
+                source_duration = float(media_info['format']['duration'])
             except (Exception, KeyError, TypeError):
-                actual_duration = options.get('duration', 0) 
+                source_duration = 0
+
+            progress_duration = requested_duration or source_duration
             
-            command = [self.ffmpeg_path, '-y', '-nostdin', '-progress', '-']
-            duration = options.get('duration', 0)
             command = [self.ffmpeg_path, '-y', '-nostdin', '-progress', '-']
             pre_params = options.get('pre_params', [])
             if pre_params:
                 command.extend(pre_params)
-            final_params = options['ffmpeg_params']
+            final_params = normalize_recode_parameters(
+                options['ffmpeg_params'],
+                options.get('output_container'),
+            )
             video_idx = options.get('selected_video_stream_index')
             audio_idx = options.get('selected_audio_stream_index')
             mode = options.get('mode')
+
+            source_video_stream = None
+            if isinstance(media_info, dict) and mode != "Solo Audio":
+                video_streams = [
+                    stream for stream in media_info.get("streams", [])
+                    if stream.get("codec_type") == "video"
+                ]
+                source_video_stream = next(
+                    (stream for stream in video_streams if stream.get("index") == video_idx),
+                    video_streams[0] if video_streams else None,
+                )
+            source_has_alpha = pixel_format_has_alpha(
+                (source_video_stream or {}).get("pix_fmt")
+            )
+            if source_has_alpha and not recode_parameters_preserve_alpha(final_params):
+                raise Exception(
+                    "El archivo contiene transparencia, pero el perfil seleccionado la eliminaría. "
+                    "Usa el preset “Edición - ProRes 4444 Liviano (Transparencia)”."
+                )
+
             command.extend(['-i', input_file])
             if mode == "Video+Audio":
                 if video_idx is not None:
@@ -525,7 +649,7 @@ class FFmpegProcessor:
                 """Lee línea por línea de un stream y lo guarda en una lista."""
                 for line in iter(stream.readline, ''):
                     buffer.append(line.strip())
-            stdout_reader_thread = threading.Thread(target=self._read_stdout_for_progress, args=(process.stdout, progress_callback, cancellation_event, actual_duration), daemon=True)
+            stdout_reader_thread = threading.Thread(target=self._read_stdout_for_progress, args=(process.stdout, progress_callback, cancellation_event, progress_duration), daemon=True)
             stderr_reader_thread = threading.Thread(target=read_stream_into_buffer, args=(process.stderr, error_output_buffer), daemon=True)
             stdout_reader_thread.start()
             stderr_reader_thread.start()
@@ -565,6 +689,32 @@ class FFmpegProcessor:
 
             if cancellation_event.is_set():
                 raise UserCancelledError("Recodificación cancelada por el usuario.")
+
+            if not os.path.isfile(output_file) or os.path.getsize(output_file) <= 0:
+                raise Exception("FFmpeg no generó un archivo de salida válido.")
+
+            try:
+                output_media_info = self.get_local_media_info(output_file)
+                validate_recode_result_info(
+                    output_media_info,
+                    mode,
+                    requested_duration or source_duration,
+                )
+                if source_has_alpha:
+                    output_video_stream = next(
+                        (
+                            stream for stream in output_media_info.get("streams", [])
+                            if stream.get("codec_type") == "video"
+                        ),
+                        {},
+                    )
+                    if not pixel_format_has_alpha(output_video_stream.get("pix_fmt")):
+                        raise ValueError(
+                            "El archivo de salida perdió el canal de transparencia."
+                        )
+            except Exception as validation_error:
+                raise Exception(f"La validación del resultado falló: {validation_error}") from validation_error
+
             return output_file
 
 # ... (resto del código) ...
