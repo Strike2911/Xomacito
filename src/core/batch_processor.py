@@ -2142,6 +2142,7 @@ class QueueManager:
                 "duration": self._get_job_media_duration(job, input_file), 
                 "ffmpeg_params": final_ffmpeg_params,
                 "pre_params": pre_params, 
+                "output_container": container_ext,
                 "mode": recode_options.get('mode_compatibility'),
                 "selected_video_stream_index": selected_video_idx, # <-- CORREGIDO
                 "selected_audio_stream_index": selected_audio_idx   # <-- CORREGIDO

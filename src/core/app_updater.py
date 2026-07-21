@@ -23,10 +23,29 @@ REQUEST_HEADERS = {
     "X-GitHub-Api-Version": "2022-11-28",
 }
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
+UPDATE_PROMPT_NOTES_LIMIT = 1200
 
 
 class AppUpdateError(RuntimeError):
     """Error recuperable durante la comprobación o descarga de una versión."""
+
+
+def build_update_prompt(update_info: dict, current_version: str) -> str:
+    """Construye la alerta de actualización incluyendo las notas publicadas."""
+    latest_version = str(update_info.get("latest_version") or "nueva")
+    release_notes = str(update_info.get("release_notes") or "").strip()
+    if len(release_notes) > UPDATE_PROMPT_NOTES_LIMIT:
+        release_notes = release_notes[:UPDATE_PROMPT_NOTES_LIMIT].rstrip() + "…"
+
+    notes_section = f"\n\nNovedades:\n{release_notes}" if release_notes else ""
+    return (
+        f"Hay una nueva versión disponible: {latest_version}\n"
+        f"Tu versión actual: {current_version}"
+        f"{notes_section}\n\n"
+        "¿Quieres descargarla e instalarla ahora?\n\n"
+        "Si eliges Sí, Xomacito verificará el instalador, se cerrará "
+        "durante la actualización y volverá a abrirse al terminar."
+    )
 
 
 def _parsed_version(value: str) -> Version:
