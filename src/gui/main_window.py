@@ -582,6 +582,7 @@ class MainWindow(TkBase):
         self.theme_selection_explicit = False
         self.appearance_mode = "Dark" # Default profesional
         self.clean_titles = False # Limpieza de emojis en títulos
+        self.release_notice_seen_version = ""
         
         # --- INTENTAR CARGAR CONFIGURACIÓN GUARDADA ---
         try:
@@ -626,6 +627,9 @@ class MainWindow(TkBase):
                     self.appearance_mode = settings.get("appearance_mode", "System")
 
                     self.clean_titles = settings.get("clean_titles", False)
+                    self.release_notice_seen_version = settings.get(
+                        "release_notice_seen_version", ""
+                    )
 
                 print(f"DEBUG: Configuración cargada exitosamente.")
             else:
@@ -995,6 +999,27 @@ class MainWindow(TkBase):
                 print(f"ERROR en hilo de finalización de carga: {e}")
 
         threading.Thread(target=finalize_setup_thread, daemon=True).start()
+        self.after(900, self._show_release_notice_once)
+
+    def _show_release_notice_once(self):
+        """Muestra las novedades de esta versión una sola vez por instalación."""
+        if self.is_shutting_down or self.release_notice_seen_version == self.APP_VERSION:
+            return
+
+        from src.core.app_updater import release_notice_for_version
+
+        notice = release_notice_for_version(self.APP_VERSION)
+        if not notice:
+            return
+
+        # Persistir antes del diálogo evita repetirlo si Windows cierra la app
+        # mientras la ventana está abierta.
+        self.release_notice_seen_version = self.APP_VERSION
+        self.save_settings()
+        Tooltip.hide_all()
+        messagebox.showinfo(notice["title"], notice["message"], parent=self)
+        self.lift()
+        self.focus_force()
         
     def on_update_check_complete(self, update_info):
         """Ofrece una actualización solamente cuando la versión remota es mayor."""
@@ -1570,7 +1595,8 @@ class MainWindow(TkBase):
             "selected_theme_accent": self.selected_theme_accent,
             "theme_selection_explicit": self.theme_selection_explicit,
             "appearance_mode": self.appearance_mode,
-            "clean_titles": self.clean_titles
+            "clean_titles": self.clean_titles,
+            "release_notice_seen_version": self.release_notice_seen_version
         }
 
         # 4. Escribir en el archivo

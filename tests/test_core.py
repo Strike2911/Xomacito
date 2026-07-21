@@ -21,6 +21,7 @@ from src.core.app_updater import (
     check_for_app_update,
     deferred_installer_command,
     download_installer,
+    release_notice_for_version,
     silent_installer_command,
 )
 from src.core.daily_icon import CAT_COUNT, daily_cat_assets, daily_cat_number
@@ -121,6 +122,16 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("Playera encontró", prompt)
         self.assertIn("VIVA LA GRASA!!! :V", prompt)
         self.assertIn("¿Quieres descargarla e instalarla ahora?", prompt)
+
+    def test_release_164_has_a_one_time_alpha_notice(self):
+        notice = release_notice_for_version("v1.6.4")
+
+        self.assertIsNotNone(notice)
+        self.assertIn("Playera encontró", notice["message"])
+        self.assertIn("ProRes 422 Proxy no admite canal alfa", notice["message"])
+        self.assertIn("ProRes 4444 Liviano", notice["message"])
+        self.assertIn("VIVA LA GRASA!!! :V", notice["message"])
+        self.assertIsNone(release_notice_for_version("1.6.3"))
 
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)

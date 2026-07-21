@@ -24,6 +24,22 @@ REQUEST_HEADERS = {
 }
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
+RELEASE_NOTICES = {
+    "1.6.4": {
+        "title": "Xomacito 1.6.4 — ¡Actualización instalada!",
+        "message": (
+            "Playera encontró un fallo en donde la recodificación no "
+            "funcionaba correctamente :v\n\n"
+            "Importante para videos MOV con transparencia:\n"
+            "• ProRes 422 Proxy no admite canal alfa y elimina la transparencia.\n"
+            "• Xomacito ahora selecciona ProRes 4444 Liviano (Transparencia), "
+            "que conserva el alfa y reduce el peso.\n"
+            "• La aplicación bloquea perfiles incompatibles para que el alfa no "
+            "se pierda por accidente.\n\n"
+            "ᗧ • • •  VIVA LA GRASA!!! :V"
+        ),
+    }
+}
 
 
 class AppUpdateError(RuntimeError):
@@ -56,6 +72,15 @@ def _parsed_version(value: str) -> Version:
         return Version(normalized)
     except InvalidVersion as error:
         raise AppUpdateError(f"Versión no válida: {value!r}") from error
+
+
+def release_notice_for_version(current_version: str) -> dict | None:
+    """Devuelve el aviso que debe mostrarse una vez al instalar una versión."""
+    try:
+        normalized = str(_parsed_version(current_version))
+    except AppUpdateError:
+        return None
+    return RELEASE_NOTICES.get(normalized)
 
 
 def _select_installer_asset(assets: list[dict]) -> dict | None:
