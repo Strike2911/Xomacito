@@ -28,9 +28,14 @@ class HideCmdWindow:
 try:
     import cairosvg
     CAN_SVG = True
-except ImportError:
+except (ImportError, OSError) as cairo_error:
     CAN_SVG = False
-    print("ADVERTENCIA: 'cairosvg' no instalado. No se podrán previsualizar archivos .svg")
+    cairosvg = None
+    cairo_reason = str(cairo_error).splitlines()[0]
+    print(
+        "ADVERTENCIA: Las previsualizaciones SVG usarán los motores alternativos "
+        f"porque CairoSVG no está disponible ({cairo_reason})."
+    )
 
 try:
     from pdf2image import convert_from_path, pdfinfo_from_path

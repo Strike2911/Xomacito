@@ -34,7 +34,7 @@ def check_and_install_python_dependencies(progress_callback):
     progress_callback("Verificando dependencias de Python...", 5)
     
     import importlib.util
-    required_packages = ['customtkinter', 'PIL', 'requests', 'py7zr', 'rembg']
+    required_packages = ['PySide6', 'PIL', 'requests', 'py7zr', 'rembg']
     missing_packages = []
     
     for pkg in required_packages:
@@ -1236,72 +1236,37 @@ def check_and_download_upscaling_tools(progress_callback, target_tool=None):
         progress_callback(f"Error en Upscaling: {e}", -1)
         return False
 
-def install_custom_upscayl_model(parent_app):
-    """
-    Permite al usuario seleccionar un modelo de Upscayl (.bin o .param),
-    busca su pareja, solicita un apodo y los instala en la carpeta interna.
-    """
-    import customtkinter as ctk
-    from tkinter import filedialog, messagebox
-
-    # 1. Seleccionar archivo
-    file_path = filedialog.askopenfilename(
-        title="Selecciona un archivo de modelo Upscayl (.bin o .param)",
-        filetypes=[("Modelos Upscayl", "*.bin *.param"), ("Todos", "*.*")]
-    )
+def install_custom_upscayl_model(file_path, nickname=None, custom_models=None, save_callback=None):
+    """Instala una pareja NCNN ``.bin``/``.param`` sin depender de la UI."""
     if not file_path:
-        return False
-
-    # 2. Determinar base y pareja
+        raise ValueError("No se seleccionó un archivo de modelo.")
     base_path, ext = os.path.splitext(file_path)
     ext = ext.lower()
+    if ext not in {".bin", ".param"}:
+        raise ValueError("El modelo debe ser un archivo .bin o .param.")
     partner_ext = ".param" if ext == ".bin" else ".bin"
     partner_path = base_path + partner_ext
-    
     real_name_base = os.path.basename(base_path)
 
     if not os.path.exists(partner_path):
-        messagebox.showerror(
-            "Error de Pareja",
-            f"No se encontró el archivo pareja '{os.path.basename(partner_path)}' en la misma carpeta.\n\n"
-            "Los modelos NCNN requieren tanto el archivo .bin como el .param con el mismo nombre."
+        raise FileNotFoundError(
+            f"No se encontró {os.path.basename(partner_path)}. "
+            "Los modelos NCNN requieren .bin y .param con el mismo nombre."
         )
-        return False
-
-    # 3. Solicitar Apodo (Diálogo centrado y con icono)
-    from src.gui.dialogs import ModelNicknameDialog
-    dialog = ModelNicknameDialog(parent_app, default_name=real_name_base)
-    nickname = dialog.get_result()
-    
-    if nickname is None: # Cancelado
-        return False
-
-    # 4. Definir destino
+    nickname = str(nickname or real_name_base).strip() or real_name_base
     upscayl_models_dir = os.path.join(UPSCALING_DIR, "upscayl", "models")
     os.makedirs(upscayl_models_dir, exist_ok=True)
+    shutil.copy2(file_path, os.path.join(upscayl_models_dir, real_name_base + ext))
+    shutil.copy2(partner_path, os.path.join(upscayl_models_dir, real_name_base + partner_ext))
+    if custom_models is not None:
+        custom_models[real_name_base] = nickname
+    if save_callback:
+        save_callback(custom_models or {})
+    return real_name_base, nickname
 
-    # 5. Copiar
-    try:
-        shutil.copy2(file_path, os.path.join(upscayl_models_dir, real_name_base + ext))
-        shutil.copy2(partner_path, os.path.join(upscayl_models_dir, real_name_base + partner_ext))
-        
-        # 6. Guardar en ajustes
-        if not hasattr(parent_app, 'upscayl_custom_models'):
-            parent_app.upscayl_custom_models = {}
-            
-        parent_app.upscayl_custom_models[real_name_base] = nickname
-        parent_app.save_settings()
-        
-        messagebox.showinfo("Éxito", f"Modelo '{nickname}' instalado correctamente.")
-        return True
-    except Exception as e:
-        messagebox.showerror("Error de Copia", f"No se pudo copiar el modelo: {e}")
-        return False
 
-def delete_custom_upscayl_model(real_name_base, parent_app):
-    """
-    Elimina físicamente los archivos del modelo y lo quita de los ajustes.
-    """
+def delete_custom_upscayl_model(real_name_base, custom_models=None, save_callback=None):
+    """Elimina una pareja NCNN y actualiza el mapa de apodos, si se entrega."""
     upscayl_models_dir = os.path.join(UPSCALING_DIR, "upscayl", "models")
     bin_file = os.path.join(upscayl_models_dir, real_name_base + ".bin")
     param_file = os.path.join(upscayl_models_dir, real_name_base + ".param")
@@ -1310,9 +1275,10 @@ def delete_custom_upscayl_model(real_name_base, parent_app):
         if os.path.exists(bin_file): os.remove(bin_file)
         if os.path.exists(param_file): os.remove(param_file)
         
-        if hasattr(parent_app, 'upscayl_custom_models') and real_name_base in parent_app.upscayl_custom_models:
-            del parent_app.upscayl_custom_models[real_name_base]
-            parent_app.save_settings()
+        if custom_models is not None:
+            custom_models.pop(real_name_base, None)
+        if save_callback:
+            save_callback(custom_models or {})
         return True
     except Exception as e:
         print(f"ERROR: No se pudo eliminar el modelo {real_name_base}: {e}")

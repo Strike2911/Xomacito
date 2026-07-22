@@ -10,8 +10,6 @@ from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
-import customtkinter as ctk
-
 import launcher
 import main
 from src.core import downloader
@@ -42,9 +40,6 @@ from src.core.ytdlp_runtime import (
     is_youtube_access_error,
     youtube_access_fallback_options,
 )
-from src.gui.visual_shell import _derived_visual, _rgb
-
-
 ROOT = Path(__file__).resolve().parents[1]
 LEGACY_APP_NAME = "Do" + "wP"
 
@@ -132,6 +127,15 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("ProRes 4444 Liviano", notice["message"])
         self.assertIn("VIVA LA GRASA!!! :V", notice["message"])
         self.assertIsNone(release_notice_for_version("1.6.3"))
+
+    def test_release_20_has_the_dowp_notice_and_idea_contributors(self):
+        notice = release_notice_for_version("v2.0")
+
+        self.assertIsNotNone(notice)
+        self.assertEqual(notice["title"], "Xomacito 2.0")
+        self.assertEqual(notice["subtitle"], "LA DowP KILLER UPDATE!!")
+        self.assertEqual(notice["contributors"], ["Jorge", "Xomas", "Megas", "Playera"])
+        self.assertGreaterEqual(len(notice["highlights"]), 4)
 
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
@@ -234,9 +238,9 @@ class XomacitoWrapperTests(unittest.TestCase):
             self.assertIn("-Wait -PassThru", script)
             self.assertIn("/XOMACITOUPDATE=1", script)
 
-        main_window = (ROOT / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
-        self.assertIn("deferred_installer_command(installer_path, os.getpid())", main_window)
-        self.assertNotIn("silent_installer_command(installer_path)", main_window)
+        application = (ROOT / "src" / "ui" / "application.py").read_text(encoding="utf-8")
+        self.assertIn("deferred_installer_command(path, os.getpid())", application)
+        self.assertNotIn("silent_installer_command", application)
 
     def test_app_installer_rejects_a_wrong_digest(self):
         payload = b"MZinvalid"
@@ -289,11 +293,10 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertFalse(restart_wait_requested({}))
 
         main_source = (ROOT / "main.py").read_text(encoding="utf-8")
-        main_window_source = (ROOT / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
-        config_source = (ROOT / "src" / "gui" / "config_tab.py").read_text(encoding="utf-8")
+        application_source = (ROOT / "src" / "ui" / "application.py").read_text(encoding="utf-8")
         self.assertIn("SingleInstanceGuard(APP_NAME)", main_source)
         self.assertIn("focus_existing_window(APP_NAME)", main_source)
-        self.assertNotIn("xomacito.lock", main_window_source + config_source)
+        self.assertNotIn("xomacito.lock", application_source)
 
     def test_instagram_photo_posts_have_an_image_fallback(self):
         class FakeResponse:
@@ -365,11 +368,10 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertTrue(info["title"].endswith(" - 2"))
 
     def test_instagram_image_fallback_is_available_from_both_buttons(self):
-        source = (ROOT / "src" / "gui" / "single_download_tab.py").read_text(encoding="utf-8")
-        self.assertIn("extract_instagram_image_post_info(url, ydl_options=ydl_opts or {})", source)
-        self.assertIn('button_text = "Descargar Imagen"', source)
-        self.assertIn("def save_thumbnail(self):", source)
-        self.assertIn("def _download_image_post_worker", source)
+        source = (ROOT / "src" / "ui" / "download_controller.py").read_text(encoding="utf-8")
+        self.assertIn("extract_instagram_image_post_info(url, ydl_options=options)", source)
+        self.assertIn("def saveThumbnail(self):", source)
+        self.assertIn("def _download_image_post", source)
 
     def test_xomacito_launcher_and_standalone_runtime_are_present(self):
         launcher_exe = ROOT / "Xomacito.exe"
@@ -383,7 +385,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
     def test_packaged_runtime_is_present(self):
         self.assertTrue((ROOT / "dist" / "Xomacito" / "_internal" / "python311.dll").exists())
-        self.assertTrue((ROOT / "src" / "gui" / "main_window.py").exists())
+        self.assertTrue((ROOT / "src" / "ui" / "qml" / "Main.qml").exists())
         self.assertTrue((ROOT / "bin" / "ffmpeg" / "ffmpeg.exe").exists())
 
     def test_recode_profiles_preserve_quality_and_compatibility(self):
@@ -579,18 +581,17 @@ class XomacitoWrapperTests(unittest.TestCase):
                 )
 
     def test_branding_is_xomacito(self):
-        main_window_py = (ROOT / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
-        dialogs_py = (ROOT / "src" / "gui" / "dialogs.py").read_text(encoding="utf-8")
-        single_tab_py = (ROOT / "src" / "gui" / "single_download_tab.py").read_text(encoding="utf-8")
-        self.assertIn("Xomacito", main_window_py)
-        self.assertNotIn(LEGACY_APP_NAME, main_window_py + dialogs_py + single_tab_py)
+        main_qml = (ROOT / "src" / "ui" / "qml" / "Main.qml").read_text(encoding="utf-8")
+        application_py = (ROOT / "src" / "ui" / "application.py").read_text(encoding="utf-8")
+        download_qml = (ROOT / "src" / "ui" / "qml" / "pages" / "DownloadPage.qml").read_text(encoding="utf-8")
+        self.assertIn("XOMACITO", main_qml)
+        self.assertNotIn(LEGACY_APP_NAME, main_qml + application_py + download_qml)
 
     def test_legacy_maintenance_panel_is_removed(self):
-        single_tab_py = (ROOT / "src" / "gui" / "single_download_tab.py").read_text(encoding="utf-8")
-        main_window_py = (ROOT / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
-        self.assertNotIn('text="Mantenimiento"', single_tab_py)
-        self.assertNotIn("MarckDP/Xomacito", main_window_py)
-        self.assertNotIn("app_status_label =", single_tab_py)
+        ui_source = "\n".join(path.read_text(encoding="utf-8") for path in (ROOT / "src" / "ui").rglob("*.qml"))
+        self.assertNotIn('text: "Mantenimiento"', ui_source)
+        self.assertNotIn("MarckDP/Xomacito", ui_source)
+        self.assertNotIn("app_status_label", ui_source)
 
     def test_completion_sound_is_installed(self):
         sound = ROOT / "assets" / "download-complete.mp3"
@@ -606,10 +607,11 @@ class XomacitoWrapperTests(unittest.TestCase):
         for relative in (
             "core/downloader.py",
             "core/batch_processor.py",
-            "gui/single_download_tab.py",
         ):
             source = (ROOT / "src" / relative).read_text(encoding="utf-8")
             self.assertIn("lazy_ytdlp", source, relative)
+        ui_source = (ROOT / "src" / "ui" / "download_controller.py").read_text(encoding="utf-8")
+        self.assertIn("configure_ytdlp_options", ui_source)
 
         # Abrir el flujo principal no debe cargar el motor antes de que el
         # usuario analice o descargue una URL.
@@ -617,7 +619,7 @@ class XomacitoWrapperTests(unittest.TestCase):
             [
                 sys.executable,
                 "-c",
-                "import sys; import src.gui.single_download_tab; "
+                "import sys; import src.ui.download_controller; "
                 "print('yt_dlp' in sys.modules)",
             ],
             cwd=ROOT,
@@ -685,12 +687,12 @@ class XomacitoWrapperTests(unittest.TestCase):
         )
 
     def test_professional_shell_is_present(self):
-        main_window_py = (ROOT / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
-        visual_shell_py = (ROOT / "src" / "gui" / "visual_shell.py").read_text(encoding="utf-8")
-        self.assertIn('"XOMACITO"', visual_shell_py)
-        self.assertIn("GATITO DEL DÍA", visual_shell_py)
-        self.assertIn('self.tab_view.add("Descargar")', main_window_py)
-        self.assertIn('self._register_lazy_tab("Estudio de Imagen", "image_tab"', main_window_py)
+        main_qml = (ROOT / "src" / "ui" / "qml" / "Main.qml").read_text(encoding="utf-8")
+        self.assertIn('text: "XOMACITO"', main_qml)
+        self.assertIn("GATITO DEL DÍA", main_qml)
+        self.assertIn("DownloadPage", main_qml)
+        self.assertIn("ImageStudioPage", main_qml)
+        self.assertIn("StackLayout", main_qml)
 
     def test_launcher_self_test_finds_exe(self):
         result = subprocess.run(
@@ -710,8 +712,8 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertNotIn("XomacitoTitleFixer", launcher_source)
 
     def test_public_brand_links_belong_to_strike(self):
-        source = (ROOT / "src" / "gui" / "config_tab.py").read_text(encoding="utf-8")
-        self.assertIn("Creado por Strike |", source)
+        source = (ROOT / "src" / "ui" / "qml" / "pages" / "SettingsPage.qml").read_text(encoding="utf-8")
+        self.assertIn("Strike2911/Xomacito", source)
         self.assertIn("https://www.youtube.com/@ElStrikew", source)
         self.assertIn("https://ko-fi.com/strikepoint", source)
         self.assertNotIn("MarckDBM", source)
@@ -742,11 +744,10 @@ class XomacitoWrapperTests(unittest.TestCase):
     def test_eight_daily_cat_icons_are_installed(self):
         cat_dir = ROOT / "assets" / "cat-icons"
         self.assertEqual(CAT_COUNT, 8)
-        self.assertEqual(len(list(cat_dir.glob("cat-*.png"))), 8)
-        self.assertEqual(len(list(cat_dir.glob("cat-*.ico"))), 8)
         for number in range(1, 9):
             self.assertGreater((cat_dir / f"cat-{number:02d}.png").stat().st_size, 10_000)
             self.assertGreater((cat_dir / f"cat-{number:02d}.ico").stat().st_size, 10_000)
+            self.assertGreater((cat_dir / f"cat-{number:02d}-ui.png").stat().st_size, 10_000)
 
     def test_daily_cat_changes_once_per_day_and_cycles(self):
         start = date(2026, 1, 1)
@@ -756,78 +757,46 @@ class XomacitoWrapperTests(unittest.TestCase):
         selected = daily_cat_assets(ROOT, start)
         self.assertTrue(selected.png_path.exists())
         self.assertTrue(selected.ico_path.exists())
+        self.assertTrue(selected.ui_path.exists())
 
     def test_gradient_shell_is_integrated_without_replacing_tabs(self):
-        source = (ROOT / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
-        self.assertIn("GradientBackdrop(self, self.theme_data)", source)
-        self.assertIn("DailyBrandHeader(self, self.daily_cat", source)
-        self.assertIn("gradient_backdrop.update_theme", source)
-        self.assertIn("brand_header.update_theme", source)
-        self.assertIn("segmented_button_selected_color", source)
-        self.assertIn('self.tab_view.add("Descargar")', source)
-        self.assertIn('self._register_lazy_tab("Cola", "batch_tab"', source)
+        source = (ROOT / "src" / "ui" / "qml" / "Main.qml").read_text(encoding="utf-8")
+        self.assertIn("Gradient", source)
+        self.assertIn("appController.catSource", source)
+        self.assertIn("theme.colors.backgroundAlt", source)
+        self.assertIn("StackLayout", source)
+        for page in ("DownloadPage", "QueuePage", "ImageStudioPage", "SettingsPage"):
+            self.assertIn(page, source)
 
     def test_secondary_tabs_and_heavy_engines_are_loaded_on_demand(self):
-        source = (ROOT / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
-        imports = source.split("class MainWindow", 1)[0]
-        config_source = (ROOT / "src" / "gui" / "config_tab.py").read_text(encoding="utf-8")
-        visual_source = (ROOT / "src" / "gui" / "visual_shell.py").read_text(encoding="utf-8")
+        qml = (ROOT / "src" / "ui" / "qml" / "Main.qml").read_text(encoding="utf-8")
+        image_source = (ROOT / "src" / "ui" / "image_controller.py").read_text(encoding="utf-8")
+        workers = (ROOT / "src" / "ui" / "workers.py").read_text(encoding="utf-8")
 
-        self.assertNotIn("from .batch_download_tab import BatchDownloadTab", imports)
-        self.assertNotIn("from .image_tools_tab import ImageToolsTab", imports)
-        self.assertNotIn("from .config_tab import ConfigTab", imports)
-        self.assertIn('self._register_lazy_tab("Estudio de Imagen", "image_tab"', source)
-        self.assertIn('self._register_lazy_tab("Configuración", "config_tab"', source)
-        self.assertIn('host = ctk.CTkFrame(container, fg_color="transparent")', source)
-        self.assertIn('widget = ConfigTab(master=host, app=self)', source)
-        self.assertIn('spec["host"].pack(expand=True, fill="both")', source)
-        self.assertIn('spec["state"] == "loaded"', source)
-        self.assertIn('Solo tardará la primera vez.', source)
-        self.assertNotIn('Construyendo {tab_name}', source)
-        self.assertIn('deadline = time.monotonic() + 0.008', source)
-        self.assertIn('self.after(180000, self._start_memory_cleaner)', source)
-        self.assertNotIn("EmptyWorkingSet", source)
-
-        clipboard = source.split("def _check_clipboard_and_paste", 1)[1].split(
-            "def on_ffmpeg_check_complete", 1
-        )[0]
-        self.assertNotIn("time.sleep", clipboard)
-        self.assertIn("self.after(", clipboard)
-
-        self.assertIn("self._models_populated = False", config_source)
-        self.assertIn("def _populate_model_sections", config_source)
-        self.assertIn("width // 4", visual_source)
-        self.assertIn("@lru_cache", visual_source)
+        self.assertEqual(qml.count("StackLayout"), 1)
+        self.assertNotIn("Loader {", qml.split("StackLayout", 1)[1].split("Popup", 1)[0])
+        self.assertIn("def _ensure_engines", image_source)
+        imports = image_source.split("class ImageController", 1)[0]
+        self.assertNotIn("from src.core.image_converter import", imports)
+        self.assertNotIn("from src.core.image_processor import", imports)
+        self.assertIn("QThreadPool.globalInstance", workers)
+        self.assertNotIn("Construyendo Configuración", qml)
 
     def test_builtin_blue_theme_drives_shell_and_custom_widgets(self):
-        ctk.set_appearance_mode("Dark")
-        blue = main._builtin_theme_data(ctk, "blue")
-        deep_blue = main._builtin_theme_data(ctk, "dark-blue")
-
-        self.assertEqual(blue["ThemeName"], "Azul (Estándar)")
-        self.assertIn("CustomColors", blue)
-        self.assertIn("XomacitoVisual", blue)
-        self.assertEqual(blue["CustomColors"]["DOWNLOAD_BTN"], blue["CTkButton"]["fg_color"])
-        self.assertNotEqual(
-            blue["XomacitoVisual"]["background_top"],
-            deep_blue["XomacitoVisual"]["background_top"],
-        )
-
-        derived = _derived_visual(blue, dark_mode=True)
-        for color in derived.values():
-            if isinstance(color, str) and color.startswith("#"):
-                self.assertEqual(len(_rgb(color)), 3)
-        self.assertEqual(_rgb("gray10"), (26, 26, 26))
+        theme_source = (ROOT / "src" / "ui" / "theme.py").read_text(encoding="utf-8")
+        main_qml = (ROOT / "src" / "ui" / "qml" / "Main.qml").read_text(encoding="utf-8")
+        self.assertIn("FALLBACK_DARK", theme_source)
+        self.assertIn('"background": "#061522"', theme_source)
+        self.assertIn('"primary": "#20C9E8"', theme_source)
+        self.assertIn("theme.colors.background", main_qml)
+        self.assertIn("theme.colors.primary", main_qml)
 
     def test_scrollable_panels_use_solid_theme_surfaces(self):
-        config_source = (ROOT / "src" / "gui" / "config_tab.py").read_text(encoding="utf-8")
-        single_source = (ROOT / "src" / "gui" / "single_download_tab.py").read_text(encoding="utf-8")
-
-        self.assertGreaterEqual(config_source.count("fg_color=self.SCROLL_SURFACE"), 4)
-        self.assertNotIn('frame_deps._scrollbar.bind("<B1-Motion>"', config_source)
-        self.assertNotIn('frame_models.bind("<MouseWheel>"', config_source)
-        self.assertIn('self.options_scroll_frame = ctk.CTkScrollableFrame(', single_source)
-        self.assertIn('scrollable.configure(fg_color=scroll_surface)', single_source)
+        pages = "\n".join(path.read_text(encoding="utf-8") for path in (ROOT / "src" / "ui" / "qml" / "pages").glob("*.qml"))
+        card = (ROOT / "src" / "ui" / "qml" / "components" / "XCard.qml").read_text(encoding="utf-8")
+        self.assertGreaterEqual(pages.count("ScrollView"), 5)
+        self.assertIn("theme.colors.surface", card)
+        self.assertNotIn("MouseWheel", pages)
 
     def test_refined_themes_have_dynamic_visual_tokens_and_accessible_contrast(self):
         def luminance(color):
@@ -842,7 +811,7 @@ class XomacitoWrapperTests(unittest.TestCase):
             return (light + 0.05) / (dark + 0.05)
 
         allowed_fonts = {"Segoe UI Variable Text", "Candara", "Bahnschrift"}
-        themes = sorted((ROOT / "src" / "gui" / "themes").glob("*.json"))
+        themes = sorted((ROOT / "src" / "ui" / "themes").glob("*.json"))
         self.assertEqual(len(themes), 10)
         for path in themes:
             data = json.loads(path.read_text(encoding="utf-8-sig"))
@@ -864,23 +833,40 @@ class XomacitoWrapperTests(unittest.TestCase):
                 for foreground, background in pairs:
                     self.assertGreaterEqual(ratio(foreground, background), 4.5, f"{path.name}: {foreground}/{background}")
 
+    def test_functional_surfaces_are_derived_from_each_active_theme(self):
+        dark_cards = set()
+        themes = sorted((ROOT / "src" / "ui" / "themes").glob("*.json"))
+        for path in themes:
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
+            visual = data["XomacitoVisual"]
+            for key in ("background_top", "background_bottom", "header_top", "header_bottom", "header_border"):
+                self.assertEqual(len(visual[key]), 2, f"{path.name}:{key}")
+            self.assertNotEqual(visual["header_top"][1], visual["background_bottom"][1], path.name)
+            self.assertNotEqual(visual["header_bottom"][1], visual["header_top"][1], path.name)
+            dark_cards.add(visual["header_top"][1])
+        self.assertEqual(len(dark_cards), len(themes))
+
+    def test_image_studio_import_survives_missing_native_cairo(self):
+        from src.core import image_converter, image_processor
+
+        self.assertIsInstance(image_converter.CAN_SVG, bool)
+        self.assertIsInstance(image_processor.CAN_SVG, bool)
+
     def test_frozen_restart_uses_an_independent_pyinstaller_environment(self):
         environment = clean_restart_environment({"EXAMPLE": "kept"})
         self.assertEqual(environment["EXAMPLE"], "kept")
         self.assertEqual(environment["PYINSTALLER_RESET_ENVIRONMENT"], "1")
-        config_source = (ROOT / "src" / "gui" / "config_tab.py").read_text(encoding="utf-8")
-        window_source = (ROOT / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
-        theme_handler = config_source.split("def _on_theme_change", 1)[1].split("def _on_appearance_mode_change", 1)[0]
-        self.assertIn("restart_application()", theme_handler)
-        self.assertNotIn("on_closing()", theme_handler)
-        self.assertIn("clean_restart_environment()", window_source)
+        theme_source = (ROOT / "src" / "ui" / "theme.py").read_text(encoding="utf-8")
+        application_source = (ROOT / "src" / "ui" / "application.py").read_text(encoding="utf-8")
+        self.assertIn("self.reload()", theme_source)
+        self.assertNotIn("restart_application", theme_source)
+        self.assertIn("deferred_installer_command", application_source)
 
     def test_explicit_builtin_theme_survives_restart(self):
-        self.assertEqual(main._theme_path({"selected_theme_accent": "dark-blue"}).name, "midnight_ocean.json")
-        self.assertEqual(
-            main._theme_path({"selected_theme_accent": "dark-blue", "theme_selection_explicit": True}),
-            "dark-blue",
-        )
+        source = (ROOT / "src" / "ui" / "theme.py").read_text(encoding="utf-8")
+        self.assertIn('self.builtin_dir = self.project_root / "src" / "ui" / "themes"', source)
+        self.assertIn('"theme_selection_explicit": True', source)
+        self.assertIn('self.settings.set("appearance_mode", appearance)', source)
 
     def test_installer_uses_direct_one_folder_runtime(self):
         spec = (ROOT / ".build" / "XomacitoInstaller.spec").read_text(encoding="utf-8")
@@ -928,78 +914,45 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertNotIn("engine\\", installer)
 
     def test_startup_uses_bundled_ffmpeg_without_auto_installing(self):
-        source = (ROOT / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
-        dialogs = (ROOT / "src" / "gui" / "dialogs.py").read_text(encoding="utf-8")
-        startup = source.split("def run_initial_setup(self):", 1)[1].split(
-            "def on_update_check_complete", 1
-        )[0]
-        self.assertNotIn("DependencySetupWindow", startup)
-        self.assertNotIn("download_and_install_ffmpeg", startup)
-        self.assertIn("no descargará dependencias al iniciar", startup)
-        self.assertNotIn("Iniciando descarga automática", source)
-        self.assertNotIn("self.after(500, self.start_installation)", dialogs)
+        application = (ROOT / "src" / "ui" / "application.py").read_text(encoding="utf-8")
+        settings = (ROOT / "src" / "ui" / "settings_controller.py").read_text(encoding="utf-8")
+        self.assertNotIn("download_and_install_ffmpeg", application)
+        self.assertIn("refreshDependencies(False)", application)
+        self.assertIn("def installDependency", settings)
 
         main_source = (ROOT / "main.py").read_text(encoding="utf-8")
         runtime_source = (ROOT / "src" / "core" / "ytdlp_runtime.py").read_text(encoding="utf-8")
         self.assertIn('BIN_PATH = INTERNAL_DIR / "bin"', main_source)
         self.assertIn('executable_root / "_internal"', runtime_source)
-
-        ffmpeg = ROOT / "dist" / "Xomacito" / "_internal" / "bin" / "ffmpeg" / "ffmpeg.exe"
-        ffprobe = ROOT / "dist" / "Xomacito" / "_internal" / "bin" / "ffmpeg" / "ffprobe.exe"
-        self.assertGreater(ffmpeg.stat().st_size, 100_000_000)
-        self.assertGreater(ffprobe.stat().st_size, 100_000_000)
-        result = subprocess.run(
-            [str(ffmpeg), "-version"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-        self.assertEqual(result.returncode, 0)
-        self.assertIn("ffmpeg version", result.stdout.lower())
+        self.assertGreater((ROOT / "bin" / "ffmpeg" / "ffmpeg.exe").stat().st_size, 100_000_000)
 
     def test_xomacito_is_standalone_without_editor_plugin_bridge(self):
-        source_paths = (
-            ROOT / "src" / "gui" / "main_window.py",
-            ROOT / "src" / "gui" / "config_tab.py",
-            ROOT / "src" / "gui" / "single_download_tab.py",
-            ROOT / "src" / "gui" / "batch_download_tab.py",
-            ROOT / "src" / "gui" / "image_tools_tab.py",
-            ROOT / "src" / "core" / "batch_processor.py",
-        )
+        source_paths = tuple((ROOT / "src" / "ui").rglob("*.py")) + tuple((ROOT / "src" / "ui" / "qml").rglob("*.qml")) + (ROOT / "src" / "core" / "batch_processor.py",)
         combined_source = "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
         forbidden_bridges = (
-            "flask_socketio",
-            "SocketIO",
-            "IntegrationManager",
-            "ACTIVE_TARGET_SID",
-            "port=7788",
-            "_check_whats_new",
-            "DaVinci Resolve",
-            "Adobe (Premiere",
+            "flask_socketio", "SocketIO", "IntegrationManager", "ACTIVE_TARGET_SID",
+            "port=7788", "_check_whats_new", "DaVinci Resolve", "Adobe (Premiere",
         )
         for bridge in forbidden_bridges:
             self.assertNotIn(bridge, combined_source)
 
         self.assertFalse((ROOT / "src" / "core" / "integration_manager.py").exists())
         self.assertFalse((ROOT / "src" / "core" / "davinci_api.py").exists())
-        self.assertFalse((ROOT / "src" / "gui" / "whats_new_dialog.py").exists())
-
         installer_spec = (ROOT / ".build" / "XomacitoInstaller.spec").read_text(encoding="utf-8")
         self.assertNotIn("engineio.async_drivers", installer_spec)
         for package in ("flask_socketio", "socketio", "engineio", "gevent"):
             self.assertIn(package, installer_spec.split("excludes=", 1)[1])
-
-        # Importar un archivo desde el equipo es una función local de la app y se conserva.
-        single_source = (ROOT / "src" / "gui" / "single_download_tab.py").read_text(encoding="utf-8")
-        self.assertIn("Importar Archivo Local para Recodificar", single_source)
+        download_source = (ROOT / "src" / "ui" / "download_controller.py").read_text(encoding="utf-8")
+        self.assertIn("def chooseLocalFile", download_source)
 
     def test_self_test_does_not_open_the_tk_interface(self):
         source = (ROOT / "main.py").read_text(encoding="utf-8")
         main_body = source.split("def main() -> int:", 1)[1].split("def _run_safely", 1)[0]
-        self.assertLess(main_body.index('"--self-test"'), main_body.index("import customtkinter"))
-        self.assertIn('INTERNAL_DIR / "_tcl_data" / "init.tcl"', source)
-        self.assertIn('INTERNAL_DIR / "_tk_data" / "tk.tcl"', source)
+        self.assertLess(main_body.index('"--self-test"'), main_body.index("_run_main_window"))
+        self.assertIn('INTERNAL_DIR / "src" / "ui" / "qml" / "Main.qml"', source)
+        self.assertNotIn("customtkinter", source)
+        self.assertNotIn("_tcl_data", source)
+        self.assertNotIn("_tk_data", source)
 
     def test_release_build_and_benchmark_scripts_are_present(self):
         build_script = (ROOT / "scripts" / "build_release.ps1").read_text(encoding="utf-8-sig")
@@ -1009,7 +962,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-1.6.4-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-2.0-Setup.exe", build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)

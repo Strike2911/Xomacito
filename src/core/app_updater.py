@@ -25,6 +25,23 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "2.0": {
+        "eyebrow": "ACTUALIZACIÓN INSTALADA",
+        "title": "Xomacito 2.0",
+        "subtitle": "LA DowP KILLER UPDATE!!",
+        "message": (
+            "Xomacito dio el salto a una interfaz más rápida, limpia y fluida, "
+            "manteniendo todas sus herramientas en un espacio más cómodo."
+        ),
+        "highlights": [
+            "Nueva interfaz Qt Quick, más suave y responsiva.",
+            "Pantalla principal compacta, incluso en 1280 × 720.",
+            "Temas instantáneos y pegado automático de enlaces.",
+            "Descargas, recodificación e imagen con el flujo completo.",
+        ],
+        "contributors": ["Jorge", "Xomas", "Megas", "Playera"],
+        "closing": "Gracias por ser los principales contribuyentes de ideas del proyecto.",
+    },
     "1.6.4": {
         "title": "Xomacito 1.6.4 — ¡Actualización instalada!",
         "message": (

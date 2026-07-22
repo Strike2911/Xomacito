@@ -16,6 +16,7 @@ class DailyCat:
     number: int
     png_path: Path
     ico_path: Path
+    ui_path: Path
 
 
 def daily_cat_number(day: date | None = None) -> int:
@@ -48,8 +49,11 @@ def daily_cat_assets(
         folder = root / "assets" / "cat-icons"
         png_path = folder / f"cat-{number:02d}.png"
         ico_path = folder / f"cat-{number:02d}.ico"
+        ui_path = folder / f"cat-{number:02d}-ui.png"
         if png_path.exists() and ico_path.exists():
-            return DailyCat(number, png_path, ico_path)
+            return DailyCat(number, png_path, ico_path, ui_path if ui_path.exists() else png_path)
     fallback_root = Path(project_root or Path.cwd())
     folder = fallback_root / "assets" / "cat-icons"
-    return DailyCat(number, folder / f"cat-{number:02d}.png", folder / f"cat-{number:02d}.ico")
+    png_path = folder / f"cat-{number:02d}.png"
+    ui_path = folder / f"cat-{number:02d}-ui.png"
+    return DailyCat(number, png_path, folder / f"cat-{number:02d}.ico", ui_path if ui_path.exists() else png_path)

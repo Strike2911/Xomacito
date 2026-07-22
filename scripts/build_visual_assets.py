@@ -41,6 +41,20 @@ def _framed_cat(source: Path) -> Image.Image:
     return canvas
 
 
+def _circular_cat(source: Path) -> Image.Image:
+    """Crea una foto circular grande para Qt Quick, sin perder nitidez."""
+    photo = ImageOps.fit(
+        Image.open(source).convert("RGB"),
+        (768, 768),
+        method=Image.Resampling.LANCZOS,
+    )
+    mask = Image.new("L", photo.size, 0)
+    ImageDraw.Draw(mask).ellipse((1, 1, 766, 766), fill=255)
+    result = Image.new("RGBA", photo.size, (0, 0, 0, 0))
+    result.paste(photo, (0, 0), mask)
+    return result
+
+
 def main() -> None:
     missing = [str(path) for path in SOURCE_IMAGES if not path.exists()]
     if missing:
@@ -57,6 +71,11 @@ def main() -> None:
             method=Image.Resampling.LANCZOS,
         )
         photo.save(output / f"{stem}.png", optimize=True)
+
+        # Recurso de interfaz separado del ICO. QML puede escalar este PNG de
+        # 768 px con suavizado, mientras que algunos lectores de ICO eligen la
+        # capa de 16/24 px y producen el avatar borroso.
+        _circular_cat(source).save(output / f"{stem}-ui.png", optimize=True)
 
         icon = _framed_cat(source)
         icon.save(

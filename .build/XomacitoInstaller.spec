@@ -9,7 +9,8 @@ from PyInstaller.utils.hooks import collect_all
 PROJECT_ROOT = Path(SPECPATH).resolve().parent
 
 datas = [
-    (str(PROJECT_ROOT / "src" / "gui" / "themes"), "src/gui/themes"),
+    (str(PROJECT_ROOT / "src" / "ui" / "qml"), "src/ui/qml"),
+    (str(PROJECT_ROOT / "src" / "ui" / "themes"), "src/ui/themes"),
     (str(PROJECT_ROOT / "assets" / "xomacito-logo.png"), "assets"),
     (str(PROJECT_ROOT / "assets" / "cat-icons"), "assets/cat-icons"),
     (str(PROJECT_ROOT / "assets" / "download-complete.mp3"), "assets"),
@@ -41,11 +42,13 @@ for dll_name in (
     binaries.append((str(PROJECT_ROOT / "vendor" / "cairo" / dll_name), "."))
 hiddenimports = [
     "rawpy", "cv2", "cairosvg", "pdf2image", "img2pdf", "py7zr",
+    "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets",
+    "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtQuickControls2",
 ]
 
 # Conserva el mismo conjunto funcional validado por el build portable.
 for package in (
-    "customtkinter", "tkinterdnd2", "Cryptodome", "curl_cffi",
+    "Cryptodome", "curl_cffi",
     "rembg", "onnxruntime", "pillow_avif", "yt_dlp_ejs", "yt_dlp",
 ):
     package_datas, package_binaries, package_hiddenimports = collect_all(package)
@@ -62,7 +65,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["flask_socketio", "socketio", "engineio", "gevent"],
+    excludes=["tkinter", "customtkinter", "tkinterdnd2", "flask_socketio", "socketio", "engineio", "gevent"],
     noarchive=False,
     optimize=1,
 )
