@@ -1,5 +1,5 @@
 #define MyAppName "Xomacito"
-#define MyAppVersion "1.6.4"
+#define MyAppVersion "2.0"
 #define MyAppPublisher "Xomacito"
 #define MyAppExeName "Xomacito.exe"
 #define ProjectRoot ".."
@@ -25,7 +25,7 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern dynamic
 WizardSizePercent=110
-; Tcl/Tk y sus extensiones no deben retirarse mientras Xomacito siga abierto.
+; Qt y sus componentes no deben retirarse mientras Xomacito siga abierto.
 ; "force" evita dejar un proceso huérfano usando una instalación parcialmente
 ; eliminada, incluso durante instalaciones o desinstalaciones silenciosas.
 CloseApplications=force
@@ -34,7 +34,7 @@ RestartApplications=no
 Uninstallable=yes
 CreateUninstallRegKey=yes
 MinVersion=10.0.17763
-VersionInfoVersion=1.6.4.0
+VersionInfoVersion=2.0.0.0
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
 VersionInfoDescription=Instalador de Xomacito
@@ -56,9 +56,11 @@ Name: "{app}\_internal\bin\models\rmbg2"
 Name: "{app}\_internal\bin\models\upscaling"
 
 [Icons]
-Name: "{group}\Xomacito"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
-Name: "{group}\Desinstalar Xomacito"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\Xomacito"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+; El acceso directo principal va directamente en Programas para que Windows
+; Search lo indexe como aplicación, no como una simple carpeta.
+Name: "{userprograms}\Xomacito"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; AppUserModelID: "Xomacito.App"
+Name: "{userprograms}\Desinstalar Xomacito"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\Xomacito"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; AppUserModelID: "Xomacito.App"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Abrir Xomacito"; Flags: nowait postinstall skipifsilent
@@ -68,7 +70,7 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "--updated"; Flags: nowait skipif
 
 [UninstallRun]
 ; Se ejecuta como primer paso del desinstalador. Inno espera a que taskkill
-; termine antes de retirar Tcl/Tk y el resto del runtime.
+; termine antes de retirar Qt y el resto del runtime.
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM ""{#MyAppExeName}"""; Flags: runhidden; RunOnceId: "StopXomacito"
 
 [UninstallDelete]

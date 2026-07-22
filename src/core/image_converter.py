@@ -25,9 +25,14 @@ from src.core.exceptions import UserCancelledError
 try:
     import cairosvg
     CAN_SVG = True
-except ImportError:
+except (ImportError, OSError) as cairo_error:
     CAN_SVG = False
-    print("ADVERTENCIA: 'cairosvg' no instalado. No se podrán convertir archivos .svg")
+    cairosvg = None
+    cairo_reason = str(cairo_error).splitlines()[0]
+    print(
+        "ADVERTENCIA: CairoSVG no está disponible; Estudio de Imagen seguirá "
+        f"funcionando sin el motor SVG nativo ({cairo_reason})."
+    )
 
 try:
     from pdf2image import convert_from_path, pdfinfo_from_path
