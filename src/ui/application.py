@@ -20,6 +20,7 @@ from src.core.app_updater import (
     release_notice_for_version,
 )
 from src.core.daily_icon import daily_cat_assets
+from src.core.notification_sound import play_completion_sound, play_gacha_reveal_sound
 
 from .batch_controller import BatchController
 from .cat_gacha_controller import CatGachaController
@@ -97,10 +98,21 @@ class AppController(QObject):
             controller.notificationRequested.connect(self.toastRequested)
         self.download.successfulDownload.connect(self.cats.recordSuccessfulDownloads)
         self.batch.successfulDownload.connect(self.cats.recordSuccessfulDownloads)
+        self.download.successfulDownload.connect(self._play_download_completion)
+        self.batch.successfulDownload.connect(self._play_download_completion)
+        self.cats.revealRequested.connect(self._play_cat_reveal)
         self.download.navigateRequested.connect(self.navigate)
         self.download.queueRequested.connect(self._send_url_to_queue)
         self.download.imageFilesRequested.connect(self._send_files_to_image)
         self.batch.imageFilesRequested.connect(self._send_files_to_image)
+
+    @Slot(int)
+    def _play_download_completion(self, _completed_items=1):
+        play_completion_sound()
+
+    @Slot("QVariantMap")
+    def _play_cat_reveal(self, result):
+        play_gacha_reveal_sound(int(dict(result or {}).get("rarity", 1)))
 
     @Slot()
     def _schedule_clipboard_check(self):

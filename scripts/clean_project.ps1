@@ -65,5 +65,5 @@ foreach ($Target in ($Targets | Select-Object -Unique)) {
     RecoveredMiB = [math]::Round($RemovedBytes / 1MB, 2)
     PreservedRuntime = (Join-Path $ProjectRoot '.tools\python311full')
     PreservedPortableApp = (Join-Path $ProjectRoot 'dist\Xomacito')
-    PreservedInstaller = (Join-Path $ProjectRoot 'release\Xomacito-2.1-Setup.exe')
+    PreservedInstaller = (Join-Path $ProjectRoot 'release\Xomacito-2.2-Setup.exe')
 }

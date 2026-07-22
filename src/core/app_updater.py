@@ -25,6 +25,23 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "2.2": {
+        "eyebrow": "ACTUALIZACIÓN INSTALADA",
+        "title": "Xomacito 2.2",
+        "subtitle": "¡LA MIAU UPDATE!!",
+        "message": (
+            "Ahora cada descarga y cada revelación del gacha tienen una respuesta "
+            "sonora clara, mientras el instalador explica su progreso desde el primer segundo."
+        ),
+        "highlights": [
+            "Nuevo maullido al completar una descarga.",
+            "Cinco efectos de revelación, uno para cada rareza del gacha.",
+            "Sonidos asíncronos que no bloquean ni ralentizan la interfaz.",
+            "Actualizador más claro y con menos espera al preparar la instalación.",
+        ],
+        "contributors": ["Jorge", "Xomas", "Megas", "Playera"],
+        "closing": "Gracias por seguir aportando ideas al proyecto.",
+    },
     "2.1": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
         "title": "Xomacito 2.1",
