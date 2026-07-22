@@ -63,21 +63,13 @@ ApplicationWindow {
                 anchors.fill: parent
                 anchors.margins: window.denseWindow ? 9 : 11
                 spacing: window.denseWindow ? 10 : 13
-                Rectangle {
+                CatAvatar {
                     Layout.preferredWidth: window.denseWindow ? 44 : settingsController.state.compactMode ? 48 : 54
                     Layout.preferredHeight: Layout.preferredWidth
-                    radius: width / 2
-                    color: theme.colors.backgroundAlt
-                    border.color: theme.colors.primary
-                    border.width: 2
-                    Image {
-                        anchors.fill: parent
-                        anchors.margins: 4
-                        source: appController.catSource
-                        fillMode: Image.PreserveAspectFit
-                        mipmap: true
-                        smooth: true
-                    }
+                    source: appController.catSource
+                    rarity: appController.catRarity
+                    rarityColor: appController.catRarityColor
+                    animatedEffects: settingsController.state.animationsEnabled
                     SequentialAnimation on scale {
                         loops: Animation.Infinite
                         running: settingsController.state.animationsEnabled
@@ -101,7 +93,7 @@ ApplicationWindow {
                     Rectangle {
                         Layout.alignment: Qt.AlignRight; implicitWidth: catText.implicitWidth + 20; implicitHeight: window.denseWindow ? 20 : 23; radius: height / 2
                         color: theme.colors.backgroundAlt; border.color: theme.colors.border; border.width: 1
-                        Text { id: catText; anchors.centerIn: parent; text: "GATITO DEL DÍA  " + appController.catNumber + "/8"; color: theme.colors.text; font.pixelSize: 8; font.weight: Font.DemiBold }
+                        Text { id: catText; anchors.centerIn: parent; text: appController.catRarity + "★  " + appController.catName; color: appController.catRarityColor; font.pixelSize: 8; font.weight: Font.DemiBold }
                     }
                 }
             }
@@ -115,19 +107,26 @@ ApplicationWindow {
             border.color: theme.colors.border
             border.width: 1
             RowLayout {
+                objectName: "navigationBar"
                 anchors.fill: parent; anchors.margins: 6; spacing: 6
                 Repeater {
                     model: appController.pages
                     Button {
+                        id: navigationButton
                         required property string modelData
                         required property int index
+                        objectName: "navButton" + index
+                        property int pendingCatRolls: index === 3 ? Number(catController.state.earnedRolls || 0) : 0
+                        property bool showRollBadge: index === 3 && pendingCatRolls > 0
                         Layout.fillWidth: true
-                        Layout.maximumWidth: 220
+                        Layout.minimumWidth: 0
+                        Layout.preferredWidth: 1
                         implicitHeight: window.denseWindow ? 30 : 34
                         text: modelData
                         font.pixelSize: 12
                         font.weight: appController.page === index ? Font.DemiBold : Font.Normal
                         focusPolicy: Qt.StrongFocus
+                        Accessible.name: modelData + (pendingCatRolls > 0 ? ". " + pendingCatRolls + " tirada" + (pendingCatRolls === 1 ? "" : "s") + " disponible" + (pendingCatRolls === 1 ? "" : "s") : "")
                         onClicked: appController.setPage(index)
                         contentItem: Text { text: parent.text; color: appController.page === index ? "white" : theme.colors.textMuted; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; font: parent.font }
                         background: Rectangle {
@@ -137,9 +136,92 @@ ApplicationWindow {
                             border.color: theme.colors.accent
                             Behavior on color { ColorAnimation { duration: settingsController.state.animationsEnabled ? 140 : 0 } }
                         }
+
+                        Rectangle {
+                            id: rollBadgeHalo
+                            anchors.centerIn: rollBadge
+                            width: rollBadge.width
+                            height: rollBadge.height
+                            radius: height / 2
+                            color: "transparent"
+                            border.width: 2
+                            border.color: "#F23F42"
+                            opacity: 0
+                            scale: 0.7
+                            visible: rollBadge.visible
+                            z: 9
+                        }
+
+                        Rectangle {
+                            id: rollBadge
+                            objectName: "catRollBadge"
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.rightMargin: 7
+                            anchors.topMargin: -3
+                            width: Math.max(19, rollBadgeText.implicitWidth + 9)
+                            height: 19
+                            radius: height / 2
+                            color: "#F23F42"
+                            border.width: 2
+                            border.color: appController.page === index ? theme.colors.primary : theme.colors.surface
+                            visible: navigationButton.showRollBadge
+                            z: 10
+                            property int navIndex: index
+                            property int count: navigationButton.pendingCatRolls
+                            property int observedCount: 0
+                            property bool observationReady: false
+
+                            Component.onCompleted: {
+                                observedCount = navigationButton.pendingCatRolls
+                                observationReady = true
+                            }
+                            onVisibleChanged: {
+                                if (!visible) {
+                                    scale = 1
+                                    rollBadgeHalo.opacity = 0
+                                }
+                            }
+                            Connections {
+                                target: catController
+                                function onStateChanged() {
+                                    var nextCount = navigationButton.pendingCatRolls
+                                    if (rollBadge.observationReady && nextCount > rollBadge.observedCount && settingsController.state.animationsEnabled)
+                                        badgeUnlockAnimation.restart()
+                                    rollBadge.observedCount = nextCount
+                                }
+                            }
+
+                            Text {
+                                id: rollBadgeText
+                                anchors.centerIn: parent
+                                text: navigationButton.pendingCatRolls > 99 ? "99+" : String(navigationButton.pendingCatRolls)
+                                color: "white"
+                                font.pixelSize: 10
+                                font.weight: Font.Bold
+                            }
+
+                            SequentialAnimation {
+                                id: badgeUnlockAnimation
+                                ParallelAnimation {
+                                    SequentialAnimation {
+                                        NumberAnimation { target: rollBadge; property: "scale"; from: 1; to: 1.28; duration: 120; easing.type: Easing.OutQuad }
+                                        NumberAnimation { target: rollBadge; property: "scale"; to: 0.93; duration: 90; easing.type: Easing.InOutQuad }
+                                        NumberAnimation { target: rollBadge; property: "scale"; to: 1; duration: 170; easing.type: Easing.OutBack }
+                                    }
+                                    ParallelAnimation {
+                                        NumberAnimation { target: rollBadgeHalo; property: "scale"; from: 0.7; to: 2.1; duration: 380; easing.type: Easing.OutCubic }
+                                        NumberAnimation { target: rollBadgeHalo; property: "opacity"; from: 0.8; to: 0; duration: 380; easing.type: Easing.OutCubic }
+                                    }
+                                }
+                            }
+
+                            ToolTip.visible: navigationButton.hovered
+                            ToolTip.text: navigationButton.pendingCatRolls + " tirada" + (navigationButton.pendingCatRolls === 1 ? " disponible" : "s disponibles")
+                            ToolTip.delay: 450
+                        }
                     }
                 }
-                Item { Layout.fillWidth: true }
                 Rectangle {
                     visible: appController.updateState.downloading || appController.updateState.checking
                     implicitWidth: updateMini.implicitWidth + 22; implicitHeight: 32; radius: 10
@@ -159,6 +241,7 @@ ApplicationWindow {
                 Item { DownloadPage { anchors.fill: parent } }
                 Item { QueuePage { anchors.fill: parent } }
                 Item { ImageStudioPage { anchors.fill: parent } }
+                Item { CatGachaPage { anchors.fill: parent } }
                 Item { SettingsPage { anchors.fill: parent } }
             }
         }
@@ -273,19 +356,12 @@ ApplicationWindow {
                     anchors.margins: 20
                     spacing: 18
 
-                    Rectangle {
+                    CatAvatar {
                         Layout.preferredWidth: 82; Layout.preferredHeight: 82
-                        radius: 41
-                        color: theme.colors.background
-                        border.color: "#FFE35A"
-                        border.width: 3
-                        Image {
-                            anchors.fill: parent
-                            anchors.margins: 6
-                            source: appController.catSource
-                            fillMode: Image.PreserveAspectFit
-                            mipmap: true; smooth: true
-                        }
+                        source: appController.catSource
+                        rarity: appController.catRarity
+                        rarityColor: "#FFE35A"
+                        animatedEffects: noticePopup.opened && settingsController.state.animationsEnabled
                     }
 
                     ColumnLayout {

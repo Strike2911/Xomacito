@@ -22,6 +22,7 @@ from src.core.app_updater import (
 from src.core.daily_icon import daily_cat_assets
 
 from .batch_controller import BatchController
+from .cat_gacha_controller import CatGachaController
 from .dialog_broker import DialogBroker
 from .download_controller import DownloadController
 from .image_controller import ImageController
@@ -48,6 +49,7 @@ def normalize_clipboard_url(value: object) -> str:
 
 class AppController(QObject):
     pageChanged = Signal()
+    catChanged = Signal()
     updateStateChanged = Signal()
     toastRequested = Signal(str, str, str)
     updatePromptRequested = Signal("QVariantMap")
@@ -55,7 +57,7 @@ class AppController(QObject):
     closeRequested = Signal()
     updateProgressReported = Signal(float, str)
 
-    PAGES = ["Descargar", "Cola", "Estudio de Imagen", "Configuración"]
+    PAGES = ["Descargar", "Cola", "Estudio de Imagen", "Personalización", "Configuración"]
 
     def __init__(self, app: QApplication, project_root: str | Path, app_version: str, parent=None):
         super().__init__(parent)
@@ -71,6 +73,7 @@ class AppController(QObject):
         self.batch = BatchController(self.project_root, self.settings, self.pool, self.presets, app_version, self)
         self.image_studio = ImageController(self.project_root, self.settings, self.pool, app_version, self)
         self.config = SettingsController(self.project_root, self.settings, self.theme, self.pool, self)
+        self.cats = CatGachaController(self.project_root, self.settings, self)
         self._page = 0
         self._update_state = {
             "checking": False, "downloading": False, "progress": 0.0,
@@ -85,15 +88,15 @@ class AppController(QObject):
         self._clipboard = self.app.clipboard()
         self._clipboard.dataChanged.connect(self._schedule_clipboard_check)
         self.app.applicationStateChanged.connect(self._on_application_state_changed)
-        cat = daily_cat_assets(self.project_root)
-        self.cat_number = cat.number
-        self.cat_source = QUrl.fromLocalFile(str(cat.ui_path)).toString()
+        self.cats.stateChanged.connect(self.catChanged)
         self.updateProgressReported.connect(lambda value, status: self._set_update(progress=value, status=status))
         self._connect_routes()
 
     def _connect_routes(self):
-        for controller in (self.download, self.batch, self.image_studio, self.config):
+        for controller in (self.download, self.batch, self.image_studio, self.config, self.cats):
             controller.notificationRequested.connect(self.toastRequested)
+        self.download.successfulDownload.connect(self.cats.recordSuccessfulDownloads)
+        self.batch.successfulDownload.connect(self.cats.recordSuccessfulDownloads)
         self.download.navigateRequested.connect(self.navigate)
         self.download.queueRequested.connect(self._send_url_to_queue)
         self.download.imageFilesRequested.connect(self._send_files_to_image)
@@ -158,13 +161,30 @@ class AppController(QObject):
     def version(self):
         return self.app_version
 
-    @Property(str, constant=True)
+    @Property(str, notify=catChanged)
     def catSource(self):
-        return self.cat_source
+        return str(self.cats.state.get("equippedSource", ""))
 
-    @Property(int, constant=True)
+    @Property(int, notify=catChanged)
     def catNumber(self):
-        return self.cat_number
+        equipped = str(self.cats.state.get("equippedId", ""))
+        return next((index + 1 for index, cat in enumerate(self.cats.catalog) if cat.id == equipped), 1)
+
+    @Property(int, notify=catChanged)
+    def catCount(self):
+        return len(self.cats.catalog)
+
+    @Property(str, notify=catChanged)
+    def catName(self):
+        return str(self.cats.state.get("equippedName", ""))
+
+    @Property(int, notify=catChanged)
+    def catRarity(self):
+        return int(self.cats.state.get("equippedRarity", 1))
+
+    @Property(str, notify=catChanged)
+    def catRarityColor(self):
+        return str(self.cats.state.get("equippedColor", "#A8B0BC"))
 
     @Property("QVariantMap", notify=updateStateChanged)
     def updateState(self):
@@ -179,7 +199,19 @@ class AppController(QObject):
 
     @Slot(str)
     def navigate(self, name):
-        aliases = {"download": 0, "batch": 1, "queue": 1, "image": 2, "settings": 3}
+        aliases = {
+            "download": 0,
+            "batch": 1,
+            "queue": 1,
+            "image": 2,
+            "cats": 3,
+            "gatitos": 3,
+            "personalizacion": 3,
+            "personalización": 3,
+            "settings": 4,
+            "configuracion": 4,
+            "configuración": 4,
+        }
         index = aliases.get(str(name).lower())
         if index is None:
             try:
@@ -351,6 +383,7 @@ def run_qt_app(project_root: str | Path, app_version: str) -> int:
     context.setContextProperty("batchController", controller.batch)
     context.setContextProperty("imageController", controller.image_studio)
     context.setContextProperty("settingsController", controller.config)
+    context.setContextProperty("catController", controller.cats)
     context.setContextProperty("presetStore", controller.presets)
     context.setContextProperty("dialogBroker", controller.dialogs)
     qml = _qml_root(resource_root) / "Main.qml"

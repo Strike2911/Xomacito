@@ -96,6 +96,7 @@ class BatchController(QObject):
     queueEvent = Signal(str, str, str, float)
     imageFilesRequested = Signal("QStringList")
     notificationRequested = Signal(str, str, str)
+    successfulDownload = Signal(int)
 
     ROLES = [
         "jobId", "title", "status", "detail", "progress", "thumbnail", "jobType",
@@ -126,6 +127,7 @@ class BatchController(QObject):
         self._selected_audio_choices: list[str] = []
         self._pending_jobs: dict[str, Job] = {}
         self._playlist_entries: dict[str, list[dict]] = {}
+        self._rewarded_jobs: set[str] = set()
         self.runtime = _RuntimeAdapter(self, self.ffmpeg, settings, presets)
         self.manager = QueueManager(self.runtime, self._queue_callback)
         self.queueEvent.connect(self._apply_queue_event)
@@ -317,6 +319,15 @@ class BatchController(QObject):
             job.progress_message = detail
             self._replace_job_model(job, status, detail, progress)
             if self._state["selectedJobId"] == job_id: self.selectJob(job_id)
+            if status == "COMPLETED" and job_id not in self._rewarded_jobs:
+                if job.job_type == "DOWNLOAD":
+                    self._rewarded_jobs.add(job_id)
+                    self.successfulDownload.emit(1)
+                elif job.job_type == "PLAYLIST":
+                    self._rewarded_jobs.add(job_id)
+                    successful_items = max(0, int(getattr(job, "completed_items", 0) or 0))
+                    if successful_items:
+                        self.successfulDownload.emit(successful_items)
 
     def _model_item(self, job, status=None, detail="", progress=0.0):
         config = job.config

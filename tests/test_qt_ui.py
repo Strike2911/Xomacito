@@ -39,6 +39,7 @@ for name, value in (
     ("appController", controller), ("theme", controller.theme),
     ("downloadController", controller.download), ("batchController", controller.batch),
     ("imageController", controller.image_studio), ("settingsController", controller.config),
+    ("catController", controller.cats),
     ("presetStore", controller.presets), ("dialogBroker", controller.dialogs),
 ):
     context.setContextProperty(name, value)
@@ -47,7 +48,7 @@ window = engine.rootObjects()[0]
 window.setProperty("width", 1280)
 window.setProperty("height", 720)
 controller.releaseNoticeRequested.emit(release_notice_for_version("2.0"))
-QTest.qWait(320)
+QTest.qWait(650)
 popup = window.findChild(QObject, "releaseNoticePopup")
 splash = window.findChild(QObject, "dowpSplash")
 assert popup is not None and popup.property("opened") is True
@@ -84,6 +85,7 @@ for name, value in (
     ("appController", controller), ("theme", controller.theme),
     ("downloadController", controller.download), ("batchController", controller.batch),
     ("imageController", controller.image_studio), ("settingsController", controller.config),
+    ("catController", controller.cats),
     ("presetStore", controller.presets), ("dialogBroker", controller.dialogs),
 ):
     context.setContextProperty(name, value)
@@ -181,6 +183,84 @@ raise SystemExit(application.run_qt_app(Path.cwd(), '2.0'))
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
         self.assertNotIn("QQmlApplicationEngine failed", result.stderr)
 
+    def test_cat_collection_page_and_reveal_fit_1280x720(self):
+        script = r'''
+from pathlib import Path
+from PySide6.QtCore import QObject, QUrl
+from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuick import QQuickItem
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
+from src.ui.application import AppController
+
+app = QApplication([])
+root = Path.cwd()
+controller = AppController(app, root, "2.0")
+engine = QQmlApplicationEngine()
+context = engine.rootContext()
+for name, value in (
+    ("appController", controller), ("theme", controller.theme),
+    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("imageController", controller.image_studio), ("settingsController", controller.config),
+    ("catController", controller.cats), ("presetStore", controller.presets),
+    ("dialogBroker", controller.dialogs),
+):
+    context.setContextProperty(name, value)
+engine.load(QUrl.fromLocalFile(str(root / "src/ui/qml/Main.qml")))
+window = engine.rootObjects()[0]
+window.setProperty("width", 1280)
+window.setProperty("height", 720)
+QTest.qWait(120)
+assert list(controller.pages) == [
+    "Descargar", "Cola", "Estudio de Imagen", "Personalización", "Configuración"
+]
+nav_row = window.findChild(QQuickItem, "navigationBar")
+assert nav_row is not None
+nav_buttons = sorted(
+    [item for item in nav_row.childItems() if item.property("text") in list(controller.pages)],
+    key=lambda item: float(item.property("x")),
+)
+assert len(nav_buttons) == 5
+nav_widths = [float(button.property("width")) for button in nav_buttons]
+assert max(nav_widths) - min(nav_widths) < 1.5
+last_nav = nav_buttons[-1]
+assert float(nav_row.property("width")) - (
+    float(last_nav.property("x")) + float(last_nav.property("width"))
+) < 1.5
+controller.setPage(3)
+QTest.qWait(650)
+assert window.findChild(QObject, "catCollectionGrid") is not None
+assert window.findChild(QObject, "catRollButton") is not None
+personalization_button = nav_buttons[3]
+assert personalization_button.property("showRollBadge") is False
+controller.cats.recordSuccessfulDownloads(20)
+QTest.qWait(180)
+assert personalization_button.property("showRollBadge") is True
+assert int(personalization_button.property("pendingCatRolls")) == 2
+result = controller.cats.roll()
+assert result
+QTest.qWait(650)
+popup = window.findChild(QObject, "catRevealPopup")
+assert popup is not None and popup.property("opened") is True
+assert popup.property("y") >= 0
+assert popup.property("y") + popup.property("height") <= 720
+card = window.findChild(QObject, "catRevealCard")
+assert card is not None
+assert float(card.property("width")) <= float(popup.property("width"))
+assert float(card.property("height")) <= float(popup.property("height"))
+QTest.qWait(1600)
+assert float(popup.property("revealProgress")) > 0.99
+controller.shutdown()
+'''
+        with tempfile.TemporaryDirectory() as appdata:
+            environment = dict(os.environ)
+            environment.update({"QT_QPA_PLATFORM": "offscreen", "APPDATA": appdata})
+            result = subprocess.run(
+                [sys.executable, "-c", script], cwd=ROOT, env=environment,
+                capture_output=True, text=True, timeout=25, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
     def test_real_qml_controls_reach_python_controllers(self):
         script = r'''
 from pathlib import Path
@@ -200,6 +280,7 @@ for name, value in (
     ("appController", controller), ("theme", controller.theme),
     ("downloadController", controller.download), ("batchController", controller.batch),
     ("imageController", controller.image_studio), ("settingsController", controller.config),
+    ("catController", controller.cats),
     ("presetStore", controller.presets), ("dialogBroker", controller.dialogs),
 ):
     context.setContextProperty(name, value)
@@ -236,7 +317,7 @@ QTest.keyClick(window, Qt.Key_Escape)
 QTest.qWait(180)
 assert advanced_popup.property("opened") is False
 
-controller.setPage(3)
+controller.setPage(4)
 QTest.qWait(120)
 theme_combo = window.findChild(QObject, "themeCombo")
 assert theme_combo is not None
@@ -295,10 +376,10 @@ controller.shutdown()
             self.assertNotIn("@Slot(str, object)", source)
             self.assertIn('@Slot(str, "QVariant")', source)
 
-    def test_all_four_pages_are_persistent_and_have_tools(self):
+    def test_all_five_pages_are_persistent_and_have_tools(self):
         main = (ROOT / "src" / "ui" / "qml" / "Main.qml").read_text(encoding="utf-8")
         self.assertIn("StackLayout", main)
-        for page in ("DownloadPage", "QueuePage", "ImageStudioPage", "SettingsPage"):
+        for page in ("DownloadPage", "QueuePage", "ImageStudioPage", "SettingsPage", "CatGachaPage"):
             self.assertEqual(main.count(page), 1)
 
         download = (ROOT / "src" / "ui" / "qml" / "pages" / "DownloadPage.qml").read_text(encoding="utf-8")

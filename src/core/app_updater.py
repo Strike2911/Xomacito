@@ -38,6 +38,7 @@ RELEASE_NOTICES = {
             "Pantalla principal compacta, incluso en 1280 × 720.",
             "Temas instantáneos y pegado automático de enlaces.",
             "Descargas, recodificación e imagen con el flujo completo.",
+            "¡Nuevo sistema de GACHA! Desbloquea gatos y personaliza tu avatar.",
         ],
         "contributors": ["Jorge", "Xomas", "Megas", "Playera"],
         "closing": "Gracias por ser los principales contribuyentes de ideas del proyecto.",

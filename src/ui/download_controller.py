@@ -104,6 +104,7 @@ class DownloadController(QObject):
     queueRequested = Signal(str)
     imageFilesRequested = Signal("QStringList")
     notificationRequested = Signal(str, str, str)
+    successfulDownload = Signal(int)
 
     def __init__(
         self,
@@ -159,6 +160,7 @@ class DownloadController(QObject):
         self._analysis_info: dict | None = None
         self._image_post: dict | None = None
         self._active_worker = None
+        self._current_counts_as_download = False
         self.progressReported.connect(self._apply_progress)
 
     @Property("QVariantMap", notify=stateChanged)
@@ -479,6 +481,7 @@ class DownloadController(QObject):
             self.notificationRequested.emit("error", "Carpeta inválida", str(exc))
             return
         self.cancellation.clear()
+        self._current_counts_as_download = not bool(self._state["localFile"])
         self._set_state(busy=True, progress=0.0, status="Preparando proceso…", lastOutput="")
         options = self._collect_process_options()
         self._active_worker = self.pool.submit(
@@ -780,9 +783,13 @@ class DownloadController(QObject):
     def _operation_success(self, output: str):
         self._set_state(busy=False, progress=1.0, status="Proceso completado.", lastOutput=output)
         self.notificationRequested.emit("success", "Proceso completado", output)
+        if self._current_counts_as_download:
+            self.successfulDownload.emit(1)
+        self._current_counts_as_download = False
 
     def _operation_error(self, message: str, detail: str = ""):
         cancelled = self.cancellation.is_set() or "cancel" in message.lower()
+        self._current_counts_as_download = False
         self._set_state(busy=False, progress=0.0, status="Proceso cancelado." if cancelled else message)
         if not cancelled:
             print(detail)

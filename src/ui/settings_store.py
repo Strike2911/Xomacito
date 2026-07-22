@@ -42,6 +42,17 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "appearance_mode": "Dark",
     "clean_titles": True,
     "release_notice_seen_version": "",
+    "cat_gacha": {
+        "schema": 1,
+        "downloadProgress": 0,
+        "earnedRolls": 0,
+        "totalDownloads": 0,
+        "totalRolls": 0,
+        "lastDailyRoll": "",
+        "unlockedIds": [],
+        "equippedId": "",
+        "duplicates": {},
+    },
 }
 
 
