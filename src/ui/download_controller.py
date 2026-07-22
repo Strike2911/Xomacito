@@ -32,7 +32,13 @@ from src.core.video_upscaler import VideoUpscaler
 from src.core.ytdlp_runtime import configure_ytdlp_options, friendly_ytdlp_error
 
 from .dialog_broker import DialogBroker
-from .media_logic import build_media_choices, normalize_info, safe_filename, seconds_from_time
+from .media_logic import (
+    build_media_choices,
+    normalize_info,
+    preferred_merge_container,
+    safe_filename,
+    seconds_from_time,
+)
 from .presets import ALPHA_PRESET, PresetStore, resolve_recode_parameters
 from .settings_store import SettingsStore
 from .workers import TaskPool
@@ -92,6 +98,28 @@ DEFAULT_OPTIONS: dict[str, Any] = {
 }
 
 
+def reveal_in_file_manager(target: str | Path) -> bool:
+    """Abre la ubicación del resultado y, cuando es posible, lo selecciona."""
+    path = Path(str(target)).expanduser()
+    try:
+        resolved = path.resolve(strict=False)
+    except OSError:
+        resolved = path
+
+    if sys.platform == "win32":
+        try:
+            if resolved.is_file():
+                subprocess.Popen(["explorer.exe", "/select,", str(resolved)])
+            else:
+                subprocess.Popen(["explorer.exe", str(resolved)])
+            return True
+        except OSError:
+            pass
+
+    folder = resolved if resolved.is_dir() else resolved.parent
+    return bool(QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder))))
+
+
 class DownloadController(QObject):
     stateChanged = Signal()
     optionsChanged = Signal()
@@ -102,7 +130,6 @@ class DownloadController(QObject):
     progressReported = Signal(float, str)
     navigateRequested = Signal(str)
     queueRequested = Signal(str)
-    imageFilesRequested = Signal("QStringList")
     notificationRequested = Signal(str, str, str)
     successfulDownload = Signal(int)
 
@@ -564,6 +591,9 @@ class DownloadController(QObject):
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "referer": options["url"],
         }
+        merge_container = preferred_merge_container(video, audio)
+        if merge_container:
+            ydl_options["merge_output_format"] = merge_container
         subtitle = options.get("subtitle")
         if options.get("downloadSubtitles") and subtitle:
             ydl_options.update({
@@ -602,6 +632,7 @@ class DownloadController(QObject):
             fallback = dict(ydl_options)
             fallback.pop("download_ranges", None)
             fallback.pop("force_keyframes_at_cuts", None)
+            fallback.pop("merge_output_format", None)
             fallback["format"] = "bestaudio/best" if options["mode"] == "Solo Audio" else "bestvideo+bestaudio/best"
             choice = self.dialogs.ask(
                 "choice", "Calidad no disponible",
@@ -628,7 +659,7 @@ class DownloadController(QObject):
         output = self._resolve_output(Path(options["output_path"]), options["title"] + "_recodificado", container)
         if not output:
             raise UserCancelledError("Recodificación cancelada.")
-        temporary = output.with_name(output.name + ".temp")
+        temporary = output.with_name(f"{output.stem}.temp{output.suffix}")
         pre_params = []
         expected_duration = float(options.get("duration") or 0)
         if options.get("fragmentEnabled") and (options.get("startTime") or options.get("endTime")):
@@ -781,10 +812,12 @@ class DownloadController(QObject):
         self._set_state(progress=value, status=message)
 
     def _operation_success(self, output: str):
+        completed_download = self._current_counts_as_download
         self._set_state(busy=False, progress=1.0, status="Proceso completado.", lastOutput=output)
         self.notificationRequested.emit("success", "Proceso completado", output)
-        if self._current_counts_as_download:
+        if completed_download:
             self.successfulDownload.emit(1)
+            reveal_in_file_manager(output)
         self._current_counts_as_download = False
 
     def _operation_error(self, message: str, detail: str = ""):
@@ -818,9 +851,7 @@ class DownloadController(QObject):
     @Slot()
     def openOutput(self):
         target = self._state["lastOutput"] or self._state["outputPath"]
-        path = Path(str(target))
-        folder = path if path.is_dir() else path.parent
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+        reveal_in_file_manager(target)
 
     @Slot()
     def sendToQueue(self):
@@ -828,13 +859,6 @@ class DownloadController(QObject):
         if url:
             self.queueRequested.emit(url)
             self.navigateRequested.emit("queue")
-
-    @Slot()
-    def sendResultToImageStudio(self):
-        target = self._state["lastOutput"]
-        if target and Path(target).is_file():
-            self.imageFilesRequested.emit([target])
-            self.navigateRequested.emit("images")
 
     @Slot()
     def saveThumbnail(self):

@@ -313,13 +313,7 @@ Item {
                         visible: viewState.lastOutput.length > 0
                         text: "Resultado"
                         kind: "secondary"
-                        onClicked: resultMenu.open()
-                        Menu {
-                            id: resultMenu
-                            y: -height - 5
-                            MenuItem { text: "Abrir resultado"; onTriggered: downloadController.openOutput() }
-                            MenuItem { text: "Enviar a Estudio de Imagen"; onTriggered: downloadController.sendResultToImageStudio() }
-                        }
+                        onClicked: downloadController.openOutput()
                     }
                 }
             }
