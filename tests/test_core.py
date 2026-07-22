@@ -135,7 +135,11 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertEqual(notice["title"], "Xomacito 2.0")
         self.assertEqual(notice["subtitle"], "LA DowP KILLER UPDATE!!")
         self.assertEqual(notice["contributors"], ["Jorge", "Xomas", "Megas", "Playera"])
-        self.assertGreaterEqual(len(notice["highlights"]), 4)
+        self.assertIn(
+            "¡Nuevo sistema de GACHA! Desbloquea gatos y personaliza tu avatar.",
+            notice["highlights"],
+        )
+        self.assertGreaterEqual(len(notice["highlights"]), 5)
 
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
