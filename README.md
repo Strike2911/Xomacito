@@ -19,7 +19,9 @@ Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión 
 - Descarga de fotografías públicas de Instagram, incluidas publicaciones con `img_index`.
 - Corte de fragmentos y recodificación mediante FFmpeg.
 - Conversión, optimización y procesamiento de imágenes.
-- Temas claros y oscuros, fondos adaptativos y gatito diario.
+- Temas claros y oscuros, fondos adaptativos y colección gatuna equipable.
+- Gacha de gatos: una tirada diaria gratis y una tirada adicional por cada 10 descargas exitosas.
+- 105 gatos con nombres propios y rarezas estables de 1 a 5 estrellas.
 - Sonido de confirmación al finalizar una descarga.
 - Instalación por usuario y desinstalador integrado en Windows.
 - Instancia única: al abrir Xomacito otra vez se enfoca la ventana existente.
@@ -46,6 +48,12 @@ Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión 
 - `.build/XomacitoInstaller.spec`: definición del paquete PyInstaller.
 
 Los runtimes de compilación, herramientas externas, modelos, builds y preferencias personales están excluidos del repositorio. Los binarios distribuidos a usuarios se publican únicamente en [GitHub Releases](https://github.com/Strike2911/Xomacito/releases).
+
+Para volver a importar o ampliar la colección sin cambiar las rarezas ya asignadas:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\import_cat_collection.py <carpeta-de-imágenes> .\assets\cat-collection
+```
 
 ## Desarrollo
 

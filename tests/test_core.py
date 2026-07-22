@@ -689,7 +689,8 @@ class XomacitoWrapperTests(unittest.TestCase):
     def test_professional_shell_is_present(self):
         main_qml = (ROOT / "src" / "ui" / "qml" / "Main.qml").read_text(encoding="utf-8")
         self.assertIn('text: "XOMACITO"', main_qml)
-        self.assertIn("GATITO DEL DÍA", main_qml)
+        self.assertIn("appController.catName", main_qml)
+        self.assertIn("appController.catRarity", main_qml)
         self.assertIn("DownloadPage", main_qml)
         self.assertIn("ImageStudioPage", main_qml)
         self.assertIn("StackLayout", main_qml)

@@ -242,10 +242,17 @@ Item {
                 Layout.fillWidth: true; implicitHeight: 160; cardColor: theme.colors.backgroundAlt
                 RowLayout {
                     anchors.fill: parent; anchors.margins: 20; spacing: 20
-                    Image { source: appController.catSource; Layout.preferredWidth: 105; Layout.preferredHeight: 105; fillMode: Image.PreserveAspectFit; mipmap: true }
+                    CatAvatar {
+                        source: appController.catSource
+                        rarity: appController.catRarity
+                        rarityColor: appController.catRarityColor
+                        animatedEffects: settingsController.state.animationsEnabled
+                        Layout.preferredWidth: 105
+                        Layout.preferredHeight: 105
+                    }
                     ColumnLayout {
                         Layout.fillWidth: true
-                        Text { text: "Gatito del día " + appController.catNumber + "/8"; color: theme.colors.accent; font.pixelSize: 11; font.weight: Font.Bold }
+                        Text { text: appController.catRarity + "★ · " + appController.catName; color: appController.catRarityColor; font.pixelSize: 11; font.weight: Font.Bold }
                         Text { text: "Motor Qt Quick + Python"; color: theme.colors.text; font.pixelSize: 20; font.weight: Font.DemiBold }
                         Text { Layout.fillWidth: true; text: "La interfaz usa render acelerado, páginas persistentes y tareas en segundo plano. Tus archivos se procesan localmente."; color: theme.colors.textMuted; wrapMode: Text.WordWrap; font.pixelSize: 11 }
                     }

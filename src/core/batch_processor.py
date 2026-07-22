@@ -62,6 +62,7 @@ class Job:
         self.progress_message: str = ""
         self.final_filepath: str | None = None
         self.total_items: int = 0
+        self.completed_items: int = 0
         self.job_type: str = job_type
 
 class QueueManager:
@@ -311,6 +312,8 @@ class QueueManager:
                 try:
                     # 1. Capturamos la ruta
                     thumb_path = self._download_best_thumb_png(entry, playlist_dir, video_title)
+                    if thumb_path:
+                        job.completed_items += 1
                     
                     # 2. Verificar si Auto-envío está activo
                     if thumb_path and self.main_app.batch_tab.auto_send_to_it_checkbox.get() == 1:
@@ -482,6 +485,9 @@ class QueueManager:
                     # ✅ Lógica de Auto-Envío para ítems de Playlist
                     if thumb_path and self.main_app.batch_tab.auto_send_to_it_checkbox.get() == 1:
                         self.main_app.after(0, self.main_app.image_tab._process_imported_files, [thumb_path])
+
+                if final_path_for_import and os.path.exists(final_path_for_import):
+                    job.completed_items += 1
                     
             except Exception as e:
                 print(f"ERROR procesando item {i+1} ({video_title}): {e}")

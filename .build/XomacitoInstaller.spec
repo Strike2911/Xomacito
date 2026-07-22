@@ -13,6 +13,7 @@ datas = [
     (str(PROJECT_ROOT / "src" / "ui" / "themes"), "src/ui/themes"),
     (str(PROJECT_ROOT / "assets" / "xomacito-logo.png"), "assets"),
     (str(PROJECT_ROOT / "assets" / "cat-icons"), "assets/cat-icons"),
+    (str(PROJECT_ROOT / "assets" / "cat-collection"), "assets/cat-collection"),
     (str(PROJECT_ROOT / "assets" / "download-complete.mp3"), "assets"),
     (str(PROJECT_ROOT / "Xomacito-icon.ico"), "."),
 ]

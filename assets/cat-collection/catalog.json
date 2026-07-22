@@ -1,0 +1,848 @@
+{
+  "schema": 1,
+  "collection": "Gatos de Xomacito",
+  "source": "Colección aportada por Strike2911",
+  "firstImportRandomized": false,
+  "cats": [
+    {
+      "id": "cat-cce7d93737ac",
+      "name": "ATAQUE LOLI",
+      "rarity": 2,
+      "image": "cat-cce7d93737ac.jpg",
+      "avatar": "cat-cce7d93737ac-avatar.webp",
+      "originalFile": "ATAQUE LOLI.jpg"
+    },
+    {
+      "id": "cat-3a59baa03982",
+      "name": "CARA DE ASOMBRO",
+      "rarity": 4,
+      "image": "cat-3a59baa03982.jpg",
+      "avatar": "cat-3a59baa03982-avatar.webp",
+      "originalFile": "CARA DE ASOMBRO.jpg"
+    },
+    {
+      "id": "cat-f539cf60cd72",
+      "name": "CHAD",
+      "rarity": 1,
+      "image": "cat-f539cf60cd72.jpg",
+      "avatar": "cat-f539cf60cd72-avatar.webp",
+      "originalFile": "CHAD.jpg"
+    },
+    {
+      "id": "cat-57baf2530327",
+      "name": "CORRIDOS GATUNOS",
+      "rarity": 2,
+      "image": "cat-57baf2530327.jpg",
+      "avatar": "cat-57baf2530327-avatar.webp",
+      "originalFile": "CORRIDOS GATUNOS.jpg"
+    },
+    {
+      "id": "cat-ab38e4323df4",
+      "name": "EL CHAPULIN",
+      "rarity": 3,
+      "image": "cat-ab38e4323df4.jpg",
+      "avatar": "cat-ab38e4323df4-avatar.webp",
+      "originalFile": "EL CHAPULIN.jpg"
+    },
+    {
+      "id": "cat-5f11d37275bf",
+      "name": "ELEVEMONOS",
+      "rarity": 2,
+      "image": "cat-5f11d37275bf.jpg",
+      "avatar": "cat-5f11d37275bf-avatar.webp",
+      "originalFile": "ELEVEMONOS.jpg"
+    },
+    {
+      "id": "cat-9f7b93d87f0d",
+      "name": "FOUR FOUR FOUR",
+      "rarity": 1,
+      "image": "cat-9f7b93d87f0d.jpg",
+      "avatar": "cat-9f7b93d87f0d-avatar.webp",
+      "originalFile": "FOUR FOUR FOUR.jpg"
+    },
+    {
+      "id": "cat-25c9c2d55dd1",
+      "name": "GAAAA",
+      "rarity": 3,
+      "image": "cat-25c9c2d55dd1.jpg",
+      "avatar": "cat-25c9c2d55dd1-avatar.webp",
+      "originalFile": "GAAAA.jpg"
+    },
+    {
+      "id": "cat-764d3e67c4d6",
+      "name": "GABEJA",
+      "rarity": 3,
+      "image": "cat-764d3e67c4d6.jpg",
+      "avatar": "cat-764d3e67c4d6-avatar.webp",
+      "originalFile": "GABEJA.jpg"
+    },
+    {
+      "id": "cat-0ca9c525ec8d",
+      "name": "GATA PUTA",
+      "rarity": 5,
+      "image": "cat-0ca9c525ec8d.jpg",
+      "avatar": "cat-0ca9c525ec8d-avatar.webp",
+      "originalFile": "GATA PUTA.jpg"
+    },
+    {
+      "id": "cat-c3e5d849aaf1",
+      "name": "GATITO PENSATIVO",
+      "rarity": 3,
+      "image": "cat-c3e5d849aaf1.jpg",
+      "avatar": "cat-c3e5d849aaf1-avatar.webp",
+      "originalFile": "GATITO PENSATIVO.jpg"
+    },
+    {
+      "id": "cat-c1e5dd4260b1",
+      "name": "GATO APENADO",
+      "rarity": 1,
+      "image": "cat-c1e5dd4260b1.jpg",
+      "avatar": "cat-c1e5dd4260b1-avatar.webp",
+      "originalFile": "GATO APENADO.jpg"
+    },
+    {
+      "id": "cat-1d8b7b31ead0",
+      "name": "GATO ATRAS NEGGA",
+      "rarity": 1,
+      "image": "cat-1d8b7b31ead0.jpg",
+      "avatar": "cat-1d8b7b31ead0-avatar.webp",
+      "originalFile": "GATO ATRAS NEGGA.jpg"
+    },
+    {
+      "id": "cat-03ffd51c1f63",
+      "name": "GATO BUHO MANGO",
+      "rarity": 2,
+      "image": "cat-03ffd51c1f63.jpg",
+      "avatar": "cat-03ffd51c1f63-avatar.webp",
+      "originalFile": "GATO BUHO MANGO.jpg"
+    },
+    {
+      "id": "cat-ece5e967a836",
+      "name": "GATO CHIQUITO",
+      "rarity": 1,
+      "image": "cat-ece5e967a836.jpg",
+      "avatar": "cat-ece5e967a836-avatar.webp",
+      "originalFile": "GATO CHIQUITO.jpg"
+    },
+    {
+      "id": "cat-78c9e93978da",
+      "name": "GATO CICLOPE",
+      "rarity": 2,
+      "image": "cat-78c9e93978da.jpg",
+      "avatar": "cat-78c9e93978da-avatar.webp",
+      "originalFile": "GATO CICLOPE.jpg"
+    },
+    {
+      "id": "cat-41f56f0e849e",
+      "name": "GATO CIERVO",
+      "rarity": 3,
+      "image": "cat-41f56f0e849e.jpg",
+      "avatar": "cat-41f56f0e849e-avatar.webp",
+      "originalFile": "GATO CIERVO.jpg"
+    },
+    {
+      "id": "cat-e616ff52f30d",
+      "name": "GATO CON CEJAS",
+      "rarity": 2,
+      "image": "cat-e616ff52f30d.jpg",
+      "avatar": "cat-e616ff52f30d-avatar.webp",
+      "originalFile": "GATO CON CEJAS.jpg"
+    },
+    {
+      "id": "cat-723238baff93",
+      "name": "GATO CON NECESIDAD DE PENE",
+      "rarity": 2,
+      "image": "cat-723238baff93.jpg",
+      "avatar": "cat-723238baff93-avatar.webp",
+      "originalFile": "GATO CON NECESIDAD DE PENE.jpg"
+    },
+    {
+      "id": "cat-a8f9ddf5d9a7",
+      "name": "GATO CON OJOS ENTRECERRADOS",
+      "rarity": 1,
+      "image": "cat-a8f9ddf5d9a7.jpg",
+      "avatar": "cat-a8f9ddf5d9a7-avatar.webp",
+      "originalFile": "GATO CON OJOS ENTRECERRADOS.jpg"
+    },
+    {
+      "id": "cat-2a7f6a7fc801",
+      "name": "GATO CONDUCTOR",
+      "rarity": 5,
+      "image": "cat-2a7f6a7fc801.jpg",
+      "avatar": "cat-2a7f6a7fc801-avatar.webp",
+      "originalFile": "GATO CONDUCTOR.jpg"
+    },
+    {
+      "id": "cat-56f95ffd8ed1",
+      "name": "GATO CONEJO",
+      "rarity": 2,
+      "image": "cat-56f95ffd8ed1.jpg",
+      "avatar": "cat-56f95ffd8ed1-avatar.webp",
+      "originalFile": "GATO CONEJO.jpg"
+    },
+    {
+      "id": "cat-65e243565280",
+      "name": "GATO COOL",
+      "rarity": 3,
+      "image": "cat-65e243565280.jpg",
+      "avatar": "cat-65e243565280-avatar.webp",
+      "originalFile": "GATO COOL.jpg"
+    },
+    {
+      "id": "cat-3d288e090f04",
+      "name": "GATO CP",
+      "rarity": 1,
+      "image": "cat-3d288e090f04.jpg",
+      "avatar": "cat-3d288e090f04-avatar.webp",
+      "originalFile": "GATO CP.jpg"
+    },
+    {
+      "id": "cat-c6737f642f05",
+      "name": "GATO CRISTIANO",
+      "rarity": 3,
+      "image": "cat-c6737f642f05.jpg",
+      "avatar": "cat-c6737f642f05-avatar.webp",
+      "originalFile": "GATO CRISTIANO.jpg"
+    },
+    {
+      "id": "cat-a91d7b555e03",
+      "name": "GATO CUERDO",
+      "rarity": 1,
+      "image": "cat-a91d7b555e03.jpg",
+      "avatar": "cat-a91d7b555e03-avatar.webp",
+      "originalFile": "GATO CUERDO.jpg"
+    },
+    {
+      "id": "cat-80ff7f4dbd91",
+      "name": "GATO CULO",
+      "rarity": 2,
+      "image": "cat-80ff7f4dbd91.jpg",
+      "avatar": "cat-80ff7f4dbd91-avatar.webp",
+      "originalFile": "GATO CULO.jpg"
+    },
+    {
+      "id": "cat-6f9d314cd2cb",
+      "name": "GATO DE ARRIBA",
+      "rarity": 2,
+      "image": "cat-6f9d314cd2cb.jpg",
+      "avatar": "cat-6f9d314cd2cb-avatar.webp",
+      "originalFile": "GATO DE ARRIBA.jpg"
+    },
+    {
+      "id": "cat-b4368fa41edb",
+      "name": "GATO DE LA IDEOLOGIA CORRECTA",
+      "rarity": 3,
+      "image": "cat-b4368fa41edb.jpg",
+      "avatar": "cat-b4368fa41edb-avatar.webp",
+      "originalFile": "GATO DE LA IDEOLOGIA CORRECTA.jpg"
+    },
+    {
+      "id": "cat-93931df03c55",
+      "name": "GATO DETECTIVE",
+      "rarity": 4,
+      "image": "cat-93931df03c55.jpg",
+      "avatar": "cat-93931df03c55-avatar.webp",
+      "originalFile": "GATO DETECTIVE.jpg"
+    },
+    {
+      "id": "cat-5f139ff978a3",
+      "name": "GATO DIOS",
+      "rarity": 4,
+      "image": "cat-5f139ff978a3.jpg",
+      "avatar": "cat-5f139ff978a3-avatar.webp",
+      "originalFile": "GATO DIOS.jpg"
+    },
+    {
+      "id": "cat-7d3be7698746",
+      "name": "GATO DORMIDO",
+      "rarity": 2,
+      "image": "cat-7d3be7698746.jpg",
+      "avatar": "cat-7d3be7698746-avatar.webp",
+      "originalFile": "GATO DORMIDO.jpg"
+    },
+    {
+      "id": "cat-2668bdeb0608",
+      "name": "GATO DOWN",
+      "rarity": 1,
+      "image": "cat-2668bdeb0608.jpg",
+      "avatar": "cat-2668bdeb0608-avatar.webp",
+      "originalFile": "GATO DOWN.jpg"
+    },
+    {
+      "id": "cat-f02b5c872ce8",
+      "name": "GATO DUCHA",
+      "rarity": 1,
+      "image": "cat-f02b5c872ce8.jpg",
+      "avatar": "cat-f02b5c872ce8-avatar.webp",
+      "originalFile": "GATO DUCHA.jpg"
+    },
+    {
+      "id": "cat-70d051e3cdc3",
+      "name": "GATO ENAMORADO",
+      "rarity": 3,
+      "image": "cat-70d051e3cdc3.jpg",
+      "avatar": "cat-70d051e3cdc3-avatar.webp",
+      "originalFile": "GATO ENAMORADO.jpg"
+    },
+    {
+      "id": "cat-919f833c9054",
+      "name": "GATO FELIZ",
+      "rarity": 1,
+      "image": "cat-919f833c9054.jpg",
+      "avatar": "cat-919f833c9054-avatar.webp",
+      "originalFile": "GATO FELIZ.jpg"
+    },
+    {
+      "id": "cat-1c4f9080cb04",
+      "name": "GATO FOCA",
+      "rarity": 4,
+      "image": "cat-1c4f9080cb04.jpg",
+      "avatar": "cat-1c4f9080cb04-avatar.webp",
+      "originalFile": "GATO FOCA.jpg"
+    },
+    {
+      "id": "cat-915602b2df5f",
+      "name": "GATO FUCK YOU",
+      "rarity": 1,
+      "image": "cat-915602b2df5f.jpg",
+      "avatar": "cat-915602b2df5f-avatar.webp",
+      "originalFile": "GATO FUCK YOU.jpg"
+    },
+    {
+      "id": "cat-f539dc1c2b24",
+      "name": "GATO GALLETA",
+      "rarity": 3,
+      "image": "cat-f539dc1c2b24.jpg",
+      "avatar": "cat-f539dc1c2b24-avatar.webp",
+      "originalFile": "GATO GALLETA.jpg"
+    },
+    {
+      "id": "cat-7bfb02f5b4c6",
+      "name": "GATO GAYMER",
+      "rarity": 2,
+      "image": "cat-7bfb02f5b4c6.jpg",
+      "avatar": "cat-7bfb02f5b4c6-avatar.webp",
+      "originalFile": "GATO GAYMER.jpg"
+    },
+    {
+      "id": "cat-9c7df073821e",
+      "name": "GATO GENOCIDA",
+      "rarity": 1,
+      "image": "cat-9c7df073821e.jpg",
+      "avatar": "cat-9c7df073821e-avatar.webp",
+      "originalFile": "GATO GENOCIDA.jpg"
+    },
+    {
+      "id": "cat-84d0a01fd6de",
+      "name": "GATO GUIÑO",
+      "rarity": 3,
+      "image": "cat-84d0a01fd6de.jpg",
+      "avatar": "cat-84d0a01fd6de-avatar.webp",
+      "originalFile": "GATO GUIÑO.jpg"
+    },
+    {
+      "id": "cat-9d5d7cc2731c",
+      "name": "GATO HENTAI",
+      "rarity": 3,
+      "image": "cat-9d5d7cc2731c.jpg",
+      "avatar": "cat-9d5d7cc2731c-avatar.webp",
+      "originalFile": "GATO HENTAI.jpg"
+    },
+    {
+      "id": "cat-f4a6e039841a",
+      "name": "GATO IMPLORANDO POR PENE",
+      "rarity": 2,
+      "image": "cat-f4a6e039841a.jpg",
+      "avatar": "cat-f4a6e039841a-avatar.webp",
+      "originalFile": "GATO IMPLORANDO POR PENE.jpg"
+    },
+    {
+      "id": "cat-def791a58c21",
+      "name": "GATO IMPLORANDO POR TETAS",
+      "rarity": 2,
+      "image": "cat-def791a58c21.jpg",
+      "avatar": "cat-def791a58c21-avatar.webp",
+      "originalFile": "GATO IMPLORANDO POR TETAS.jpg"
+    },
+    {
+      "id": "cat-bfadb104aeaa",
+      "name": "GATO INTELIGENTE",
+      "rarity": 1,
+      "image": "cat-bfadb104aeaa.jpg",
+      "avatar": "cat-bfadb104aeaa-avatar.webp",
+      "originalFile": "GATO INTELIGENTE.jpg"
+    },
+    {
+      "id": "cat-1c99dd7b1cc2",
+      "name": "GATO LENGUA",
+      "rarity": 1,
+      "image": "cat-1c99dd7b1cc2.jpg",
+      "avatar": "cat-1c99dd7b1cc2-avatar.webp",
+      "originalFile": "GATO LENGUA.jpg"
+    },
+    {
+      "id": "cat-855a784bd141",
+      "name": "GATO LOCURA",
+      "rarity": 1,
+      "image": "cat-855a784bd141.jpg",
+      "avatar": "cat-855a784bd141-avatar.webp",
+      "originalFile": "GATO LOCURA.jpg"
+    },
+    {
+      "id": "cat-1683d765c66e",
+      "name": "GATO MACLOVIN",
+      "rarity": 1,
+      "image": "cat-1683d765c66e.jpg",
+      "avatar": "cat-1683d765c66e-avatar.webp",
+      "originalFile": "GATO MACLOVIN.jpg"
+    },
+    {
+      "id": "cat-6f08664122e1",
+      "name": "GATO MAGO",
+      "rarity": 1,
+      "image": "cat-6f08664122e1.jpg",
+      "avatar": "cat-6f08664122e1-avatar.webp",
+      "originalFile": "GATO MAGO.jpg"
+    },
+    {
+      "id": "cat-5ac99bc29562",
+      "name": "GATO MANGO",
+      "rarity": 1,
+      "image": "cat-5ac99bc29562.jpg",
+      "avatar": "cat-5ac99bc29562-avatar.webp",
+      "originalFile": "GATO MANGO.jpg"
+    },
+    {
+      "id": "cat-e6001e26a0ed",
+      "name": "GATO MOVISTAR",
+      "rarity": 1,
+      "image": "cat-e6001e26a0ed.jpg",
+      "avatar": "cat-e6001e26a0ed-avatar.webp",
+      "originalFile": "GATO MOVISTAR.jpg"
+    },
+    {
+      "id": "cat-b2b307b99018",
+      "name": "GATO MUJER",
+      "rarity": 1,
+      "image": "cat-b2b307b99018.jpg",
+      "avatar": "cat-b2b307b99018-avatar.webp",
+      "originalFile": "GATO MUJER.jpg"
+    },
+    {
+      "id": "cat-59b9b1997b94",
+      "name": "GATO MUNDO",
+      "rarity": 3,
+      "image": "cat-59b9b1997b94.jpg",
+      "avatar": "cat-59b9b1997b94-avatar.webp",
+      "originalFile": "GATO MUNDO.jpg"
+    },
+    {
+      "id": "cat-855f675ac835",
+      "name": "GATO NARANJA",
+      "rarity": 1,
+      "image": "cat-855f675ac835.jpg",
+      "avatar": "cat-855f675ac835-avatar.webp",
+      "originalFile": "GATO NARANJA.jpg"
+    },
+    {
+      "id": "cat-8631d5430d04",
+      "name": "GATO NAVIDAD",
+      "rarity": 2,
+      "image": "cat-8631d5430d04.jpg",
+      "avatar": "cat-8631d5430d04-avatar.webp",
+      "originalFile": "GATO NAVIDAD.jpg"
+    },
+    {
+      "id": "cat-c312687abd1b",
+      "name": "GATO NEMO",
+      "rarity": 3,
+      "image": "cat-c312687abd1b.jpg",
+      "avatar": "cat-c312687abd1b-avatar.webp",
+      "originalFile": "GATO NEMO.jpg"
+    },
+    {
+      "id": "cat-3ac7e2fe6f9e",
+      "name": "GATO NERVIOSO",
+      "rarity": 1,
+      "image": "cat-3ac7e2fe6f9e.jpg",
+      "avatar": "cat-3ac7e2fe6f9e-avatar.webp",
+      "originalFile": "GATO NERVIOSO.jpg"
+    },
+    {
+      "id": "cat-d528a357f667",
+      "name": "GATO ODIO",
+      "rarity": 2,
+      "image": "cat-d528a357f667.jpg",
+      "avatar": "cat-d528a357f667-avatar.webp",
+      "originalFile": "GATO ODIO.jpg"
+    },
+    {
+      "id": "cat-5b9212e22df6",
+      "name": "GATO OJOS",
+      "rarity": 1,
+      "image": "cat-5b9212e22df6.jpg",
+      "avatar": "cat-5b9212e22df6-avatar.webp",
+      "originalFile": "GATO OJOS.jpg"
+    },
+    {
+      "id": "cat-909e10bb0d1b",
+      "name": "GATO PAN",
+      "rarity": 3,
+      "image": "cat-909e10bb0d1b.jpg",
+      "avatar": "cat-909e10bb0d1b-avatar.webp",
+      "originalFile": "GATO PAN.jpg"
+    },
+    {
+      "id": "cat-14d209067d6e",
+      "name": "GATO PANCITO",
+      "rarity": 1,
+      "image": "cat-14d209067d6e.jpg",
+      "avatar": "cat-14d209067d6e-avatar.webp",
+      "originalFile": "GATO PANCITO.jpg"
+    },
+    {
+      "id": "cat-b8334df9028f",
+      "name": "GATO PAZ",
+      "rarity": 2,
+      "image": "cat-b8334df9028f.jpg",
+      "avatar": "cat-b8334df9028f-avatar.webp",
+      "originalFile": "GATO PAZ.jpg"
+    },
+    {
+      "id": "cat-4cb098b7addc",
+      "name": "GATO PELAO",
+      "rarity": 1,
+      "image": "cat-4cb098b7addc.jpg",
+      "avatar": "cat-4cb098b7addc-avatar.webp",
+      "originalFile": "GATO PELAO.jpg"
+    },
+    {
+      "id": "cat-94e6a7c08f4e",
+      "name": "GATO PELON",
+      "rarity": 4,
+      "image": "cat-94e6a7c08f4e.jpg",
+      "avatar": "cat-94e6a7c08f4e-avatar.webp",
+      "originalFile": "GATO PELON.jpg"
+    },
+    {
+      "id": "cat-c041e1f0ab5a",
+      "name": "GATO PENSATIVO",
+      "rarity": 1,
+      "image": "cat-c041e1f0ab5a.png",
+      "avatar": "cat-c041e1f0ab5a-avatar.webp",
+      "originalFile": "GATO PENSATIVO.png"
+    },
+    {
+      "id": "cat-ab6bd6dc66a2",
+      "name": "GATO PERUANO",
+      "rarity": 1,
+      "image": "cat-ab6bd6dc66a2.jpg",
+      "avatar": "cat-ab6bd6dc66a2-avatar.webp",
+      "originalFile": "GATO PERUANO.jpg"
+    },
+    {
+      "id": "cat-05be9be9ca2d",
+      "name": "GATO PEZ",
+      "rarity": 1,
+      "image": "cat-05be9be9ca2d.jpg",
+      "avatar": "cat-05be9be9ca2d-avatar.webp",
+      "originalFile": "GATO PEZ.jpg"
+    },
+    {
+      "id": "cat-d26a33f78978",
+      "name": "GATO PEZCADO",
+      "rarity": 2,
+      "image": "cat-d26a33f78978.jpg",
+      "avatar": "cat-d26a33f78978-avatar.webp",
+      "originalFile": "GATO PEZCADO.jpg"
+    },
+    {
+      "id": "cat-572e6e78723b",
+      "name": "GATO PIERCING",
+      "rarity": 2,
+      "image": "cat-572e6e78723b.jpg",
+      "avatar": "cat-572e6e78723b-avatar.webp",
+      "originalFile": "GATO PIERCING.jpg"
+    },
+    {
+      "id": "cat-80c746c7529e",
+      "name": "GATO PINCHINLIN",
+      "rarity": 1,
+      "image": "cat-80c746c7529e.jpg",
+      "avatar": "cat-80c746c7529e-avatar.webp",
+      "originalFile": "GATO PINCHINLIN.jpg"
+    },
+    {
+      "id": "cat-e78cf17a3656",
+      "name": "GATO PIXELART",
+      "rarity": 2,
+      "image": "cat-e78cf17a3656.jpg",
+      "avatar": "cat-e78cf17a3656-avatar.webp",
+      "originalFile": "GATO PIXELART.jpg"
+    },
+    {
+      "id": "cat-39018fb703a2",
+      "name": "GATO PREPUCIO",
+      "rarity": 1,
+      "image": "cat-39018fb703a2.jpg",
+      "avatar": "cat-39018fb703a2-avatar.webp",
+      "originalFile": "GATO PREPUCIO.jpg"
+    },
+    {
+      "id": "cat-412378ffef6b",
+      "name": "GATO PROYECTADO",
+      "rarity": 1,
+      "image": "cat-412378ffef6b.jpg",
+      "avatar": "cat-412378ffef6b-avatar.webp",
+      "originalFile": "GATO PROYECTADO.jpg"
+    },
+    {
+      "id": "cat-19624f7d5233",
+      "name": "GATO PS1",
+      "rarity": 2,
+      "image": "cat-19624f7d5233.jpg",
+      "avatar": "cat-19624f7d5233-avatar.webp",
+      "originalFile": "GATO PS1.jpg"
+    },
+    {
+      "id": "cat-acd399dccfe9",
+      "name": "GATO PS2",
+      "rarity": 4,
+      "image": "cat-acd399dccfe9.jpg",
+      "avatar": "cat-acd399dccfe9-avatar.webp",
+      "originalFile": "GATO PS2.jpg"
+    },
+    {
+      "id": "cat-f6fd6c7f4318",
+      "name": "GATO PSICOPATA",
+      "rarity": 4,
+      "image": "cat-f6fd6c7f4318.jpg",
+      "avatar": "cat-f6fd6c7f4318-avatar.webp",
+      "originalFile": "GATO PSICOPATA.jpg"
+    },
+    {
+      "id": "cat-b5033e4ca089",
+      "name": "GATO PUDU",
+      "rarity": 3,
+      "image": "cat-b5033e4ca089.jpg",
+      "avatar": "cat-b5033e4ca089-avatar.webp",
+      "originalFile": "GATO PUDU.jpg"
+    },
+    {
+      "id": "cat-b2df823bc8cf",
+      "name": "GATO PUERCOESPIN",
+      "rarity": 1,
+      "image": "cat-b2df823bc8cf.jpg",
+      "avatar": "cat-b2df823bc8cf-avatar.webp",
+      "originalFile": "GATO PUERCOESPIN.jpg"
+    },
+    {
+      "id": "cat-8f36e3336c8c",
+      "name": "GATO PVZ",
+      "rarity": 1,
+      "image": "cat-8f36e3336c8c.jpg",
+      "avatar": "cat-8f36e3336c8c-avatar.webp",
+      "originalFile": "GATO PVZ.jpg"
+    },
+    {
+      "id": "cat-163a222a5760",
+      "name": "GATO QUERIENDO TULITA",
+      "rarity": 1,
+      "image": "cat-163a222a5760.jpg",
+      "avatar": "cat-163a222a5760-avatar.webp",
+      "originalFile": "GATO QUERIENDO TULITA.jpg"
+    },
+    {
+      "id": "cat-1b188fd7e0a3",
+      "name": "GATO RARO",
+      "rarity": 5,
+      "image": "cat-1b188fd7e0a3.jpg",
+      "avatar": "cat-1b188fd7e0a3-avatar.webp",
+      "originalFile": "GATO RARO.jpg"
+    },
+    {
+      "id": "cat-d143a1578eb7",
+      "name": "GATO TOMATE",
+      "rarity": 1,
+      "image": "cat-d143a1578eb7.jpg",
+      "avatar": "cat-d143a1578eb7-avatar.webp",
+      "originalFile": "GATO TOMATE.jpg"
+    },
+    {
+      "id": "cat-d0855234cdbc",
+      "name": "GATO TRISTE",
+      "rarity": 1,
+      "image": "cat-d0855234cdbc.jpg",
+      "avatar": "cat-d0855234cdbc-avatar.webp",
+      "originalFile": "GATO TRISTE.jpg"
+    },
+    {
+      "id": "cat-a09cea027523",
+      "name": "GATO VOID",
+      "rarity": 4,
+      "image": "cat-a09cea027523.jpg",
+      "avatar": "cat-a09cea027523-avatar.webp",
+      "originalFile": "GATO VOID.jpg"
+    },
+    {
+      "id": "cat-5ddb51d21f15",
+      "name": "GATO VOLADOR",
+      "rarity": 2,
+      "image": "cat-5ddb51d21f15.jpg",
+      "avatar": "cat-5ddb51d21f15-avatar.webp",
+      "originalFile": "GATO VOLADOR.jpg"
+    },
+    {
+      "id": "cat-916179ba1e97",
+      "name": "GATO WEON",
+      "rarity": 5,
+      "image": "cat-916179ba1e97.jpg",
+      "avatar": "cat-916179ba1e97-avatar.webp",
+      "originalFile": "GATO WEON.jpg"
+    },
+    {
+      "id": "cat-e616d3a36866",
+      "name": "GATO WHITE",
+      "rarity": 1,
+      "image": "cat-e616d3a36866.jpg",
+      "avatar": "cat-e616d3a36866-avatar.webp",
+      "originalFile": "GATO WHITE.jpg"
+    },
+    {
+      "id": "cat-54df6df04d00",
+      "name": "GATOPRO",
+      "rarity": 4,
+      "image": "cat-54df6df04d00.jpg",
+      "avatar": "cat-54df6df04d00-avatar.webp",
+      "originalFile": "GATOPRO.jpg"
+    },
+    {
+      "id": "cat-1ae45b559307",
+      "name": "GATOS BUHOS",
+      "rarity": 1,
+      "image": "cat-1ae45b559307.jpg",
+      "avatar": "cat-1ae45b559307-avatar.webp",
+      "originalFile": "GATOS BUHOS.jpg"
+    },
+    {
+      "id": "cat-3816f4a936b7",
+      "name": "HACE FRIO QUIERO SEXO",
+      "rarity": 2,
+      "image": "cat-3816f4a936b7.jpg",
+      "avatar": "cat-3816f4a936b7-avatar.webp",
+      "originalFile": "HACE FRIO QUIERO SEXO.jpg"
+    },
+    {
+      "id": "cat-a0958da00076",
+      "name": "JEJE",
+      "rarity": 2,
+      "image": "cat-a0958da00076.jpg",
+      "avatar": "cat-a0958da00076-avatar.webp",
+      "originalFile": "JEJE.jpg"
+    },
+    {
+      "id": "cat-e71e6d2cc7b3",
+      "name": "JIJIJIJA",
+      "rarity": 1,
+      "image": "cat-e71e6d2cc7b3.jpg",
+      "avatar": "cat-e71e6d2cc7b3-avatar.webp",
+      "originalFile": "JIJIJIJA.jpg"
+    },
+    {
+      "id": "cat-4f069cb4aa3f",
+      "name": "JORGE",
+      "rarity": 1,
+      "image": "cat-4f069cb4aa3f.jpg",
+      "avatar": "cat-4f069cb4aa3f-avatar.webp",
+      "originalFile": "JORGE.jpg"
+    },
+    {
+      "id": "cat-97575d0c8d17",
+      "name": "JOTCHUA ENAMORADO",
+      "rarity": 2,
+      "image": "cat-97575d0c8d17.jpg",
+      "avatar": "cat-97575d0c8d17-avatar.webp",
+      "originalFile": "JOTCHUA ENAMORADO.jpg"
+    },
+    {
+      "id": "cat-588080687be2",
+      "name": "LOCURA",
+      "rarity": 1,
+      "image": "cat-588080687be2.jpg",
+      "avatar": "cat-588080687be2-avatar.webp",
+      "originalFile": "LOCURA.jpg"
+    },
+    {
+      "id": "cat-1d8fb0659fdf",
+      "name": "MEXIGATO",
+      "rarity": 1,
+      "image": "cat-1d8fb0659fdf.jpg",
+      "avatar": "cat-1d8fb0659fdf-avatar.webp",
+      "originalFile": "MEXIGATO.jpg"
+    },
+    {
+      "id": "cat-35c428c969e2",
+      "name": "MY NIGGA",
+      "rarity": 1,
+      "image": "cat-35c428c969e2.jpg",
+      "avatar": "cat-35c428c969e2-avatar.webp",
+      "originalFile": "MY NIGGA.jpg"
+    },
+    {
+      "id": "cat-cbf39f5eeb76",
+      "name": "PERRO FEO",
+      "rarity": 1,
+      "image": "cat-cbf39f5eeb76.jpg",
+      "avatar": "cat-cbf39f5eeb76-avatar.webp",
+      "originalFile": "PERRO FEO.jpg"
+    },
+    {
+      "id": "cat-6c167b2e632b",
+      "name": "RATA AL 40700",
+      "rarity": 2,
+      "image": "cat-6c167b2e632b.jpg",
+      "avatar": "cat-6c167b2e632b-avatar.webp",
+      "originalFile": "RATA AL 40700.jpg"
+    },
+    {
+      "id": "cat-4096337af0df",
+      "name": "RAWR",
+      "rarity": 3,
+      "image": "cat-4096337af0df.jpg",
+      "avatar": "cat-4096337af0df-avatar.webp",
+      "originalFile": "RAWR.jpg"
+    },
+    {
+      "id": "cat-1dc2bdb2779c",
+      "name": "really nigga",
+      "rarity": 2,
+      "image": "cat-1dc2bdb2779c.jpg",
+      "avatar": "cat-1dc2bdb2779c-avatar.webp",
+      "originalFile": "really nigga.jpg"
+    },
+    {
+      "id": "cat-0ac1969ab0b0",
+      "name": "SIGMA",
+      "rarity": 2,
+      "image": "cat-0ac1969ab0b0.jpg",
+      "avatar": "cat-0ac1969ab0b0-avatar.webp",
+      "originalFile": "SIGMA.jpg"
+    },
+    {
+      "id": "cat-9862a14577c1",
+      "name": "TE CHINGUE W",
+      "rarity": 1,
+      "image": "cat-9862a14577c1.jpg",
+      "avatar": "cat-9862a14577c1-avatar.webp",
+      "originalFile": "TE CHINGUE W.jpg"
+    },
+    {
+      "id": "cat-f7af68ca6e04",
+      "name": "UwU",
+      "rarity": 2,
+      "image": "cat-f7af68ca6e04.jpg",
+      "avatar": "cat-f7af68ca6e04-avatar.webp",
+      "originalFile": "UwU.jpg"
+    }
+  ]
+}
