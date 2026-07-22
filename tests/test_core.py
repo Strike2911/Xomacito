@@ -96,12 +96,18 @@ class XomacitoWrapperTests(unittest.TestCase):
         outdated = check_for_app_update(
             "1.5.1", session=FakeSession(self._release_payload("v1.6.0"))
         )
+        version_20 = check_for_app_update(
+            "2.0", session=FakeSession(self._release_payload("v2.1"))
+        )
 
         self.assertFalse(equal["update_available"])
         self.assertFalse(newer_local["update_available"])
         self.assertTrue(outdated["update_available"])
         self.assertEqual(outdated["latest_version"], "1.6.0")
         self.assertTrue(outdated["installer_url"].endswith("/Xomacito-1.6.0-Setup.exe"))
+        self.assertTrue(version_20["update_available"])
+        self.assertEqual(version_20["latest_version"], "2.1")
+        self.assertTrue(version_20["installer_url"].endswith("/Xomacito-2.1-Setup.exe"))
 
     def test_update_prompt_displays_the_release_message(self):
         prompt = build_update_prompt(
@@ -128,11 +134,11 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("VIVA LA GRASA!!! :V", notice["message"])
         self.assertIsNone(release_notice_for_version("1.6.3"))
 
-    def test_release_20_has_the_dowp_notice_and_idea_contributors(self):
-        notice = release_notice_for_version("v2.0")
+    def test_release_21_has_the_dowp_notice_and_idea_contributors(self):
+        notice = release_notice_for_version("v2.1")
 
         self.assertIsNotNone(notice)
-        self.assertEqual(notice["title"], "Xomacito 2.0")
+        self.assertEqual(notice["title"], "Xomacito 2.1")
         self.assertEqual(notice["subtitle"], "LA DowP KILLER UPDATE!!")
         self.assertEqual(notice["contributors"], ["Jorge", "Xomas", "Megas", "Playera"])
         self.assertIn(
@@ -967,7 +973,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-2.0-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-2.1-Setup.exe", build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)

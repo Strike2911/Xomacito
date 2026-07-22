@@ -25,9 +25,9 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
-    "2.0": {
+    "2.1": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
-        "title": "Xomacito 2.0",
+        "title": "Xomacito 2.1",
         "subtitle": "LA DowP KILLER UPDATE!!",
         "message": (
             "Xomacito dio el salto a una interfaz más rápida, limpia y fluida, "

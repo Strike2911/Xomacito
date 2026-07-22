@@ -32,7 +32,7 @@ from src.ui.application import AppController
 
 app = QApplication([])
 root = Path.cwd()
-controller = AppController(app, root, "2.0")
+controller = AppController(app, root, "2.1")
 engine = QQmlApplicationEngine()
 context = engine.rootContext()
 for name, value in (
@@ -47,7 +47,7 @@ engine.load(QUrl.fromLocalFile(str(root / "src/ui/qml/Main.qml")))
 window = engine.rootObjects()[0]
 window.setProperty("width", 1280)
 window.setProperty("height", 720)
-controller.releaseNoticeRequested.emit(release_notice_for_version("2.0"))
+controller.releaseNoticeRequested.emit(release_notice_for_version("2.1"))
 QTest.qWait(650)
 popup = window.findChild(QObject, "releaseNoticePopup")
 splash = window.findChild(QObject, "dowpSplash")
@@ -78,7 +78,7 @@ from src.ui.application import AppController
 
 app = QApplication([])
 root = Path.cwd()
-controller = AppController(app, root, "2.0")
+controller = AppController(app, root, "2.1")
 engine = QQmlApplicationEngine()
 context = engine.rootContext()
 for name, value in (
@@ -135,7 +135,7 @@ from PySide6.QtWidgets import QApplication
 from src.ui.application import AppController
 
 app = QApplication([])
-controller = AppController(app, Path.cwd(), "2.0")
+controller = AppController(app, Path.cwd(), "2.1")
 
 app.clipboard().setText("https://example.test/video")
 QTest.qWait(220)
@@ -171,7 +171,7 @@ from pathlib import Path
 from PySide6.QtCore import QTimer
 import src.ui.application as application
 application.AppController.showStartupMessages = lambda self: QTimer.singleShot(450, self.app.quit)
-raise SystemExit(application.run_qt_app(Path.cwd(), '2.0'))
+raise SystemExit(application.run_qt_app(Path.cwd(), '2.1'))
 """
         with tempfile.TemporaryDirectory() as appdata:
             environment = dict(os.environ)
@@ -195,7 +195,7 @@ from src.ui.application import AppController
 
 app = QApplication([])
 root = Path.cwd()
-controller = AppController(app, root, "2.0")
+controller = AppController(app, root, "2.1")
 engine = QQmlApplicationEngine()
 context = engine.rootContext()
 for name, value in (
@@ -273,7 +273,7 @@ from src.ui.application import AppController
 
 app = QApplication([])
 root = Path.cwd()
-controller = AppController(app, root, "2.0")
+controller = AppController(app, root, "2.1")
 engine = QQmlApplicationEngine()
 context = engine.rootContext()
 for name, value in (
