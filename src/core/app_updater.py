@@ -25,6 +25,25 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "2.3": {
+        "eyebrow": "ACTUALIZACIÓN INSTALADA",
+        "title": "Xomacito 2.3",
+        "subtitle": "¡LA PREMIERE READY UPDATE!!",
+        "message": (
+            "La recodificación vuelve a funcionar de forma confiable y Xomacito "
+            "prepara resultados MP4 más compatibles con Premiere. Encontrar el archivo "
+            "terminado ahora también es inmediato."
+        ),
+        "highlights": [
+            "Recodificación reparada para entradas MKV y salidas MP4.",
+            "Audio AAC/M4A prioritario para evitar MKV cuando los streams lo permiten.",
+            "Temporales y contenedores FFmpeg validados en todos los flujos.",
+            "El botón Resultado abre la ubicación y selecciona el archivo.",
+            "El Explorador se abre automáticamente al terminar una descarga.",
+        ],
+        "contributors": ["Jorge", "Xomas", "Megas", "Playera", "Mensva"],
+        "closing": "Gracias por seguir aportando ideas y pruebas al proyecto.",
+    },
     "2.2": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
         "title": "Xomacito 2.2",

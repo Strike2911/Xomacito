@@ -7,6 +7,7 @@ import re
 import sys
 import time
 from .exceptions import UserCancelledError
+from .constants import FORMAT_MUXER_MAP
 from main import FFMPEG_BIN_DIR
 
 CODEC_PROFILES = {
@@ -341,6 +342,10 @@ def normalize_recode_parameters(ffmpeg_params, output_container=None):
         params.extend(["-map_chapters", "0"])
 
     normalized_container = str(output_container or "").strip().lower()
+    if normalized_container and "-f" not in params:
+        muxer = FORMAT_MUXER_MAP.get(normalized_container, normalized_container.lstrip("."))
+        if muxer:
+            params.extend(["-f", muxer])
     if normalized_container in FASTSTART_CONTAINERS and "-movflags" not in params:
         params.extend(["-movflags", "+faststart"])
 

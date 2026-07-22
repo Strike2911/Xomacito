@@ -10,7 +10,8 @@ from unittest.mock import patch
 from PIL import Image
 
 from src.core.daily_icon import daily_cat_assets
-from src.ui.media_logic import build_media_choices, normalize_info
+from src.ui.download_controller import reveal_in_file_manager
+from src.ui.media_logic import build_media_choices, normalize_info, preferred_merge_container
 from src.ui.application import normalize_clipboard_url
 from src.ui.presets import ALPHA_PRESET, BUILT_IN_PRESETS, resolve_recode_parameters
 from src.ui.settings_store import SettingsStore
@@ -426,6 +427,43 @@ controller.shutdown()
         self.assertTrue(choices["video"])
         self.assertTrue(choices["audio"])
         self.assertIn("es", choices["subtitles"])
+
+    def test_mp4_download_prefers_aac_audio_and_an_mp4_merge(self):
+        info = normalize_info({
+            "id": "premiere", "title": "Premiere", "duration": 12,
+            "formats": [
+                {"format_id": "v", "ext": "mp4", "vcodec": "avc1.4d401f", "acodec": "none", "height": 1080},
+                {"format_id": "opus", "ext": "webm", "vcodec": "none", "acodec": "opus", "abr": 160},
+                {"format_id": "aac", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "abr": 128},
+            ],
+        })
+        choices = build_media_choices(info)
+        self.assertEqual(choices["audio"][0]["formatId"], "aac")
+        self.assertTrue(choices["audio"][0]["compatible"])
+        self.assertEqual(preferred_merge_container(choices["video"][0], choices["audio"][0]), "mp4")
+        self.assertEqual(preferred_merge_container(choices["video"][0], choices["audio"][1]), "")
+
+    def test_result_button_reveals_the_file_without_an_image_studio_menu(self):
+        download_page = (ROOT / "src" / "ui" / "qml" / "pages" / "DownloadPage.qml").read_text(encoding="utf-8")
+        self.assertIn("onClicked: downloadController.openOutput()", download_page)
+        self.assertNotIn("Enviar a Estudio de Imagen", download_page)
+        self.assertNotIn("sendResultToImageStudio", download_page)
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = Path(directory) / "resultado.mp4"
+            result.write_bytes(b"demo")
+            with patch("src.ui.download_controller.sys.platform", "win32"), patch(
+                "src.ui.download_controller.subprocess.Popen"
+            ) as popen:
+                self.assertTrue(reveal_in_file_manager(result))
+            self.assertEqual(popen.call_args.args[0][0:2], ["explorer.exe", "/select,"])
+            self.assertEqual(Path(popen.call_args.args[0][2]), result.resolve())
+
+    def test_successful_download_opens_its_location_automatically(self):
+        controller_source = (ROOT / "src" / "ui" / "download_controller.py").read_text(encoding="utf-8")
+        success_handler = controller_source.split("def _operation_success", 1)[1].split("def _operation_error", 1)[0]
+        self.assertIn("if completed_download:", success_handler)
+        self.assertIn("reveal_in_file_manager(output)", success_handler)
 
     def test_alpha_preset_is_prores_4444(self):
         params, container = resolve_recode_parameters(BUILT_IN_PRESETS[ALPHA_PRESET])

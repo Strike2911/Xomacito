@@ -9,8 +9,20 @@ FAST_MODE_SUPPORTED_DOMAINS = ["youtube.com", "youtu.be", "soundcloud.com", "x.c
 "archive.org", "archive.org", "archive.org", "archive.org", "archive.org", "archive.org", "archive.org"]
 
 FORMAT_MUXER_MAP = {
+    ".mp4": "mp4",
     ".m4a": "mp4",
-    ".wma": "asf"
+    ".mov": "mov",
+    ".mkv": "matroska",
+    ".webm": "webm",
+    ".avi": "avi",
+    ".gif": "gif",
+    ".mp3": "mp3",
+    ".wav": "wav",
+    ".flac": "flac",
+    ".ogg": "ogg",
+    ".opus": "opus",
+    ".aac": "adts",
+    ".wma": "asf",
 }
 
 LANG_CODE_MAP = {

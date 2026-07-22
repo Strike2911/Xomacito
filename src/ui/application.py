@@ -103,7 +103,6 @@ class AppController(QObject):
         self.cats.revealRequested.connect(self._play_cat_reveal)
         self.download.navigateRequested.connect(self.navigate)
         self.download.queueRequested.connect(self._send_url_to_queue)
-        self.download.imageFilesRequested.connect(self._send_files_to_image)
         self.batch.imageFilesRequested.connect(self._send_files_to_image)
 
     @Slot(int)

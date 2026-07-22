@@ -1981,7 +1981,8 @@ class QueueManager:
             # Resolver conflictos de archivo
             final_recoded_path, backup_file_path = self._resolve_batch_conflict(desired_recoded_path, "Sobrescribir")
 
-            temp_output_path = final_recoded_path + ".temp"
+            output_root, output_extension = os.path.splitext(final_recoded_path)
+            temp_output_path = f"{output_root}.temp{output_extension}"
 
             final_ffmpeg_params = []
             pre_params = []

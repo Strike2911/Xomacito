@@ -161,6 +161,19 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("actualiz", highlights)
         self.assertEqual(notice["title"], "Xomacito 2.2")
 
+    def test_release_23_notice_mentions_recode_results_and_mensva(self):
+        notice = release_notice_for_version("v2.3")
+
+        self.assertIsNotNone(notice)
+        highlights = " ".join(notice["highlights"]).casefold()
+        self.assertEqual(notice["title"], "Xomacito 2.3")
+        self.assertIn("recodific", highlights)
+        self.assertIn("resultado", highlights)
+        self.assertEqual(
+            notice["contributors"],
+            ["Jorge", "Xomas", "Megas", "Playera", "Mensva"],
+        )
+
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
         digest = "sha256:" + hashlib.sha256(payload).hexdigest()
@@ -442,6 +455,8 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("-map_chapters", normalized)
         self.assertIn("-movflags", normalized)
         self.assertEqual(normalized.count("-movflags"), 1)
+        self.assertEqual(normalized[normalized.index("-f") + 1], "mp4")
+        self.assertEqual(normalized.count("-f"), 1)
 
     def test_old_encoder_cache_cannot_restore_obsolete_recode_profiles(self):
         cache = {
@@ -502,7 +517,7 @@ class XomacitoWrapperTests(unittest.TestCase):
                     "output_file": str(output),
                     "output_container": ".mp4",
                     "duration": 1,
-                    "ffmpeg_params": ["-f", "mp4", *profile, "-an"],
+                    "ffmpeg_params": [*profile, "-an"],
                     "mode": "Video+Audio",
                     "selected_video_stream_index": 0,
                     "selected_audio_stream_index": None,
@@ -566,7 +581,7 @@ class XomacitoWrapperTests(unittest.TestCase):
                     "output_file": str(output),
                     "output_container": ".mov",
                     "duration": 0.5,
-                    "ffmpeg_params": ["-f", "mov", *profiles["4444 Liviano (Alpha 8-bit)"], "-an"],
+                    "ffmpeg_params": [*profiles["4444 Liviano (Alpha 8-bit)"], "-an"],
                     "mode": "Video+Audio",
                     "selected_video_stream_index": 0,
                     "selected_audio_stream_index": None,
@@ -1009,7 +1024,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-2.2-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-2.3-Setup.exe", build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)

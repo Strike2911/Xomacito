@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 APP_NAME = "Xomacito"
-APP_VERSION = "2.2"
+APP_VERSION = "2.3"
 
 FROZEN = bool(getattr(sys, "frozen", False))
 PROJECT_ROOT = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
