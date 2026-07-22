@@ -1,5 +1,5 @@
 #define MyAppName "Xomacito"
-#define MyAppVersion "2.1"
+#define MyAppVersion "2.2"
 #define MyAppPublisher "Xomacito"
 #define MyAppExeName "Xomacito.exe"
 #define ProjectRoot ".."
@@ -21,7 +21,7 @@ OutputBaseFilename=Xomacito-{#MyAppVersion}-Setup
 SetupIconFile={#ProjectRoot}\Xomacito-icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName} {#MyAppVersion}
-Compression=lzma2/ultra64
+Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern dynamic
 WizardSizePercent=110
@@ -29,12 +29,12 @@ WizardSizePercent=110
 ; "force" evita dejar un proceso huérfano usando una instalación parcialmente
 ; eliminada, incluso durante instalaciones o desinstalaciones silenciosas.
 CloseApplications=force
-CloseApplicationsFilter=*.*
+CloseApplicationsFilter=Xomacito.exe,ffmpeg.exe,ffprobe.exe
 RestartApplications=no
 Uninstallable=yes
 CreateUninstallRegKey=yes
 MinVersion=10.0.17763
-VersionInfoVersion=2.1.0.0
+VersionInfoVersion=2.2.0.0
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
 VersionInfoDescription=Instalador de Xomacito
@@ -97,6 +97,9 @@ begin
   Result := '';
   if IsAutoUpdate then
   begin
+    WizardForm.PreparingLabel.Caption :=
+      'Cerrando Xomacito y preparando los archivos. Esto puede tardar unos segundos...';
+    WizardForm.PreparingLabel.Update;
     { Puente para actualizar desde 1.6.2: esa versión podía iniciar el }
     { setup antes de terminar de cerrar. Detenemos la instancia antigua antes }
     { de que Inno intente reemplazar Xomacito.exe. }
@@ -108,7 +111,7 @@ begin
       ewWaitUntilTerminated,
       ResultCode
     );
-    Sleep(1000);
+    Sleep(150);
   end;
 end;
 

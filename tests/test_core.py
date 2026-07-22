@@ -23,6 +23,11 @@ from src.core.app_updater import (
     silent_installer_command,
 )
 from src.core.daily_icon import CAT_COUNT, daily_cat_assets, daily_cat_number
+from src.core.notification_sound import (
+    GACHA_SOUND_FILENAMES,
+    completion_sound_path,
+    gacha_sound_path,
+)
 from src.core.processor import (
     CODEC_PROFILES,
     ENCODER_CACHE_SCHEMA_VERSION,
@@ -146,6 +151,15 @@ class XomacitoWrapperTests(unittest.TestCase):
             notice["highlights"],
         )
         self.assertGreaterEqual(len(notice["highlights"]), 5)
+
+    def test_release_22_notice_mentions_audio_and_installer(self):
+        notice = release_notice_for_version("v2.2")
+
+        self.assertIsNotNone(notice)
+        highlights = " ".join(notice["highlights"]).casefold()
+        self.assertIn("maullido", highlights)
+        self.assertIn("actualiz", highlights)
+        self.assertEqual(notice["title"], "Xomacito 2.2")
 
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
@@ -606,8 +620,26 @@ class XomacitoWrapperTests(unittest.TestCase):
     def test_completion_sound_is_installed(self):
         sound = ROOT / "assets" / "download-complete.mp3"
         self.assertTrue(sound.exists())
-        self.assertGreater(sound.stat().st_size, 10_000)
+        self.assertGreater(sound.stat().st_size, 5_000)
         self.assertEqual(sound.read_bytes()[:3], b"ID3")
+        self.assertEqual(completion_sound_path(), sound)
+
+    def test_gacha_reveal_sounds_cover_every_rarity(self):
+        self.assertEqual(set(GACHA_SOUND_FILENAMES), {1, 2, 3, 4, 5})
+        sizes = []
+        for rarity in range(1, 6):
+            sound = gacha_sound_path(rarity)
+            self.assertIsNotNone(sound)
+            self.assertTrue(sound.is_file())
+            self.assertGreater(sound.stat().st_size, 2_000)
+            sizes.append(sound.stat().st_size)
+        self.assertEqual(gacha_sound_path(0), gacha_sound_path(1))
+        self.assertEqual(gacha_sound_path(99), gacha_sound_path(5))
+        self.assertEqual(sizes, sorted(sizes))
+
+        application = (ROOT / "src" / "ui" / "application.py").read_text(encoding="utf-8")
+        self.assertIn("successfulDownload.connect(self._play_download_completion)", application)
+        self.assertIn("revealRequested.connect(self._play_cat_reveal)", application)
 
     def test_runtime_uses_updatable_ytdlp_zip(self):
         helper = (ROOT / "src" / "core" / "ytdlp_runtime.py").read_text(encoding="utf-8")
@@ -901,7 +933,10 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("PrivilegesRequired=lowest", installer)
         self.assertIn("OutputBaseFilename=Xomacito-{#MyAppVersion}-Setup", installer)
         self.assertIn("CloseApplications=force", installer)
-        self.assertIn("CloseApplicationsFilter=*.*", installer)
+        self.assertIn("CloseApplicationsFilter=Xomacito.exe,ffmpeg.exe,ffprobe.exe", installer)
+        self.assertNotIn("CloseApplicationsFilter=*.*", installer)
+        self.assertIn("Compression=lzma2/max", installer)
+        self.assertIn("SolidCompression=yes", installer)
         self.assertIn("[UninstallRun]", installer)
         self.assertIn('{sys}\\taskkill.exe', installer)
         self.assertIn('/F /IM ""{#MyAppExeName}""', installer)
@@ -914,7 +949,8 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("IsAutoUpdate", installer)
         self.assertIn("function PrepareToInstall", installer)
         self.assertIn("ewWaitUntilTerminated", installer)
-        self.assertIn("Sleep(1000)", installer)
+        self.assertIn("PreparingLabel.Caption", installer)
+        self.assertIn("Sleep(150)", installer)
         self.assertIn('Name: "{userappdata}\\Xomacito\\encoder_cache.json"', installer)
         self.assertIn('Name: "{app}\\_internal\\bin\\models"', installer)
         self.assertIn("procedure CurUninstallStepChanged", installer)
@@ -973,7 +1009,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-2.1-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-2.2-Setup.exe", build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)
