@@ -1,5 +1,5 @@
 #define MyAppName "Xomacito"
-#define MyAppVersion "2.0"
+#define MyAppVersion "2.1"
 #define MyAppPublisher "Xomacito"
 #define MyAppExeName "Xomacito.exe"
 #define ProjectRoot ".."
@@ -34,7 +34,7 @@ RestartApplications=no
 Uninstallable=yes
 CreateUninstallRegKey=yes
 MinVersion=10.0.17763
-VersionInfoVersion=2.0.0.0
+VersionInfoVersion=2.1.0.0
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
 VersionInfoDescription=Instalador de Xomacito
