@@ -10,8 +10,8 @@ from unittest.mock import patch
 from PIL import Image
 
 from src.core.daily_icon import daily_cat_assets
-from src.ui.download_controller import reveal_in_file_manager
-from src.ui.media_logic import build_media_choices, normalize_info, preferred_merge_container
+from src.ui.download_controller import editor_mp4_fallback_options, reveal_in_file_manager
+from src.ui.media_logic import build_media_choices, is_editor_mp4_selection, normalize_info, preferred_merge_container
 from src.ui.application import normalize_clipboard_url
 from src.ui.presets import ALPHA_PRESET, BUILT_IN_PRESETS, resolve_recode_parameters
 from src.ui.settings_store import SettingsStore
@@ -442,6 +442,38 @@ controller.shutdown()
         self.assertTrue(choices["audio"][0]["compatible"])
         self.assertEqual(preferred_merge_container(choices["video"][0], choices["audio"][0]), "mp4")
         self.assertEqual(preferred_merge_container(choices["video"][0], choices["audio"][1]), "")
+
+    def test_editor_mp4_is_selected_before_a_higher_resolution_webm(self):
+        info = normalize_info({
+            "id": "premiere-default", "title": "Premiere", "duration": 12,
+            "formats": [
+                {"format_id": "webm-4k", "ext": "webm", "vcodec": "vp9", "acodec": "none", "height": 2160, "fps": 60},
+                {"format_id": "mp4-1080", "ext": "mp4", "vcodec": "avc1.640028", "acodec": "none", "height": 1080, "fps": 60},
+                {"format_id": "opus", "ext": "webm", "vcodec": "none", "acodec": "opus", "abr": 160},
+                {"format_id": "aac", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "abr": 128},
+            ],
+        })
+        choices = build_media_choices(info)
+        self.assertEqual(choices["video"][0]["formatId"], "mp4-1080")
+        self.assertEqual(choices["audio"][0]["formatId"], "aac")
+        self.assertTrue(is_editor_mp4_selection(choices["video"][0], choices["audio"][0]))
+        self.assertEqual(preferred_merge_container(choices["video"][0], choices["audio"][0]), "mp4")
+        self.assertEqual(choices["video"][1]["formatId"], "webm-4k")
+
+    def test_webm_fallback_is_transcoded_to_h264_aac_mp4(self):
+        options = editor_mp4_fallback_options({"title": "WEBM", "mode": "Video+Audio"})
+        params, container = resolve_recode_parameters(options)
+        joined = " ".join(params)
+        self.assertEqual(container, ".mp4")
+        self.assertIn("libx264", joined)
+        self.assertIn("aac", joined)
+        self.assertFalse(options["keep_original_file"])
+
+        controller_source = (ROOT / "src" / "ui" / "download_controller.py").read_text(encoding="utf-8")
+        process_worker = controller_source.split("def _process_worker", 1)[1].split("def _download_worker", 1)[0]
+        self.assertIn('Path(input_file).suffix.lower() != ".mp4"', process_worker)
+        self.assertIn("not is_editor_mp4_selection", process_worker)
+        self.assertIn("editor_mp4_fallback_options(options)", process_worker)
 
     def test_result_button_reveals_the_file_without_an_image_studio_menu(self):
         download_page = (ROOT / "src" / "ui" / "qml" / "pages" / "DownloadPage.qml").read_text(encoding="utf-8")

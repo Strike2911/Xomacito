@@ -375,7 +375,7 @@ DEFAULT_PRIORITY = 99
 EDITOR_FRIENDLY_CRITERIA = {
     "compatible_vcodecs": [
         "h264", "avc1",  # H.264
-        "hevc", "h265",  # H.265
+        "hevc", "h265", "hvc1", "hev1",  # H.265
         "prores",        # Apple ProRes
         "dnxhd", "dnxhr", # Avid DNxHD/HR
         "cfhd",          # GoPro CineForm

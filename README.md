@@ -1,6 +1,6 @@
 # Xomacito
 
-Versión actual: **Xomacito 2.3**.
+Versión actual: **Xomacito 2.4**.
 
 Aplicación independiente para Windows que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike**.
 
@@ -19,6 +19,8 @@ Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión 
 - Descarga de fotografías públicas de Instagram, incluidas publicaciones con `img_index`.
 - Corte de fragmentos y recodificación mediante FFmpeg.
 - Conversión, optimización y procesamiento de imágenes.
+- Reescalado inteligente de imágenes y videos con perfiles optimizados según el contenido.
+- Removedor de fondos renovado con modelos BiRefNet para retratos, bordes finos y escenas complejas.
 - Temas claros y oscuros, fondos adaptativos y colección gatuna equipable.
 - Gacha de gatos: una tirada diaria gratis y una tirada adicional por cada 10 descargas exitosas.
 - 105 gatos con nombres propios y rarezas estables de 1 a 5 estrellas.

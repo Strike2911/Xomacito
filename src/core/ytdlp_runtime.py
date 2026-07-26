@@ -11,6 +11,25 @@ from pathlib import Path
 _LOAD_LOCK = threading.Lock()
 
 
+def safe_console_print(*values, sep: str = " ", end: str = "\n") -> None:
+    """Escribe diagnósticos sin dejar que la página de códigos aborte una tarea."""
+    stream = sys.stdout
+    if stream is None:
+        return
+    message = sep.join(str(value) for value in values)
+    try:
+        stream.write(message + end)
+        stream.flush()
+    except UnicodeEncodeError:
+        encoding = getattr(stream, "encoding", None) or "utf-8"
+        safe_message = message.encode(encoding, errors="replace").decode(encoding, errors="replace")
+        try:
+            stream.write(safe_message + end)
+            stream.flush()
+        except (OSError, ValueError):
+            pass
+
+
 class _LazyYtDlpModule:
     """Proxy que evita importar el motor completo hasta su primer uso real."""
 

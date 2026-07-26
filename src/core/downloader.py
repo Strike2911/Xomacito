@@ -2,6 +2,7 @@ from .ytdlp_runtime import (
     configure_ytdlp_options,
     is_youtube_access_error,
     lazy_ytdlp,
+    safe_console_print,
     youtube_access_fallback_options,
 )
 
@@ -174,14 +175,14 @@ def apply_yt_patch(ydl_opts):
     
     # Verificar Deno
     if not os.path.exists(deno_path):
-        print(f"⚠️ Deno no encontrado en {deno_path}")
+        safe_console_print(f"⚠️ Deno no encontrado en {deno_path}")
         import shutil
         system_deno = shutil.which("deno")
         if system_deno:
             deno_path = system_deno
-            print(f"✅ Usando Deno del sistema: {deno_path}")
+            safe_console_print(f"✅ Usando Deno del sistema: {deno_path}")
         else:
-            print(f"❌ Deno no disponible. El parche puede no funcionar correctamente.")
+            safe_console_print("❌ Deno no disponible. El parche puede no funcionar correctamente.")
             return ydl_opts
     
     # Configuración para cookies
@@ -203,7 +204,7 @@ def apply_yt_patch(ydl_opts):
     youtube_args['player_client'] = ['tv', 'default', '-android_sdkless', '-android_vr']
     youtube_args.pop('n_client', None)
     
-    print(f"✅ Parche aplicado (con cookies). Deno: {deno_path}")
+    safe_console_print(f"✅ Parche aplicado (con cookies). Deno: {deno_path}")
     return ydl_opts
 
 
@@ -223,7 +224,7 @@ def extract_info_resilient(url, ydl_opts, download=False, progress_callback=None
 
         if progress_callback:
             progress_callback(-1, "YouTube rechazó el enlace. Reintentando con conexión alternativa...")
-        print(f"YouTube bloqueó el primer cliente ({error}). Reintentando con web_embedded.")
+        safe_console_print(f"YouTube bloqueó el primer cliente ({error}). Reintentando con web_embedded.")
         fallback_opts = youtube_access_fallback_options(configured_opts)
         return run(fallback_opts)
 
@@ -252,9 +253,9 @@ def get_video_info(url, cookie_opts=None):
     # 🔧 SOLO aplicar parche si hay cookies
     if use_cookies:
         ydl_opts = apply_yt_patch(ydl_opts)
-        print("📝 Modo: Con cookies (parche aplicado)")
+        safe_console_print("📝 Modo: Con cookies (parche aplicado)")
     else:
-        print("📝 Modo: Sin cookies (configuración predeterminada de yt-dlp)")
+        safe_console_print("📝 Modo: Sin cookies (configuración predeterminada de yt-dlp)")
 
     try:
         info_dict = extract_info_resilient(url, ydl_opts, download=False)
@@ -264,7 +265,7 @@ def get_video_info(url, cookie_opts=None):
 
         return info_dict
     except Exception as e:
-        print(f"ERROR en get_video_info: {e}")
+        safe_console_print(f"ERROR en get_video_info: {e}")
         return None
 
 
@@ -280,9 +281,9 @@ def download_media(url, ydl_opts, progress_callback, cancellation_event: threadi
     # 🔧 SOLO aplicar parche si hay cookies
     if use_cookies:
         ydl_opts = apply_yt_patch(ydl_opts)
-        print("📥 Descarga: Con cookies (parche aplicado)")
+        safe_console_print("📥 Descarga: Con cookies (parche aplicado)")
     else:
-        print("📥 Descarga: Sin cookies (configuración predeterminada de yt-dlp)")
+        safe_console_print("📥 Descarga: Sin cookies (configuración predeterminada de yt-dlp)")
     
     # Variables para tracking de progreso en fragmentos
     is_fragment = 'download_ranges' in ydl_opts
@@ -292,7 +293,7 @@ def download_media(url, ydl_opts, progress_callback, cancellation_event: threadi
         nonlocal fragment_started
         
         if cancellation_event.is_set():
-            print("DEBUG: Evento de cancelación detectado en el hook de yt-dlp.")
+            safe_console_print("DEBUG: Evento de cancelación detectado en el hook de yt-dlp.")
             raise UserCancelledError("Descarga cancelada por el usuario.")
         
         status = d.get('status', 'N/A')
@@ -368,10 +369,10 @@ def download_media(url, ydl_opts, progress_callback, cancellation_event: threadi
         return final_filepath
         
     except UserCancelledError as e:
-        print(f"DEBUG: Operación de descarga interrumpida: {e}")
+        safe_console_print(f"DEBUG: Operación de descarga interrumpida: {e}")
         raise e
     except Exception as e:
-        print(f"Error en el proceso de descarga de yt-dlp: {e}")
+        safe_console_print(f"Error en el proceso de descarga de yt-dlp: {e}")
         raise e
     
 # =========================================================
@@ -392,7 +393,7 @@ def apply_site_specific_rules(info):
     is_twitch_clip = 'clips' in extractor or '/clip/' in url
     
     if is_twitch_clip:
-        print(f"DEBUG: 🚑 Aplicando parche de compatibilidad para Twitch CLIP ({extractor})")
+        safe_console_print(f"DEBUG: 🚑 Aplicando parche de compatibilidad para Twitch CLIP ({extractor})")
         info = _fix_twitch_clip_formats(info)
 
     return info

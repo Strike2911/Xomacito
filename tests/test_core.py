@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 import subprocess
 import sys
@@ -43,6 +44,7 @@ from src.core.single_instance import SingleInstanceGuard
 from src.core.ytdlp_runtime import (
     configure_ytdlp_options,
     is_youtube_access_error,
+    safe_console_print,
     youtube_access_fallback_options,
 )
 ROOT = Path(__file__).resolve().parents[1]
@@ -173,6 +175,16 @@ class XomacitoWrapperTests(unittest.TestCase):
             notice["contributors"],
             ["Jorge", "Xomas", "Megas", "Playera", "Mensva"],
         )
+
+    def test_release_24_is_the_zarking_update(self):
+        notice = release_notice_for_version("v2.4")
+        self.assertIsNotNone(notice)
+        self.assertEqual(notice["title"], "Xomacito 2.4")
+        self.assertEqual(notice["subtitle"], "¡LA ZARKING UPDATE!")
+        self.assertIn("Zarking", notice["contributors"])
+        highlights = " ".join(notice["highlights"]).lower()
+        self.assertIn("reescalado", highlights)
+        self.assertIn("birefnet", highlights)
 
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
@@ -688,6 +700,14 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "False")
 
+    def test_console_diagnostics_never_abort_on_windows_legacy_encoding(self):
+        raw = io.BytesIO()
+        legacy_stream = io.TextIOWrapper(raw, encoding="cp1252", errors="strict")
+        with patch("sys.stdout", legacy_stream):
+            safe_console_print("📥 Descarga: canción 嬉")
+        legacy_stream.flush()
+        self.assertIn("Descarga", raw.getvalue().decode("cp1252"))
+
     def test_youtube_403_uses_an_isolated_embedded_client_retry(self):
         original = {
             "user_agent": "old-agent",
@@ -1024,7 +1044,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-2.3-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-2.4-Setup.exe", build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)

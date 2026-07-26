@@ -29,17 +29,18 @@ from src.core.downloader import (
 from src.core.exceptions import UserCancelledError
 from src.core.processor import FFmpegProcessor, clean_and_convert_vtt_to_srt, pixel_format_has_alpha
 from src.core.video_upscaler import VideoUpscaler
-from src.core.ytdlp_runtime import configure_ytdlp_options, friendly_ytdlp_error
+from src.core.ytdlp_runtime import configure_ytdlp_options, friendly_ytdlp_error, safe_console_print
 
 from .dialog_broker import DialogBroker
 from .media_logic import (
     build_media_choices,
+    is_editor_mp4_selection,
     normalize_info,
     preferred_merge_container,
     safe_filename,
     seconds_from_time,
 )
-from .presets import ALPHA_PRESET, PresetStore, resolve_recode_parameters
+from .presets import ALPHA_PRESET, BUILT_IN_PRESETS, PresetStore, resolve_recode_parameters
 from .settings_store import SettingsStore
 from .workers import TaskPool
 
@@ -118,6 +119,16 @@ def reveal_in_file_manager(target: str | Path) -> bool:
 
     folder = resolved if resolved.is_dir() else resolved.parent
     return bool(QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder))))
+
+
+def editor_mp4_fallback_options(options: dict) -> dict:
+    """Fuerza un resultado H.264/AAC MP4 si el sitio sólo entregó WEBM/MKV."""
+    compatible = {**options, **BUILT_IN_PRESETS["Web/Móvil - H.264 Normal"]}
+    compatible.update({
+        "mode": "Video+Audio",
+        "keep_original_file": False,
+    })
+    return compatible
 
 
 class DownloadController(QObject):
@@ -570,6 +581,23 @@ class DownloadController(QObject):
             return self._recode_file(input_file, options, downloaded)
         if options.get("fragmentEnabled") and options.get("local_file"):
             return self._clip_without_recode(input_file, options)
+        if (
+            downloaded
+            and options.get("mode") == "Video+Audio"
+            and (
+                Path(input_file).suffix.lower() != ".mp4"
+                or not is_editor_mp4_selection(
+                    self._video_map.get(options.get("video_label"), {}),
+                    self._audio_map.get(options.get("audio_label"), {}),
+                )
+            )
+        ):
+            self.progressReported.emit(0.0, "Preparando MP4 compatible con editores…")
+            return self._recode_file(
+                input_file,
+                editor_mp4_fallback_options(options),
+                downloaded=True,
+            )
         return input_file
 
     def _download_worker(self, options: dict) -> str:
@@ -633,7 +661,16 @@ class DownloadController(QObject):
             fallback.pop("download_ranges", None)
             fallback.pop("force_keyframes_at_cuts", None)
             fallback.pop("merge_output_format", None)
-            fallback["format"] = "bestaudio/best" if options["mode"] == "Solo Audio" else "bestvideo+bestaudio/best"
+            fallback["format"] = (
+                "bestaudio[ext=m4a]/bestaudio/best"
+                if options["mode"] == "Solo Audio"
+                else (
+                    "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/"
+                    "best[ext=mp4][vcodec^=avc1]/"
+                    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/"
+                    "bestvideo+bestaudio/best"
+                )
+            )
             choice = self.dialogs.ask(
                 "choice", "Calidad no disponible",
                 "El formato exacto falló. ¿Deseas descargar la mejor alternativa compatible?",
@@ -825,7 +862,7 @@ class DownloadController(QObject):
         self._current_counts_as_download = False
         self._set_state(busy=False, progress=0.0, status="Proceso cancelado." if cancelled else message)
         if not cancelled:
-            print(detail)
+            safe_console_print(detail)
             self.notificationRequested.emit("error", "No se pudo completar", message)
 
     def _clear_analysis_lists(self):
@@ -891,7 +928,7 @@ class DownloadController(QObject):
                 response.raise_for_status()
                 destination.write_bytes(response.content)
         except Exception as exc:
-            print(f"ADVERTENCIA: no se pudo guardar la miniatura: {exc}")
+            safe_console_print(f"ADVERTENCIA: no se pudo guardar la miniatura: {exc}")
 
     @Slot()
     def saveSubtitle(self):

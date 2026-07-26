@@ -25,6 +25,25 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "2.4": {
+        "eyebrow": "ACTUALIZACIÓN INSTALADA",
+        "title": "Xomacito 2.4",
+        "subtitle": "¡LA ZARKING UPDATE!",
+        "message": (
+            "El Estudio de Imagen estrena herramientas más claras y potentes, "
+            "mientras las descargas ahora resisten correctamente títulos, idiomas "
+            "y símbolos que antes podían chocar con la codificación de Windows."
+        ),
+        "highlights": [
+            "Nuevo reescalado inteligente de imágenes con perfiles según el contenido.",
+            "Reescalado de video 2× y 4× con salida MP4 y audio conservado.",
+            "Removedor de fondos mejorado con modelos BiRefNet especializados.",
+            "Estudio de Imagen reorganizado, compacto y más fácil de entender.",
+            "Descargas protegidas contra errores Unicode de la consola de Windows.",
+        ],
+        "contributors": ["Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking"],
+        "closing": "Gracias a Zarking y a todos los colaboradores por probar, proponer y mejorar Xomacito.",
+    },
     "2.3": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
         "title": "Xomacito 2.3",

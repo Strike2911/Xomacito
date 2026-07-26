@@ -160,11 +160,12 @@ class ImageConverter:
             
             # 2. Inicializar la sesión de ONNX si no existe
             model_name = options.get("rembg_model", "u2net")
-            use_gpu = options.get("use_gpu", True)
+            use_gpu = options.get("rembg_gpu", True)
             
             # Buscar ruta del modelo
             from main import MODELS_DIR
-            model_path = os.path.join(MODELS_DIR, "rembg", f"{model_name}.onnx")
+            model_file = model_name if str(model_name).lower().endswith(".onnx") else f"{model_name}.onnx"
+            model_path = os.path.join(MODELS_DIR, "rembg", model_file)
             
             if not os.path.exists(model_path):
                 # Si no existe, no podemos pre-cargar (se descargará luego en remove_background)
@@ -266,7 +267,7 @@ class ImageConverter:
 
         except Exception as e:
             print(f"ERROR en inferencia de alta resolución: {e}")
-            return pil_image
+            raise RuntimeError(f"El modelo de fondo no pudo procesar la imagen: {e}") from e
         
     def _process_onnx_manual(self, pil_image, session, target_size):
         """
@@ -357,14 +358,12 @@ class ImageConverter:
 
         if model_filename in high_res_names or target_model_path:
             if not target_model_path:
-                print(f"ERROR: El modelo de alta resolución no se encuentra localmente: {model_filename}")
-                return pil_image
+                raise RuntimeError(f"El modelo de fondo no está instalado: {model_filename}")
             return self._process_high_res_onnx(pil_image, target_model_path, use_gpu=use_gpu)
 
         # --- CARGA LAZY DE REMBG ---
         if not self._load_rembg_lazy(progress_callback):
-            print("ERROR: La librería de IA no pudo cargarse.")
-            return pil_image
+            raise RuntimeError("No se pudo cargar el motor de eliminación de fondo.")
 
         try:
             # 1. Definir clave de caché única (Nombre + GPU/CPU)
@@ -380,8 +379,7 @@ class ImageConverter:
                     full_model_path = os.path.join(MODELS_DIR, "rembg", model_filename)
                 
                 if not os.path.exists(full_model_path):
-                    print(f"ERROR: No encuentro el modelo {model_filename}")
-                    return pil_image
+                    raise RuntimeError(f"No se encontró el modelo de fondo {model_filename}.")
 
                 hw_label = 'GPU' if use_gpu else 'CPU'
                 print(f"DEBUG: Cargando Manualmente {model_filename} en [{hw_label}]")
@@ -454,7 +452,7 @@ class ImageConverter:
             # ✅ LOG SEGURO: Usamos 'repr(e)' en lugar de 'e' directamente
             # Esto imprime el objeto error crudo y evita el crash por tildes/caracteres raros
             print(f"ERROR CRÍTICO al procesar IA ({model_filename}): {repr(e)}")
-            return pil_image
+            raise RuntimeError(f"El modelo de fondo falló: {e}") from e
     
     def _apply_alpha_postprocess(self, pil_image, smooth_px=0, expand_px=0):
         """
@@ -663,7 +661,7 @@ class ImageConverter:
             return False # Retorna falso para detener
         except Exception as e:
             print(f"ERROR: Fallo la conversión de {input_path}: {e}")
-            return False
+            raise RuntimeError(str(e)) from e
         
     def _load_raw_with_rawpy(self, filepath):
         """
@@ -2366,21 +2364,15 @@ class ImageConverter:
             denoise = options.get("upscale_denoise", "0")
             use_tta = options.get("upscale_tta", False)
             
-            # --- MEJORA 2: Input JPG (Más rápido si no hay transparencia) ---
+            # PNG evita introducir una segunda compresión antes de la mejora.
             ext_temp = ".png"
-            if img.mode != "RGBA" and img.mode != "LA":
-                ext_temp = ".jpg" # JPG es más rápido para el pipeline
             
             # 2. Crear archivos temporales si no tenemos override
             if not temp_input_path:
                 with tempfile.NamedTemporaryFile(suffix=ext_temp, delete=False) as temp_in:
                     temp_input_path = temp_in.name
                 
-                if ext_temp == ".jpg":
-                    # Guardar como JPG máxima calidad (sin subsampling)
-                    img.convert("RGB").save(temp_input_path, "JPEG", quality=100, subsampling=0)
-                else:
-                    img.save(temp_input_path, "PNG")
+                img.save(temp_input_path, "PNG")
 
             # El output SIEMPRE será PNG (lo decide el ejecutable)
             temp_output_path = os.path.splitext(temp_input_path)[0] + "_out.png"
@@ -2469,8 +2461,10 @@ class ImageConverter:
 
             # 3. Ejecutar
             if not os.path.exists(exe_path):
-                print(f"ERROR: No se encontró el ejecutable: {exe_path}")
-                return img
+                raise RuntimeError(
+                    "El motor de mejora no está instalado. Abre Configuración > Dependencias "
+                    "e instala Upscayl."
+                )
 
             print(f"DEBUG: Ejecutando Upscale ({engine}): {' '.join(cmd)}")
             creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
@@ -2539,8 +2533,10 @@ class ImageConverter:
                 remaining_stderr = ""
                 while not q.empty():
                     remaining_stderr += q.get_nowait()
-                print(f"ERROR Upscaling CLI: {remaining_stderr}")
-                return img
+                raise RuntimeError(
+                    "El motor de mejora no pudo procesar la imagen. "
+                    + (remaining_stderr[-500:] if remaining_stderr else "Revisa el controlador Vulkan de tu GPU.")
+                )
 
             # 4. Cargar resultado
             upscaled_img = Image.open(temp_output_path)
@@ -2549,9 +2545,11 @@ class ImageConverter:
             print(f"INFO: Reescalado finalizado. Tamaño: {upscaled_img.size}")
             return upscaled_img
 
+        except UserCancelledError:
+            raise
         except Exception as e:
             print(f"ERROR CRÍTICO en reescalado: {e}")
-            return img
+            raise
             
         finally:
             # Limpieza SEGURA: Solo si nosotros creamos el temporal

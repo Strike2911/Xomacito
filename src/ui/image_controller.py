@@ -12,7 +12,12 @@ from PySide6.QtCore import QObject, Property, QMimeData, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QColorDialog, QFileDialog
 
-from src.core.constants import IMAGE_INPUT_FORMATS, IMAGE_RAW_FORMATS, REMBG_MODEL_FAMILIES
+from src.core.constants import (
+    IMAGE_INPUT_FORMATS,
+    IMAGE_RAW_FORMATS,
+    REMBG_MODEL_FAMILIES,
+    UPSCAYL_MODELS_MAP,
+)
 from src.core.downloader import extract_info_resilient
 from src.core.processor import FFmpegProcessor
 
@@ -40,12 +45,55 @@ IMAGE_OPTIONS = {
     "tiffTransparency": True, "ico16": True, "ico32": True, "ico48": True,
     "ico64": True, "ico128": True, "ico256": True, "bmpRle": False,
     "pdfTransparent": False, "rembgEnabled": False, "rembgGpu": True,
-    "rembgFamily": next(iter(REMBG_MODEL_FAMILIES), "General"), "rembgModel": "",
+    "rembgFamily": "BiRefNet (Next-Gen 2024)", "rembgModel": "General Lite (Rápido)",
     "rembgSmooth": 0, "rembgExpand": 0, "upscaleEnabled": False,
-    "upscaleEngine": "realesrgan-ncnn-vulkan", "upscaleModel": "Real-ESRGAN x4plus",
+    "upscaleEngine": "Upscayl", "upscaleModel": "Real-ESRGAN (General / Fotografía)",
     "upscaleScale": "2", "upscaleDenoise": "0", "upscaleTile": "0", "upscaleTta": False,
     "videoTitle": "video_xomacito", "videoWidth": "1920", "videoHeight": "1080",
     "videoFps": "30", "videoFrameDuration": "3", "videoFitMode": "Mantener Tamaño Original",
+}
+
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
+
+UPSCALE_PROFILES = {
+    "Automático (recomendado)": {
+        "model": "Real-ESRGAN (General / Fotografía)",
+        "description": "Equilibrio seguro para fotos, capturas y recursos cotidianos.",
+    },
+    "Foto real": {
+        "model": "Real-ESRGAN (General / Fotografía)",
+        "description": "Recupera textura sin convertir la foto en una ilustración.",
+    },
+    "Anime e ilustración": {
+        "model": "Real-ESRGAN (Anime / Ilustración)",
+        "description": "Conserva líneas y colores planos con menos ruido.",
+    },
+    "Video animado": {
+        "model": "Anime Video V3 (x4)",
+        "description": "Modelo oficial optimizado para animación cuadro a cuadro.",
+    },
+    "Rápido": {
+        "model": "Real-ESRGAN V3 (Ligero y Rápido)",
+        "description": "Menor espera para lotes grandes y equipos modestos.",
+    },
+}
+
+TASK_DEFAULTS = {
+    "removeBackground": {
+        "format": "PNG", "rembgEnabled": True, "upscaleEnabled": False,
+        "rembgFamily": "BiRefNet (Next-Gen 2024)", "rembgModel": "General Lite (Rápido)",
+    },
+    "upscaleImage": {
+        "format": "PNG", "rembgEnabled": False, "upscaleEnabled": True,
+        "upscaleEngine": "Upscayl", "upscaleModel": UPSCALE_PROFILES["Automático (recomendado)"]["model"],
+    },
+    "upscaleVideo": {
+        "format": "MP4", "rembgEnabled": False, "upscaleEnabled": True,
+        "upscaleEngine": "Upscayl", "upscaleModel": UPSCALE_PROFILES["Automático (recomendado)"]["model"],
+    },
+    "convert": {
+        "format": "PNG", "rembgEnabled": False, "upscaleEnabled": False,
+    },
 }
 
 
@@ -56,7 +104,7 @@ class ImageController(QObject):
     progressReported = Signal(float, str)
     notificationRequested = Signal(str, str, str)
 
-    ROLES = ["itemId", "path", "name", "page", "pages", "title", "status", "detail", "output", "preview"]
+    ROLES = ["itemId", "path", "name", "page", "pages", "title", "status", "detail", "output", "preview", "mediaType"]
 
     def __init__(self, project_root, settings: SettingsStore, pool: TaskPool, app_version: str, parent=None):
         super().__init__(parent)
@@ -76,13 +124,32 @@ class ImageController(QObject):
             "subfolderName": "imagenes_xomacito", "processOnlyNew": False,
             "status": "Importa imágenes, documentos o pega un enlace.", "progress": 0.0,
             "busy": False, "selectedIndex": -1, "previewSource": "", "resultPreviewSource": "",
-            "lastOutput": "", "itemCount": 0,
+            "lastOutput": "", "itemCount": 0, "task": settings.get("image_task", "removeBackground"),
+            "upscaleProfile": "Automático (recomendado)",
         }
         self._options = dict(IMAGE_OPTIONS)
         saved = settings.get("image_settings", {})
         if isinstance(saved, dict):
             self._options.update({key: value for key, value in saved.items() if key in self._options})
             if saved.get("format"): self._state["format"] = saved["format"]
+        legacy_engines = {
+            "realesrgan-ncnn-vulkan": "Upscayl",
+            "waifu2x-ncnn-vulkan": "Waifu2x",
+            "srmd-ncnn-vulkan": "SRMD",
+        }
+        self._options["upscaleEngine"] = legacy_engines.get(
+            self._options.get("upscaleEngine"), self._options.get("upscaleEngine", "Upscayl")
+        )
+        if self._options["upscaleModel"] not in UPSCAYL_MODELS_MAP.values():
+            self._options["upscaleModel"] = UPSCALE_PROFILES["Automático (recomendado)"]["model"]
+        active_task = self._state["task"] if self._state["task"] in TASK_DEFAULTS else "removeBackground"
+        self._state["task"] = active_task
+        for key in ("rembgEnabled", "upscaleEnabled"):
+            self._options[key] = TASK_DEFAULTS[active_task][key]
+        if active_task == "upscaleVideo":
+            self._state["format"] = "MP4"
+        elif active_task == "removeBackground" and self._state["format"] not in {"PNG", "WEBP"}:
+            self._state["format"] = "PNG"
         self._next_id = 1
         self.progressReported.connect(self._apply_progress)
 
@@ -122,6 +189,12 @@ class ImageController(QObject):
     @Property("QStringList", constant=True)
     def rembgFamilies(self): return list(REMBG_MODEL_FAMILIES)
 
+    @Property("QStringList", constant=True)
+    def upscaleProfiles(self): return list(UPSCALE_PROFILES)
+
+    @Property("QStringList", constant=True)
+    def upscaleModels(self): return list(UPSCAYL_MODELS_MAP.values())
+
     @Slot(str, result="QStringList")
     def rembgModels(self, family): return list(REMBG_MODEL_FAMILIES.get(family, {}))
 
@@ -149,6 +222,36 @@ class ImageController(QObject):
         saved = dict(self._options); saved["format"] = self._state["format"]
         self.settings.set("image_settings", saved)
 
+    @Slot(str)
+    def setTask(self, task):
+        if task not in TASK_DEFAULTS or self._state["task"] == task:
+            return
+        old_video = self._state["task"] == "upscaleVideo"
+        new_video = task == "upscaleVideo"
+        if old_video != new_video and self.items.rowCount():
+            self.clear()
+        defaults = TASK_DEFAULTS[task]
+        self._state["task"] = task
+        self._state["format"] = defaults["format"]
+        for key, value in defaults.items():
+            if key != "format":
+                self._options[key] = value
+        self.stateChanged.emit()
+        self.optionsChanged.emit()
+        self.settings.set("image_task", task)
+        self.settings.set("image_settings", {**self._options, "format": self._state["format"]})
+
+    @Slot(str)
+    def setUpscaleProfile(self, profile):
+        data = UPSCALE_PROFILES.get(profile)
+        if not data:
+            return
+        self._state["upscaleProfile"] = profile
+        self._options["upscaleEngine"] = "Upscayl"
+        self._options["upscaleModel"] = data["model"]
+        self.stateChanged.emit()
+        self.optionsChanged.emit()
+
     @Slot(str, result=str)
     def chooseColor(self, current):
         color = QColorDialog.getColor()
@@ -166,7 +269,11 @@ class ImageController(QObject):
 
     @Slot()
     def importFiles(self):
-        paths, _ = QFileDialog.getOpenFileNames(None, "Importar recursos", "", "Imágenes y documentos (*.png *.jpg *.jpeg *.webp *.avif *.bmp *.tif *.tiff *.ico *.gif *.svg *.eps *.ai *.pdf *.ps *.cr2 *.dng *.arw *.nef *.orf *.rw2 *.sr2 *.raf *.cr3 *.pef);;Todos (*.*)")
+        video = " *.mp4 *.mov *.mkv *.webm *.avi *.m4v" if self._state["task"] == "upscaleVideo" else ""
+        paths, _ = QFileDialog.getOpenFileNames(
+            None, "Importar recursos", "",
+            f"Recursos compatibles (*.png *.jpg *.jpeg *.webp *.avif *.bmp *.tif *.tiff *.ico *.gif *.svg *.eps *.ai *.pdf *.ps *.cr2 *.dng *.arw *.nef *.orf *.rw2 *.sr2 *.raf *.cr3 *.pef{video});;Todos (*.*)"
+        )
         self.addPaths(paths)
 
     @Slot()
@@ -174,6 +281,8 @@ class ImageController(QObject):
         folder = QFileDialog.getExistingDirectory(None, "Importar carpeta")
         if not folder: return
         valid = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".bmp", ".tif", ".tiff", ".ico", ".gif", ".svg", ".eps", ".ai", ".pdf", ".ps"} | {ext.lower() for ext in IMAGE_RAW_FORMATS}
+        if self._state["task"] == "upscaleVideo":
+            valid |= VIDEO_EXTENSIONS
         self.addPaths([str(path) for path in Path(folder).rglob("*") if path.is_file() and path.suffix.lower() in valid])
 
     @Slot("QStringList")
@@ -183,6 +292,11 @@ class ImageController(QObject):
             path = QUrl(str(value)).toLocalFile() if str(value).startswith("file:") else str(value)
             if not Path(path).is_file(): continue
             ext = Path(path).suffix.lower()
+            is_video = ext in VIDEO_EXTENSIONS
+            if self._state["task"] == "upscaleVideo" and not is_video:
+                continue
+            if self._state["task"] != "upscaleVideo" and is_video:
+                continue
             pages = 1
             if ext in {".pdf", ".ai", ".eps", ".ps"}:
                 try:
@@ -195,7 +309,8 @@ class ImageController(QObject):
                 additions.append({
                     "itemId": item_id, "path": path, "name": Path(path).name + suffix,
                     "page": page, "pages": pages, "title": Path(path).stem,
-                    "status": "PENDING", "detail": "Listo", "output": "", "preview": "",
+                    "status": "PENDING", "detail": "Video listo" if is_video else "Imagen lista",
+                    "output": "", "preview": "", "mediaType": "video" if is_video else "image",
                 })
         for item in additions: self.items.append(item)
         self._set_state(itemCount=self.items.rowCount(), status=f"{self.items.rowCount()} recursos listos.")
@@ -249,6 +364,11 @@ class ImageController(QObject):
 
     def _thumbnail_worker(self, item):
         self._ensure_engines()
+        if item.get("mediaType") == "video" or Path(item["path"]).suffix.lower() in VIDEO_EXTENSIONS:
+            frame = self.ffmpeg.get_frame_from_video(item["path"])
+            if not frame:
+                raise RuntimeError("No se pudo leer un fotograma del video.")
+            return str(frame)
         thumb = self.processor.generate_thumbnail(
             item["path"], size=(900, 700), page_number=item["page"],
             dpi=int(self.settings.get("preview_vector_dpi", 96)),
@@ -328,6 +448,48 @@ class ImageController(QObject):
         data = REMBG_MODEL_FAMILIES.get(family, {}).get(label, {})
         return data.get("file", label or "u2netp.onnx")
 
+    def _ensure_rembg_model(self, options):
+        """Instala bajo demanda el modelo elegido, sin congelar el hilo de la interfaz."""
+        if not options.get("rembg_enabled"):
+            return
+        family = self._options.get("rembgFamily")
+        label = self._options.get("rembgModel")
+        data = REMBG_MODEL_FAMILIES.get(family, {}).get(label, {})
+        filename = data.get("file")
+        if not filename:
+            raise RuntimeError("No se pudo resolver el modelo para quitar el fondo.")
+        folder = self.project_root / "bin" / "models" / data.get("folder", "rembg")
+        target = folder / filename
+        if target.exists():
+            return
+        url = data.get("url")
+        if not url or "/tree/" in url:
+            raise RuntimeError("Este modelo requiere instalación manual. Elige BiRefNet General Lite o U2Net.")
+        folder.mkdir(parents=True, exist_ok=True)
+        partial = target.with_suffix(target.suffix + ".part")
+        self.progressReported.emit(0.01, f"Descargando {label} por primera vez…")
+        try:
+            with requests.get(url, stream=True, timeout=120) as response:
+                response.raise_for_status()
+                total = int(response.headers.get("content-length", 0))
+                done = 0
+                with partial.open("wb") as handle:
+                    for chunk in response.iter_content(1024 * 1024):
+                        if self.cancel_event.is_set():
+                            raise RuntimeError("Descarga del modelo cancelada.")
+                        if not chunk:
+                            continue
+                        handle.write(chunk)
+                        done += len(chunk)
+                        if total:
+                            self.progressReported.emit(
+                                min(0.12, 0.01 + (done / total) * 0.11),
+                                f"Instalando modelo IA… {done * 100 // total}%",
+                            )
+            partial.replace(target)
+        finally:
+            partial.unlink(missing_ok=True)
+
     @Slot()
     def start(self):
         if self._state["busy"] or not self.items.rowCount(): return
@@ -343,8 +505,11 @@ class ImageController(QObject):
 
     def _process_worker(self, items, output_dir: Path, options):
         self._ensure_engines()
+        if self._state["task"] == "upscaleVideo":
+            return self._upscale_videos_worker(items, output_dir, options)
         if str(options["format"]).startswith("."):
             return self._video_worker(items, output_dir, options)
+        self._ensure_rembg_model(options)
         self.converter.prepare_ai_sessions(options, progress_callback=lambda p, m: self.progressReported.emit((p or 0) / 100.0, m or "Preparando IA…"))
         if self.settings.get("inkscape_enabled", True): self.inkscape.start_session()
         outputs = []; errors = []
@@ -376,6 +541,40 @@ class ImageController(QObject):
             if not self.settings.get("keep_ai_models_in_memory", False): self.converter.clear_ai_sessions()
         if errors: raise RuntimeError("\n".join(errors[:12]))
         if not outputs: raise RuntimeError("No se generó ningún archivo.")
+        return outputs
+
+    def _upscale_videos_worker(self, items, output_dir, options):
+        from src.core.video_upscaler import VideoUpscaler
+
+        if any(item.get("mediaType") != "video" for item in items):
+            raise RuntimeError("Para mejorar video, importa únicamente archivos de video.")
+        outputs = []
+        for index, item in enumerate(items):
+            if self.cancel_event.is_set():
+                raise RuntimeError("Proceso cancelado.")
+            output = self._conflict_path(output_dir / f"{safe_filename(item['title'])}_mejorado.mp4")
+            if output is None:
+                continue
+
+            def report(percent, message, base=index):
+                value = (base + float(percent or 0) / 100.0) / len(items)
+                self.progressReported.emit(value, message)
+
+            upscaler = VideoUpscaler(
+                ffmpeg_dir=str(Path(self.ffmpeg.ffmpeg_path).parent),
+                upscaling_dir=str(self.project_root / "bin" / "models" / "upscaling"),
+                cancellation_event=self.cancel_event,
+                progress_callback=report,
+            )
+            video_options = {
+                **options,
+                "upscale_engine": "Upscayl",
+                "upscale_model_friendly": options["upscale_model_friendly"],
+                "upscale_container": ".mp4",
+            }
+            outputs.append(upscaler.upscale_video(item["path"], str(output), video_options))
+        if not outputs:
+            raise RuntimeError("No se generó ningún video.")
         return outputs
 
     def _video_worker(self, items, output_dir, options):

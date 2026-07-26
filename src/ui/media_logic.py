@@ -98,20 +98,39 @@ def _codec_base(codec: str) -> str:
     return str(codec or "unknown").split(".")[0].lower()
 
 
+def is_editor_mp4_video(item: dict) -> bool:
+    """Indica si el formato puede entregarse como MP4 sin recodificar."""
+    video_codec = _codec_base(item.get("vcodec", ""))
+    audio_codec = _codec_base(item.get("acodec", ""))
+    return (
+        str(item.get("ext") or "").lower() == "mp4"
+        and video_codec in {"h264", "avc1", "hevc", "h265", "hvc1", "hev1"}
+        and audio_codec in {"none", "aac", "mp4a"}
+    )
+
+
+def is_editor_mp4_audio(item: dict) -> bool:
+    """Indica si el audio puede fusionarse dentro del MP4 elegido."""
+    return (
+        str(item.get("ext") or "").lower() in {"m4a", "mp4"}
+        and _codec_base(item.get("acodec", "")) in {"aac", "mp4a"}
+    )
+
+
+def is_editor_mp4_selection(video: dict, audio: dict) -> bool:
+    """Valida que la selección completa produzca un MP4 apto para edición."""
+    if not is_editor_mp4_video(video):
+        return False
+    return bool(video.get("combined")) or is_editor_mp4_audio(audio)
+
+
 def preferred_merge_container(video: dict, audio: dict) -> str:
     """Elige un contenedor de fusión predecible sin recodificar los streams."""
     if not video or video.get("combined"):
         return ""
     video_ext = str(video.get("ext") or "").lower()
     audio_ext = str(audio.get("ext") or "").lower()
-    video_codec = _codec_base(video.get("vcodec", ""))
-    audio_codec = _codec_base(audio.get("acodec", ""))
-    if (
-        video_ext == "mp4"
-        and video_codec in {"h264", "avc1", "hevc", "h265"}
-        and audio_ext in {"m4a", "mp4"}
-        and audio_codec in {"aac", "mp4a"}
-    ):
+    if is_editor_mp4_selection(video, audio):
         return "mp4"
     if video_ext == "webm" and audio_ext in {"webm", "opus", "ogg"}:
         return "webm"
@@ -173,10 +192,15 @@ def build_media_choices(info: dict) -> dict[str, Any]:
             common["label"] = f"{lang}{rate} · {acodec} · {ext.upper()} · {_size_label(size)} {marker}"
             audio.append(common)
 
-    video.sort(key=lambda item: (-item["height"], -item["fps"], -item["tbr"]))
+    video.sort(key=lambda item: (
+        0 if is_editor_mp4_video(item) else 1,
+        -item["height"],
+        -item["fps"],
+        -item["tbr"],
+    ))
     audio.sort(key=lambda item: (
         LANGUAGE_ORDER.get(item["language"].replace("_", "-").lower(), DEFAULT_PRIORITY),
-        0 if item["compatible"] else 1,
+        0 if is_editor_mp4_audio(item) else 1 if item["compatible"] else 2,
         -(item["abr"] or item["tbr"]),
     ))
     subtitles: dict[str, list[dict]] = defaultdict(list)
