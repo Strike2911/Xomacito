@@ -186,6 +186,16 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("reescalado", highlights)
         self.assertIn("birefnet", highlights)
 
+    def test_release_25_is_the_papu_update(self):
+        notice = release_notice_for_version("v2.5")
+        self.assertIsNotNone(notice)
+        self.assertEqual(notice["title"], "Xomacito 2.5")
+        self.assertEqual(notice["subtitle"], "¡LA PAPU UPDATE!!")
+        highlights = " ".join(notice["highlights"]).lower()
+        self.assertIn("mp3", highlights)
+        self.assertIn("arrastra", highlights)
+        self.assertIn("portada", highlights)
+
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
         digest = "sha256:" + hashlib.sha256(payload).hexdigest()
@@ -1044,7 +1054,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-2.4-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-2.5-Setup.exe", build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)

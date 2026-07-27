@@ -118,8 +118,12 @@ class ImageController(QObject):
         self._engine_lock = threading.Lock()
         self.cancel_event = threading.Event()
         self.items = ObjectListModel(self.ROLES, self)
+        configured_output = Path(str(settings.get("image_output_path") or "")).expanduser()
+        if not configured_output.is_absolute():
+            configured_output = Path.home() / "Downloads"
+            settings.set("image_output_path", str(configured_output))
         self._state = {
-            "url": "", "outputPath": settings.get("image_output_path", str(Path.home() / "Downloads")),
+            "url": "", "outputPath": str(configured_output),
             "format": "PNG", "conflictPolicy": "Renombrar", "createSubfolder": False,
             "subfolderName": "imagenes_xomacito", "processOnlyNew": False,
             "status": "Importa imágenes, documentos o pega un enlace.", "progress": 0.0,
@@ -493,7 +497,10 @@ class ImageController(QObject):
     @Slot()
     def start(self):
         if self._state["busy"] or not self.items.rowCount(): return
-        output = Path(self._state["outputPath"])
+        output = Path(str(self._state["outputPath"])).expanduser()
+        if not output.is_absolute():
+            output = Path.home() / "Downloads"
+            self.setValue("outputPath", str(output))
         if self._state["createSubfolder"]: output /= safe_filename(self._state["subfolderName"])
         output.mkdir(parents=True, exist_ok=True)
         self.cancel_event.clear(); self._set_state(busy=True, progress=0.0, status="Preparando conversión…", lastOutput="")

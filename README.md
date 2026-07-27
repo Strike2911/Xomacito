@@ -1,6 +1,6 @@
 # Xomacito
 
-Versión actual: **Xomacito 2.4**.
+Versión actual: **Xomacito 2.5**.
 
 Aplicación independiente para Windows que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike**.
 

@@ -495,7 +495,142 @@ controller.shutdown()
         controller_source = (ROOT / "src" / "ui" / "download_controller.py").read_text(encoding="utf-8")
         success_handler = controller_source.split("def _operation_success", 1)[1].split("def _operation_error", 1)[0]
         self.assertIn("if completed_download:", success_handler)
+        self.assertIn('self.settings.get("open_explorer_after_download", True)', success_handler)
         self.assertIn("reveal_in_file_manager(output)", success_handler)
+
+    def test_audio_only_local_file_uses_the_real_mp3_preset(self):
+        script = r'''
+from pathlib import Path
+from PySide6.QtWidgets import QApplication
+from src.ui.application import AppController
+from src.ui.presets import resolve_recode_parameters
+
+app = QApplication([])
+controller = AppController(app, Path.cwd(), "2.5")
+download = controller.download
+download._set_state(preset="Archivo - H.265 Normal")
+download._options["applyPreset"] = True
+download._apply_local_analysis({
+    "videoStreams": [],
+    "audioStreams": [{"index": 0, "codec_name": "vorbis", "sample_rate": "48000"}],
+    "sourceHasAlpha": False,
+    "thumbnail": "",
+    "duration": 1.0,
+})
+assert download.state["mode"] == "Solo Audio"
+assert download.state["preset"] == "Audio - MP3 128kbps"
+options = download._collect_process_options()
+params, container = resolve_recode_parameters(options)
+assert container == ".mp3", (container, options)
+assert "libmp3lame" in " ".join(params)
+controller.shutdown()
+'''
+        with tempfile.TemporaryDirectory() as appdata:
+            environment = dict(os.environ)
+            environment.update({"QT_QPA_PLATFORM": "offscreen", "APPDATA": appdata})
+            result = subprocess.run(
+                [sys.executable, "-c", script], cwd=ROOT, env=environment,
+                capture_output=True, text=True, timeout=20, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
+    def test_ogg_is_really_recoded_to_mp3(self):
+        script = r'''
+import subprocess
+import tempfile
+from pathlib import Path
+from PySide6.QtWidgets import QApplication
+from src.ui.application import AppController
+
+app = QApplication([])
+controller = AppController(app, Path.cwd(), "2.5")
+with tempfile.TemporaryDirectory() as directory:
+    folder = Path(directory)
+    source = folder / "entrada.ogg"
+    subprocess.run([
+        controller.download.ffmpeg.ffmpeg_path, "-y", "-f", "lavfi",
+        "-i", "sine=frequency=440:duration=0.25", "-c:a", "libvorbis", str(source)
+    ], check=True, capture_output=True)
+    controller.download._set_state(
+        localFile=str(source), outputPath=str(folder), title="audio",
+        mode="Solo Audio", preset="Audio - MP3 128kbps",
+        selectedVideo="", selectedAudio="Audio 1",
+    )
+    controller.download._audio_map = {"Audio 1": {"formatId": "0"}}
+    controller.download._options["applyPreset"] = True
+    options = controller.download._collect_process_options()
+    result = Path(controller.download._recode_file(str(source), options, False))
+    assert result.suffix.lower() == ".mp3", result
+    media = controller.download.ffmpeg.get_local_media_info(str(result))
+    assert media["format"]["format_name"].startswith("mp3"), media["format"]
+controller.shutdown()
+'''
+        with tempfile.TemporaryDirectory() as appdata:
+            environment = dict(os.environ)
+            environment.update({"QT_QPA_PLATFORM": "offscreen", "APPDATA": appdata})
+            result = subprocess.run(
+                [sys.executable, "-c", script], cwd=ROOT, env=environment,
+                capture_output=True, text=True, timeout=30, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
+    def test_image_studio_drop_zone_and_output_folder_are_real(self):
+        image_page = (ROOT / "src" / "ui" / "qml" / "pages" / "ImageStudioPage.qml").read_text(encoding="utf-8")
+        self.assertIn('objectName: "imageStudioDropArea"', image_page)
+        self.assertIn("drop.urls", image_page)
+        self.assertIn("imageController.addPaths(paths)", image_page)
+
+        controller_source = (ROOT / "src" / "ui" / "image_controller.py").read_text(encoding="utf-8")
+        self.assertIn("if not configured_output.is_absolute()", controller_source)
+        self.assertIn('settings.set("image_output_path", str(configured_output))', controller_source)
+
+    def test_audio_cover_is_contextual_and_explorer_setting_is_visible(self):
+        download_page = (ROOT / "src" / "ui" / "qml" / "pages" / "DownloadPage.qml").read_text(encoding="utf-8")
+        settings_page = (ROOT / "src" / "ui" / "qml" / "pages" / "SettingsPage.qml").read_text(encoding="utf-8")
+        self.assertIn('objectName: "embedAudioCoverSwitch"', download_page)
+        self.assertIn('visible: viewState.mode === "Solo Audio" && !viewState.localFile', download_page)
+        self.assertIn('objectName: "openExplorerAfterDownloadSwitch"', settings_page)
+        with tempfile.TemporaryDirectory() as appdata, patch.dict(os.environ, {"APPDATA": appdata}):
+            self.assertTrue(SettingsStore("XomacitoTest").get("open_explorer_after_download"))
+
+    def test_mp3_cover_is_embedded_as_an_attached_picture(self):
+        script = r'''
+import io
+import subprocess
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+from PIL import Image
+from PySide6.QtWidgets import QApplication
+from src.ui.application import AppController
+
+app = QApplication([])
+controller = AppController(app, Path.cwd(), "2.5")
+with tempfile.TemporaryDirectory() as directory:
+    audio = Path(directory) / "cancion.mp3"
+    subprocess.run([
+        controller.download.ffmpeg.ffmpeg_path, "-y", "-f", "lavfi",
+        "-i", "sine=frequency=440:duration=0.25", "-c:a", "libmp3lame", str(audio)
+    ], check=True, capture_output=True)
+    payload = io.BytesIO()
+    Image.new("RGB", (40, 40), "#22c9e8").save(payload, "JPEG")
+    with patch("src.ui.download_controller.requests.get") as get:
+        get.return_value.content = payload.getvalue()
+        get.return_value.raise_for_status.return_value = None
+        controller.download._embed_audio_thumbnail(str(audio), "https://example.test/cover.jpg")
+    media = controller.download.ffmpeg.get_local_media_info(str(audio))
+    pictures = [stream for stream in media["streams"] if stream.get("codec_type") == "video"]
+    assert pictures and pictures[0].get("disposition", {}).get("attached_pic") == 1, pictures
+controller.shutdown()
+'''
+        with tempfile.TemporaryDirectory() as appdata:
+            environment = dict(os.environ)
+            environment.update({"QT_QPA_PLATFORM": "offscreen", "APPDATA": appdata})
+            result = subprocess.run(
+                [sys.executable, "-c", script], cwd=ROOT, env=environment,
+                capture_output=True, text=True, timeout=30, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
     def test_alpha_preset_is_prores_4444(self):
         params, container = resolve_recode_parameters(BUILT_IN_PRESETS[ALPHA_PRESET])

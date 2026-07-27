@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from contextlib import redirect_stdout
@@ -59,6 +60,7 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "keepOriginalOnClip": False,
     "applyPreset": False,
     "keepOriginal": True,
+    "embedThumbnail": False,
     "recodeVideoEnabled": False,
     "recodeAudioEnabled": False,
     "recodeProc": "CPU",
@@ -182,6 +184,7 @@ class DownloadController(QObject):
                 "video_profile": "recodeProfileName",
                 "video_audio_codec": "recodeAudioCodecName",
                 "video_audio_profile": "recodeAudioProfileName",
+                "embed_thumbnail": "embedThumbnail",
             }
             for key, value in saved_recode.items():
                 mapped = legacy_map.get(key, key)
@@ -244,9 +247,7 @@ class DownloadController(QObject):
         elif key == "preset":
             self.settings.set("quick_preset_saved", str(value))
         elif key == "mode":
-            presets = self.presets.videoPresets if value == "Video+Audio" else self.presets.audioPresets
-            if presets and self._state["preset"] not in presets:
-                self._set_state(preset=presets[0])
+            self._ensure_preset_for_mode(str(value))
         elif key == "selectedSubtitleLanguage":
             self._refresh_subtitle_formats(str(value))
 
@@ -262,8 +263,15 @@ class DownloadController(QObject):
             "video_profile": self._options["recodeProfileName"],
             "video_audio_codec": self._options["recodeAudioCodecName"],
             "video_audio_profile": self._options["recodeAudioProfileName"],
+            "embed_thumbnail": self._options["embedThumbnail"],
         }
         self.settings.set("recode_settings", persisted)
+
+    def _ensure_preset_for_mode(self, mode: str):
+        """Mantiene sincronizados el preset visible y el preset que se ejecutará."""
+        presets = self.presets.videoPresets if mode == "Video+Audio" else self.presets.audioPresets
+        if presets and self._state["preset"] not in presets:
+            self._set_state(preset=presets[0])
 
     @Slot()
     def chooseOutputFolder(self):
@@ -464,6 +472,7 @@ class DownloadController(QObject):
             sourceHasAlpha=source_has_alpha, duration=result["duration"],
             originalWidth=int(first_video.get("width") or 0), originalHeight=int(first_video.get("height") or 0),
         )
+        self._ensure_preset_for_mode("Video+Audio" if self._video_choices else "Solo Audio")
 
     def _apply_choices(self, choices: dict):
         self._video_map = {entry["label"]: entry for entry in choices["video"]}
@@ -535,6 +544,7 @@ class DownloadController(QObject):
             "mode": self._state["mode"], "video_label": self._state["selectedVideo"],
             "audio_label": self._state["selectedAudio"], "subtitle": self._selected_subtitle(),
             "duration": self._state["duration"], "operation_mode": self._state["operationMode"],
+            "thumbnail_url": (self._analysis_info or {}).get("thumbnail", ""),
             **self._options,
         }
         if self._state["operationMode"] == "Rápido" and self._options["applyPreset"]:
@@ -574,14 +584,14 @@ class DownloadController(QObject):
             raise UserCancelledError("Proceso cancelado.")
 
         if options.get("extractFramesEnabled"):
-            return self._extract_frames(input_file, options, downloaded)
-        if options.get("upscaleVideoEnabled"):
-            return self._upscale_video(input_file, options, downloaded)
-        if options.get("recode_video_enabled") or options.get("recode_audio_enabled"):
-            return self._recode_file(input_file, options, downloaded)
-        if options.get("fragmentEnabled") and options.get("local_file"):
-            return self._clip_without_recode(input_file, options)
-        if (
+            result = self._extract_frames(input_file, options, downloaded)
+        elif options.get("upscaleVideoEnabled"):
+            result = self._upscale_video(input_file, options, downloaded)
+        elif options.get("recode_video_enabled") or options.get("recode_audio_enabled"):
+            result = self._recode_file(input_file, options, downloaded)
+        elif options.get("fragmentEnabled") and options.get("local_file"):
+            result = self._clip_without_recode(input_file, options)
+        elif (
             downloaded
             and options.get("mode") == "Video+Audio"
             and (
@@ -593,12 +603,61 @@ class DownloadController(QObject):
             )
         ):
             self.progressReported.emit(0.0, "Preparando MP4 compatible con editores…")
-            return self._recode_file(
+            result = self._recode_file(
                 input_file,
                 editor_mp4_fallback_options(options),
                 downloaded=True,
             )
-        return input_file
+        else:
+            result = input_file
+        if (
+            downloaded
+            and options.get("mode") == "Solo Audio"
+            and options.get("embedThumbnail")
+            and options.get("thumbnail_url")
+        ):
+            result = self._embed_audio_thumbnail(result, options["thumbnail_url"])
+        return result
+
+    def _embed_audio_thumbnail(self, audio_file: str, thumbnail_url: str) -> str:
+        """Inserta la miniatura como portada en MP3/M4A sin recodificar el audio."""
+        source = Path(audio_file)
+        if source.suffix.lower() not in {".mp3", ".m4a", ".mp4"}:
+            return audio_file
+        self.progressReported.emit(0.97, "Añadiendo portada al audio…")
+        with tempfile.TemporaryDirectory(prefix="xomacito-cover-") as directory:
+            cover = Path(directory) / "cover.jpg"
+            response = requests.get(thumbnail_url, timeout=30)
+            response.raise_for_status()
+            from PIL import Image
+            with Image.open(io.BytesIO(response.content)) as image:
+                image.convert("RGB").save(cover, "JPEG", quality=92)
+            temporary = source.with_name(f"{source.stem}.cover-temp{source.suffix}")
+            command = [
+                self.ffmpeg.ffmpeg_path, "-y", "-nostdin",
+                "-i", str(source), "-i", str(cover),
+                "-map", "0:a:0", "-map", "1:v:0",
+                "-c:a", "copy", "-c:v", "mjpeg",
+            ]
+            if source.suffix.lower() == ".mp3":
+                command += [
+                    "-id3v2_version", "3",
+                    "-metadata:s:v", "title=Album cover",
+                    "-metadata:s:v", "comment=Cover (front)",
+                ]
+            else:
+                command += ["-disposition:v:0", "attached_pic"]
+            command.append(str(temporary))
+            creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            completed = subprocess.run(
+                command, capture_output=True, text=True, encoding="utf-8",
+                errors="ignore", creationflags=creationflags,
+            )
+            if completed.returncode:
+                temporary.unlink(missing_ok=True)
+                raise RuntimeError(f"No se pudo insertar la portada: {completed.stderr[-800:]}")
+            os.replace(temporary, source)
+        return str(source)
 
     def _download_worker(self, options: dict) -> str:
         video = self._video_map.get(options["video_label"], {})
@@ -854,7 +913,8 @@ class DownloadController(QObject):
         self.notificationRequested.emit("success", "Proceso completado", output)
         if completed_download:
             self.successfulDownload.emit(1)
-            reveal_in_file_manager(output)
+            if self.settings.get("open_explorer_after_download", True):
+                reveal_in_file_manager(output)
         self._current_counts_as_download = False
 
     def _operation_error(self, message: str, detail: str = ""):

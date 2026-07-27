@@ -41,6 +41,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "theme_selection_explicit": False,
     "appearance_mode": "Dark",
     "clean_titles": True,
+    "open_explorer_after_download": True,
     "release_notice_seen_version": "",
     "cat_gacha": {
         "schema": 1,

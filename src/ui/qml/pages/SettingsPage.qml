@@ -89,6 +89,12 @@ Item {
                 XSwitch { text: "Animaciones y transiciones"; checked: viewState.animationsEnabled; onToggled: settingsController.setValue("animationsEnabled", checked) }
                 XSwitch { text: "Modo compacto"; checked: viewState.compactMode; onToggled: settingsController.setValue("compactMode", checked) }
                 XSwitch { text: "Limpiar títulos descargados"; checked: viewState.cleanTitles; onToggled: settingsController.setValue("cleanTitles", checked) }
+                XSwitch {
+                    objectName: "openExplorerAfterDownloadSwitch"
+                    text: "Abrir Explorador al terminar una descarga"
+                    checked: viewState.openExplorerAfterDownload
+                    onToggled: settingsController.setValue("openExplorerAfterDownload", checked)
+                }
                 XSwitch { text: "Mantener modelos I.A. en memoria"; checked: viewState.keepAiModels; onToggled: settingsController.setValue("keepAiModels", checked) }
             }
             RowLayout {

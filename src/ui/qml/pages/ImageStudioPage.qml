@@ -135,10 +135,12 @@ Item {
             rowSpacing: 10
 
             XCard {
+                id: filesCard
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Layout.columnSpan: page.wide ? 3 : 1
                 Layout.minimumHeight: page.dense ? 230 : 278
+                cardColor: fileDropArea.containsDrag ? theme.colors.surfaceRaised : theme.colors.surface
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 12
@@ -196,6 +198,20 @@ Item {
                             text: viewState.task === "upscaleVideo" ? "Arrastra videos aquí" : "Arrastra imágenes aquí"
                             color: theme.colors.textMuted
                         }
+                    }
+                }
+                DropArea {
+                    id: fileDropArea
+                    objectName: "imageStudioDropArea"
+                    anchors.fill: parent
+                    onDropped: function(drop) {
+                        if (!drop.hasUrls)
+                            return
+                        var paths = []
+                        for (var index = 0; index < drop.urls.length; ++index)
+                            paths.push(drop.urls[index].toString())
+                        imageController.addPaths(paths)
+                        drop.acceptProposedAction()
                     }
                 }
             }

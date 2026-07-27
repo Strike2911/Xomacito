@@ -25,6 +25,24 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "2.5": {
+        "eyebrow": "ACTUALIZACIÓN INSTALADA",
+        "title": "Xomacito 2.5",
+        "subtitle": "¡LA PAPU UPDATE!!",
+        "message": (
+            "La descarga de audio y el Estudio de Imagen ahora respetan exactamente "
+            "lo que eliges: formato, portada, arrastre y carpeta de salida."
+        ),
+        "highlights": [
+            "Los presets MP3 generan MP3 reales incluso al importar OGG u otros audios locales.",
+            "Arrastra y suelta imágenes directamente en el Estudio de Imagen.",
+            "El removedor de fondo guarda el resultado en la carpeta de salida seleccionada.",
+            "Nueva opción contextual para incluir la miniatura como portada del audio.",
+            "Elige en Configuración si el Explorador se abre al terminar una descarga.",
+        ],
+        "contributors": ["Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking"],
+        "closing": "Gracias por seguir probando Xomacito y convertir cada detalle raro en una mejora.",
+    },
     "2.4": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
         "title": "Xomacito 2.4",
