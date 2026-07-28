@@ -1,6 +1,6 @@
 # Xomacito
 
-Versión actual: **Xomacito 2.6**.
+Versión actual: **Xomacito 2.7**.
 
 Aplicación independiente para Windows que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike**.
 
@@ -52,7 +52,7 @@ Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión 
 
 Los runtimes de compilación, herramientas externas, modelos, builds y preferencias personales están excluidos del repositorio. Los binarios distribuidos a usuarios se publican únicamente en [GitHub Releases](https://github.com/Strike2911/Xomacito/releases).
 
-La versión 2.6 agradece especialmente a **Spike** y a la comunidad por sus aportes al sistema de colección gatuna.
+La versión 2.7 agradece especialmente a **BlackBull** por detectar el fallo de playlists y a **Spike** por sus aportes al sistema de colección gatuna.
 
 Para volver a importar o ampliar la colección sin cambiar las rarezas ya asignadas:
 

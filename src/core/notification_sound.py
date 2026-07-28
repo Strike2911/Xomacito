@@ -9,6 +9,7 @@ from pathlib import Path
 
 
 SOUND_FILENAME = "download-complete.mp3"
+PLATINUM_SOUND_FILENAME = "platinum-celebration.mp3"
 GACHA_SOUND_FILENAMES = {
     1: "gacha-reveal-1.mp3",
     2: "gacha-reveal-2.mp3",
@@ -48,6 +49,10 @@ def gacha_sound_path(rarity: int) -> Path | None:
     return _asset_path("sfx", GACHA_SOUND_FILENAMES[normalized])
 
 
+def platinum_sound_path() -> Path | None:
+    return _asset_path("sfx", PLATINUM_SOUND_FILENAME)
+
+
 def _play_with_mci(path: Path) -> None:
     if os.name != "nt":
         return
@@ -77,3 +82,8 @@ def play_completion_sound() -> bool:
 def play_gacha_reveal_sound(rarity: int) -> bool:
     """Reproduce el efecto sincronizado con la revelación de la rareza."""
     return _play_async(gacha_sound_path(rarity))
+
+
+def play_platinum_celebration_sound() -> bool:
+    """Acompaña la celebración de colección completa sin bloquear Qt."""
+    return _play_async(platinum_sound_path())

@@ -541,7 +541,10 @@ ApplicationWindow {
         exit: Transition {
             NumberAnimation { property: "opacity"; to: 0; duration: 220 }
         }
-        onOpened: platinumCardAnimation.restart()
+        onOpened: {
+            platinumCardAnimation.restart()
+            appController.playPlatinumCelebration()
+        }
 
         background: Rectangle {
             color: "#E6000712"
@@ -673,7 +676,7 @@ ApplicationWindow {
                     Text {
                         objectName: "platinumCelebrationTitle"
                         Layout.fillWidth: true
-                        text: "¡ALGUIEN YA SE PLATINÓ\nXOMACITO!"
+                        text: "¡ZARKING SE PLATINÓ\nXOMACITO!"
                         color: "white"
                         horizontalAlignment: Text.AlignHCenter
                         font.pixelSize: platinumPopup.width < 700 ? 27 : 34
@@ -699,7 +702,7 @@ ApplicationWindow {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "La colección original fue completada antes de que llegaran los nuevos gatos. Historia pura del gacha."
+                        text: "Zarking completó la colección original antes de que llegaran los nuevos gatos. Historia pura del gacha."
                         color: theme.colors.textMuted
                         horizontalAlignment: Text.AlignHCenter
                         font.pixelSize: 12

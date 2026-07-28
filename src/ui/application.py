@@ -20,7 +20,11 @@ from src.core.app_updater import (
     release_notice_for_version,
 )
 from src.core.daily_icon import daily_cat_assets
-from src.core.notification_sound import play_completion_sound, play_gacha_reveal_sound
+from src.core.notification_sound import (
+    play_completion_sound,
+    play_gacha_reveal_sound,
+    play_platinum_celebration_sound,
+)
 
 from .batch_controller import BatchController
 from .cat_gacha_controller import CatGachaController
@@ -112,6 +116,10 @@ class AppController(QObject):
     @Slot("QVariantMap")
     def _play_cat_reveal(self, result):
         play_gacha_reveal_sound(int(dict(result or {}).get("rarity", 1)))
+
+    @Slot()
+    def playPlatinumCelebration(self):
+        play_platinum_celebration_sound()
 
     @Slot()
     def _schedule_clipboard_check(self):

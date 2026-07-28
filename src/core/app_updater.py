@@ -25,6 +25,27 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "2.7": {
+        "eyebrow": "ACTUALIZACIÓN INSTALADA",
+        "title": "Xomacito 2.7",
+        "subtitle": "¡LA BLACKBULL PLAYLIST UPDATE!!",
+        "message": (
+            "Las playlists ahora se descargan con comprobación real de cada archivo, "
+            "sin volver a declarar éxito cuando la carpeta quedó vacía."
+        ),
+        "highlights": [
+            "Xomacito reconstruye enlaces incompletos de los elementos de una playlist.",
+            "Cada descarga se valida en disco antes de contarla como completada.",
+            "Los fallos parciales muestran cuántos archivos terminaron y cuántos fallaron.",
+            "Una playlist vacía ya no aparece en verde: conserva el error para poder reintentar.",
+            "La celebración con confeti confirma que Zarking se platinó Xomacito, ahora con SFX.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike", "BlackBull",
+        ],
+        "closing": "Gracias a BlackBull por encontrar el fallo de playlists y ayudar a cerrarlo.",
+        "platinumCelebration": True,
+    },
     "2.6": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
         "title": "Xomacito 2.6",
