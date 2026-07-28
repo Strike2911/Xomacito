@@ -2,6 +2,7 @@ import threading
 import time
 from uuid import uuid4
 import os
+from pathlib import Path
 from .ytdlp_runtime import lazy_ytdlp
 
 yt_dlp = lazy_ytdlp()
@@ -25,6 +26,58 @@ from src.core.constants import (
     EDITOR_FRIENDLY_CRITERIA, LANGUAGE_ORDER, DEFAULT_PRIORITY,
     VIDEO_EXTENSIONS, AUDIO_EXTENSIONS
 )
+
+
+def resolve_playlist_entry_url(entry: dict, playlist_info: dict | None = None) -> str:
+    """Recupera una URL descargable incluso desde entradas planas de yt-dlp."""
+    entry = entry or {}
+    playlist_info = playlist_info or {}
+    for key in ("webpage_url", "original_url", "url"):
+        candidate = str(entry.get(key) or "").strip()
+        if candidate.startswith(("https://", "http://")):
+            return candidate
+
+    media_id = str(entry.get("id") or entry.get("url") or "").strip()
+    extractor = " ".join(
+        str(value or "")
+        for value in (
+            entry.get("extractor_key"),
+            entry.get("extractor"),
+            entry.get("ie_key"),
+            playlist_info.get("extractor_key"),
+            playlist_info.get("extractor"),
+            playlist_info.get("ie_key"),
+        )
+    ).lower()
+    if media_id and "youtube" in extractor:
+        return f"https://www.youtube.com/watch?v={media_id}"
+    if media_id and "vimeo" in extractor and media_id.isdigit():
+        return f"https://vimeo.com/{media_id}"
+    return ""
+
+
+def _existing_media_path(candidates: list[str | os.PathLike], output_dir: str, title: str) -> str | None:
+    """Devuelve únicamente un archivo multimedia que exista realmente."""
+    allowed = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate:
+            continue
+        path = Path(candidate)
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        if path.is_file() and path.suffix.lower().lstrip(".") in allowed:
+            return str(path)
+
+    matches = [
+        path for path in Path(output_dir).glob(f"{title}.*")
+        if path.is_file() and path.suffix.lower().lstrip(".") in allowed
+    ]
+    if matches:
+        return str(max(matches, key=lambda path: path.stat().st_mtime_ns))
+    return None
 
 
 def get_smart_thumbnail_extension(image_data):
@@ -63,6 +116,8 @@ class Job:
         self.final_filepath: str | None = None
         self.total_items: int = 0
         self.completed_items: int = 0
+        self.failed_items: int = 0
+        self.failure_messages: list[str] = []
         self.job_type: str = job_type
 
 class QueueManager:
@@ -264,7 +319,14 @@ class QueueManager:
         """
         selected_indices = job.config.get('selected_indices', [])
         total_videos = len(selected_indices)
-        entries = job.analysis_data.get('entries', [])
+        playlist_info = job.analysis_data or {}
+        entries = playlist_info.get('entries', [])
+        if total_videos <= 0:
+            raise RuntimeError("La playlist no tiene elementos seleccionados.")
+        job.total_items = total_videos
+        job.completed_items = 0
+        job.failed_items = 0
+        job.failure_messages = []
         
         # Configuración global
         mode = job.config.get('playlist_mode', 'Video+Audio')
@@ -299,7 +361,9 @@ class QueueManager:
                 if self.pause_event.is_set(): return 
                 if self.stop_event.is_set(): return
 
-                if index >= len(entries): continue
+                if index < 0 or index >= len(entries):
+                    self._record_playlist_failure(job, f"Elemento {index + 1}: no existe en la playlist.")
+                    continue
                 entry = entries[index]
                 video_title = entry.get('title', f"Video {index}")
                 
@@ -320,12 +384,13 @@ class QueueManager:
                         # 3. Enviar a Herramientas de Imagen (Usando after para seguridad de hilos)
                         self.main_app.after(0, self.main_app.image_tab._process_imported_files, [thumb_path])
                         
+                except UserCancelledError:
+                    raise
                 except Exception as e:
                     print(f"ERROR miniatura {i}: {e}")
+                    self._record_playlist_failure(job, f"{video_title}: {e}")
             
-            job.status = "COMPLETED"
-            job.final_filepath = playlist_dir
-            self.ui_callback(job.job_id, "COMPLETED", "Miniaturas descargadas ✅", 100.0)
+            self._finish_playlist_job(job, playlist_dir, "Miniaturas")
             return
 
         # --- CASO NORMAL (VIDEO/AUDIO) ---
@@ -335,11 +400,19 @@ class QueueManager:
                 return 
             if self.stop_event.is_set(): return
             
-            if index >= len(entries): continue
+            if index < 0 or index >= len(entries):
+                self._record_playlist_failure(job, f"Elemento {index + 1}: no existe en la playlist.")
+                continue
             entry = entries[index]
             
-            video_url = entry.get('url')
+            video_url = resolve_playlist_entry_url(entry, playlist_info)
             video_title = entry.get('title', f"Video {index}")
+            if not video_url:
+                self._record_playlist_failure(
+                    job,
+                    f"{video_title}: el enlace del elemento no se pudo reconstruir.",
+                )
+                continue
             
             # Callback de progreso interno
             def playlist_progress_callback(vid_percent, vid_message):
@@ -489,13 +562,44 @@ class QueueManager:
                 if final_path_for_import and os.path.exists(final_path_for_import):
                     job.completed_items += 1
                     
+            except UserCancelledError:
+                raise
             except Exception as e:
                 print(f"ERROR procesando item {i+1} ({video_title}): {e}")
+                self._record_playlist_failure(job, f"{video_title}: {e}")
                 continue
+
+        self._finish_playlist_job(job, playlist_dir, "Playlist")
+
+    @staticmethod
+    def _record_playlist_failure(job: Job, message: str) -> None:
+        job.failed_items += 1
+        if len(job.failure_messages) < 5:
+            job.failure_messages.append(str(message).strip())
+
+    def _finish_playlist_job(self, job: Job, playlist_dir: str, label: str) -> None:
+        """No permite declarar éxito cuando la carpeta quedó vacía."""
+        if job.completed_items <= 0:
+            try:
+                if os.path.isdir(playlist_dir) and not os.listdir(playlist_dir):
+                    os.rmdir(playlist_dir)
+            except OSError:
+                pass
+            detail = job.failure_messages[0] if job.failure_messages else "yt-dlp no creó ningún archivo."
+            raise RuntimeError(
+                f"No se descargó ningún elemento ({job.failed_items}/{job.total_items} fallaron). {detail}"
+            )
 
         job.status = "COMPLETED"
         job.final_filepath = playlist_dir
-        self.ui_callback(job.job_id, "COMPLETED", "Playlist completada ✅", 100.0)
+        if job.failed_items:
+            message = (
+                f"{label} terminada: {job.completed_items}/{job.total_items} archivos; "
+                f"{job.failed_items} fallaron."
+            )
+        else:
+            message = f"{label} completada ✅ ({job.completed_items}/{job.total_items})"
+        self.ui_callback(job.job_id, "COMPLETED", message, 100.0)
 
     def _apply_playlist_quality(self, options, mode, quality_setting):
         """Traduce la selección del menú a selectores de formato de yt-dlp."""
@@ -598,13 +702,18 @@ class QueueManager:
                 download=True,
                 progress_callback=progress_callback,
             )
-            filename = info.get('filepath')
-            if not filename and info.get('requested_downloads'):
-                filename = info['requested_downloads'][0].get('filepath')
-            if not filename:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    filename = ydl.prepare_filename(info)
-            return filename
+            candidates = [info.get('filepath'), info.get('_filename')]
+            candidates.extend(
+                item.get('filepath') or item.get('_filename')
+                for item in (info.get('requested_downloads') or [])
+                if isinstance(item, dict)
+            )
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                candidates.append(ydl.prepare_filename(info))
+            verified = _existing_media_path(candidates, output_dir, title)
+            if not verified:
+                raise RuntimeError("yt-dlp terminó sin crear un archivo multimedia verificable.")
+            return verified
                 
         except UserCancelledError:
             raise # Re-lanzar para manejar la pausa arriba

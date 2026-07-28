@@ -28,6 +28,7 @@ from src.core.notification_sound import (
     GACHA_SOUND_FILENAMES,
     completion_sound_path,
     gacha_sound_path,
+    platinum_sound_path,
 )
 from src.core.processor import (
     CODEC_PROFILES,
@@ -207,6 +208,17 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("142", highlights)
         self.assertIn("6★", highlights)
         self.assertIn("gato mago", highlights)
+
+    def test_release_27_fixes_playlists_and_thanks_blackbull(self):
+        notice = release_notice_for_version("v2.7")
+        self.assertIsNotNone(notice)
+        self.assertEqual(notice["title"], "Xomacito 2.7")
+        self.assertEqual(notice["subtitle"], "¡LA BLACKBULL PLAYLIST UPDATE!!")
+        self.assertIn("BlackBull", notice["contributors"])
+        self.assertTrue(notice["platinumCelebration"])
+        highlights = " ".join(notice["highlights"]).lower()
+        self.assertIn("playlist", highlights)
+        self.assertIn("zarking", highlights)
 
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
@@ -673,6 +685,13 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertEqual(sound.read_bytes()[:3], b"ID3")
         self.assertEqual(completion_sound_path(), sound)
 
+    def test_platinum_celebration_has_its_own_sound(self):
+        sound = ROOT / "assets" / "sfx" / "platinum-celebration.mp3"
+        self.assertTrue(sound.exists())
+        self.assertGreater(sound.stat().st_size, 10_000)
+        self.assertEqual(sound.read_bytes()[:3], b"ID3")
+        self.assertEqual(platinum_sound_path(), sound)
+
     def test_gacha_reveal_sounds_cover_every_rarity(self):
         self.assertEqual(set(GACHA_SOUND_FILENAMES), {1, 2, 3, 4, 5, 6})
         sizes = []
@@ -1066,7 +1085,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-2.5-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-2.7-Setup.exe", build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)

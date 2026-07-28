@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class QtMigrationTests(unittest.TestCase):
-    def test_release_26_opens_the_platinum_confetti_after_the_update_notice(self):
+    def test_release_27_opens_the_zarking_confetti_after_the_update_notice(self):
         script = r'''
 from pathlib import Path
 from PySide6.QtCore import QObject, QMetaObject, Qt, QUrl
@@ -33,7 +33,7 @@ from src.ui.application import AppController
 
 app = QApplication([])
 root = Path.cwd()
-controller = AppController(app, root, "2.6")
+controller = AppController(app, root, "2.7")
 engine = QQmlApplicationEngine()
 context = engine.rootContext()
 for name, value in (
@@ -48,7 +48,7 @@ engine.load(QUrl.fromLocalFile(str(root / "src/ui/qml/Main.qml")))
 window = engine.rootObjects()[0]
 window.setProperty("width", 1280)
 window.setProperty("height", 720)
-controller.releaseNoticeRequested.emit(release_notice_for_version("2.6"))
+controller.releaseNoticeRequested.emit(release_notice_for_version("2.7"))
 QTest.qWait(650)
 notice = window.findChild(QObject, "releaseNoticePopup")
 platinum = window.findChild(QObject, "platinumCelebrationPopup")
@@ -435,7 +435,7 @@ controller.shutdown()
         main = (ROOT / "src" / "ui" / "qml" / "Main.qml").read_text(encoding="utf-8")
         self.assertIn("StackLayout", main)
         self.assertIn('objectName: "platinumCelebrationPopup"', main)
-        self.assertIn("¡ALGUIEN YA SE PLATINÓ", main)
+        self.assertIn("¡ZARKING SE PLATINÓ", main)
         self.assertIn("platinumCelebration", main)
         for page in ("DownloadPage", "QueuePage", "ImageStudioPage", "SettingsPage", "CatGachaPage"):
             self.assertEqual(main.count(page), 1)
