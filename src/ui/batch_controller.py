@@ -97,6 +97,7 @@ class BatchController(QObject):
     imageFilesRequested = Signal("QStringList")
     notificationRequested = Signal(str, str, str)
     successfulDownload = Signal(int)
+    gachaSourceCompleted = Signal(str)
 
     ROLES = [
         "jobId", "title", "status", "detail", "progress", "thumbnail", "jobType",
@@ -323,11 +324,33 @@ class BatchController(QObject):
                 if job.job_type == "DOWNLOAD":
                     self._rewarded_jobs.add(job_id)
                     self.successfulDownload.emit(1)
+                    info = job.analysis_data or {}
+                    extractor = str(info.get("extractor_key") or info.get("extractor") or "url").casefold()
+                    media_id = str(info.get("id") or "").strip()
+                    self.gachaSourceCompleted.emit(
+                        f"{extractor}:{media_id}" if media_id else str(job.config.get("url") or "")
+                    )
                 elif job.job_type == "PLAYLIST":
                     self._rewarded_jobs.add(job_id)
                     successful_items = max(0, int(getattr(job, "completed_items", 0) or 0))
                     if successful_items:
                         self.successfulDownload.emit(successful_items)
+                        entries = [
+                            entry for entry in (job.analysis_data or {}).get("entries", []) if entry
+                        ]
+                        selected = job.config.get("selected_indices", list(range(len(entries))))
+                        for index in selected[:successful_items]:
+                            if not 0 <= int(index) < len(entries):
+                                continue
+                            entry = entries[int(index)]
+                            extractor = str(
+                                entry.get("extractor_key") or entry.get("extractor") or "playlist"
+                            ).casefold()
+                            media_id = str(entry.get("id") or "").strip()
+                            source = str(entry.get("webpage_url") or entry.get("url") or "")
+                            self.gachaSourceCompleted.emit(
+                                f"{extractor}:{media_id}" if media_id else source
+                            )
 
     def _model_item(self, job, status=None, detail="", progress=0.0):
         config = job.config

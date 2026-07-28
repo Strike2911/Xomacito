@@ -21,6 +21,60 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class QtMigrationTests(unittest.TestCase):
+    def test_release_26_opens_the_platinum_confetti_after_the_update_notice(self):
+        script = r'''
+from pathlib import Path
+from PySide6.QtCore import QObject, QMetaObject, Qt, QUrl
+from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
+from src.core.app_updater import release_notice_for_version
+from src.ui.application import AppController
+
+app = QApplication([])
+root = Path.cwd()
+controller = AppController(app, root, "2.6")
+engine = QQmlApplicationEngine()
+context = engine.rootContext()
+for name, value in (
+    ("appController", controller), ("theme", controller.theme),
+    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("imageController", controller.image_studio), ("settingsController", controller.config),
+    ("catController", controller.cats),
+    ("presetStore", controller.presets), ("dialogBroker", controller.dialogs),
+):
+    context.setContextProperty(name, value)
+engine.load(QUrl.fromLocalFile(str(root / "src/ui/qml/Main.qml")))
+window = engine.rootObjects()[0]
+window.setProperty("width", 1280)
+window.setProperty("height", 720)
+controller.releaseNoticeRequested.emit(release_notice_for_version("2.6"))
+QTest.qWait(650)
+notice = window.findChild(QObject, "releaseNoticePopup")
+platinum = window.findChild(QObject, "platinumCelebrationPopup")
+assert notice is not None and notice.property("opened") is True, (
+    notice, None if notice is None else notice.property("opened")
+)
+assert platinum is not None and platinum.property("opened") is False, (
+    platinum, None if platinum is None else platinum.property("opened")
+)
+assert QMetaObject.invokeMethod(window, "finishReleaseNotice", Qt.DirectConnection)
+QTest.qWait(900)
+assert notice.property("opened") is False, notice.property("opened")
+assert platinum.property("opened") is True, platinum.property("opened")
+assert platinum.property("width") == window.property("width")
+assert platinum.property("height") == window.property("height")
+controller.shutdown()
+'''
+        with tempfile.TemporaryDirectory() as appdata:
+            environment = dict(os.environ)
+            environment.update({"QT_QPA_PLATFORM": "offscreen", "APPDATA": appdata})
+            result = subprocess.run(
+                [sys.executable, "-c", script], cwd=ROOT, env=environment,
+                capture_output=True, text=True, timeout=20, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
     def test_release_20_notice_is_styled_and_fits_1280x720(self):
         script = r'''
 from pathlib import Path
@@ -380,6 +434,9 @@ controller.shutdown()
     def test_all_five_pages_are_persistent_and_have_tools(self):
         main = (ROOT / "src" / "ui" / "qml" / "Main.qml").read_text(encoding="utf-8")
         self.assertIn("StackLayout", main)
+        self.assertIn('objectName: "platinumCelebrationPopup"', main)
+        self.assertIn("¡ALGUIEN YA SE PLATINÓ", main)
+        self.assertIn("platinumCelebration", main)
         for page in ("DownloadPage", "QueuePage", "ImageStudioPage", "SettingsPage", "CatGachaPage"):
             self.assertEqual(main.count(page), 1)
 
@@ -534,6 +591,76 @@ controller.shutdown()
             )
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
+    def test_new_analysis_resets_mode_preset_and_clip_defaults(self):
+        script = r'''
+from pathlib import Path
+from PySide6.QtWidgets import QApplication
+from src.ui.application import AppController
+from src.ui.media_logic import normalize_info
+
+app = QApplication([])
+controller = AppController(app, Path.cwd(), "2.5")
+download = controller.download
+download._set_state(mode="Solo Audio", preset="Audio - MP3 128kbps")
+download._options.update({
+    "fragmentEnabled": True,
+    "startTime": "00:00:01",
+    "endTime": "00:00:02",
+})
+download._apply_url_analysis(normalize_info({
+    "id": "new-video",
+    "extractor_key": "Youtube",
+    "title": "Nuevo video",
+    "duration": 125,
+    "formats": [
+        {"format_id": "v", "ext": "mp4", "vcodec": "avc1", "acodec": "none", "height": 1080},
+        {"format_id": "a", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "abr": 128},
+    ],
+}))
+assert download.state["mode"] == "Video+Audio", download.state
+assert download.state["preset"] in controller.presets.videoPresets
+assert download.options["fragmentEnabled"] is False
+assert download.options["startTime"] == "00:00:00"
+assert download.options["endTime"] == "00:02:05"
+controller.shutdown()
+'''
+        with tempfile.TemporaryDirectory() as appdata:
+            environment = dict(os.environ)
+            environment.update({"QT_QPA_PLATFORM": "offscreen", "APPDATA": appdata})
+            result = subprocess.run(
+                [sys.executable, "-c", script], cwd=ROOT, env=environment,
+                capture_output=True, text=True, timeout=20, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
+    def test_download_tags_choose_a_real_output_folder(self):
+        script = r'''
+from pathlib import Path
+from PySide6.QtWidgets import QApplication
+from src.ui.application import AppController
+
+app = QApplication([])
+controller = AppController(app, Path.cwd(), "2.5")
+download = controller.download
+download._tags = [{"name": "SFX", "folder": r"C:\Media\SFX", "color": "#FF5C8A"}]
+download.tagsChanged.emit()
+download.setValue("selectedTag", "SFX")
+download._set_state(title="impacto")
+options = download._collect_process_options()
+assert download.state["effectiveOutputPath"] == r"C:\Media\SFX"
+assert options["output_path"] == r"C:\Media\SFX"
+assert download.state["selectedTagColor"] == "#FF5C8A"
+controller.shutdown()
+'''
+        with tempfile.TemporaryDirectory() as appdata:
+            environment = dict(os.environ)
+            environment.update({"QT_QPA_PLATFORM": "offscreen", "APPDATA": appdata})
+            result = subprocess.run(
+                [sys.executable, "-c", script], cwd=ROOT, env=environment,
+                capture_output=True, text=True, timeout=20, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
     def test_ogg_is_really_recoded_to_mp3(self):
         script = r'''
 import subprocess
@@ -552,7 +679,7 @@ with tempfile.TemporaryDirectory() as directory:
         "-i", "sine=frequency=440:duration=0.25", "-c:a", "libvorbis", str(source)
     ], check=True, capture_output=True)
     controller.download._set_state(
-        localFile=str(source), outputPath=str(folder), title="audio",
+        localFile=str(source), outputPath=str(folder), effectiveOutputPath=str(folder), title="audio",
         mode="Solo Audio", preset="Audio - MP3 128kbps",
         selectedVideo="", selectedAudio="Audio 1",
     )
@@ -621,6 +748,52 @@ with tempfile.TemporaryDirectory() as directory:
     media = controller.download.ffmpeg.get_local_media_info(str(audio))
     pictures = [stream for stream in media["streams"] if stream.get("codec_type") == "video"]
     assert pictures and pictures[0].get("disposition", {}).get("attached_pic") == 1, pictures
+controller.shutdown()
+'''
+        with tempfile.TemporaryDirectory() as appdata:
+            environment = dict(os.environ)
+            environment.update({"QT_QPA_PLATFORM": "offscreen", "APPDATA": appdata})
+            result = subprocess.run(
+                [sys.executable, "-c", script], cwd=ROOT, env=environment,
+                capture_output=True, text=True, timeout=30, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
+    def test_invalid_argument_download_retries_with_a_windows_safe_name(self):
+        script = r'''
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+from PySide6.QtWidgets import QApplication
+from src.ui.application import AppController
+
+app = QApplication([])
+controller = AppController(app, Path.cwd(), "2.5")
+download = controller.download
+with tempfile.TemporaryDirectory() as directory:
+    folder = Path(directory)
+    download._video_map = {"1080p": {"formatId": "137", "combined": False}}
+    download._audio_map = {"Audio": {"formatId": "140"}}
+    download._set_state(
+        url="https://example.test/video", title="Título visible",
+        effectiveOutputPath=str(folder), outputPath=str(folder),
+        mode="Video+Audio", selectedVideo="1080p", selectedAudio="Audio",
+    )
+    options = download._collect_process_options()
+    calls = []
+    def fake_download(_url, ydl_options, _progress, _cancel):
+        calls.append(dict(ydl_options))
+        if len(calls) == 1:
+            raise OSError(22, "Invalid argument")
+        staged = Path(ydl_options["outtmpl"].replace("%(ext)s", "mp4"))
+        staged.write_bytes(b"xomacito")
+        return str(staged)
+    with patch("src.ui.download_controller.download_media", side_effect=fake_download):
+        result = Path(download._download_worker(options))
+    assert len(calls) == 2, calls
+    assert "xomacito-" in calls[1]["outtmpl"], calls[1]["outtmpl"]
+    assert result.name == "Título visible.mp4", result
+    assert result.read_bytes() == b"xomacito"
 controller.shutdown()
 '''
         with tempfile.TemporaryDirectory() as appdata:

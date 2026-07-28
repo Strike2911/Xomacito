@@ -1,6 +1,6 @@
 # Xomacito
 
-Versión actual: **Xomacito 2.5**.
+Versión actual: **Xomacito 2.6**.
 
 Aplicación independiente para Windows que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike**.
 
@@ -23,7 +23,8 @@ Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión 
 - Removedor de fondos renovado con modelos BiRefNet para retratos, bordes finos y escenas complejas.
 - Temas claros y oscuros, fondos adaptativos y colección gatuna equipable.
 - Gacha de gatos: una tirada diaria gratis y una tirada adicional por cada 10 descargas exitosas.
-- 105 gatos con nombres propios y rarezas estables de 1 a 5 estrellas.
+- 142 gatos con nombres estandarizados en mayúsculas y rarezas estables de 1 a 6 estrellas.
+- Gatos míticos de 6 estrellas con animaciones exclusivas de desbloqueo y equipamiento.
 - Sonido de confirmación al finalizar una descarga.
 - Instalación por usuario y desinstalador integrado en Windows.
 - Instancia única: al abrir Xomacito otra vez se enfoca la ventana existente.
@@ -50,6 +51,8 @@ Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión 
 - `.build/XomacitoInstaller.spec`: definición del paquete PyInstaller.
 
 Los runtimes de compilación, herramientas externas, modelos, builds y preferencias personales están excluidos del repositorio. Los binarios distribuidos a usuarios se publican únicamente en [GitHub Releases](https://github.com/Strike2911/Xomacito/releases).
+
+La versión 2.6 agradece especialmente a **Spike** y a la comunidad por sus aportes al sistema de colección gatuna.
 
 Para volver a importar o ampliar la colección sin cambiar las rarezas ya asignadas:
 

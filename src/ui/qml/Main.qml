@@ -19,6 +19,13 @@ ApplicationWindow {
     property string dialogRequestId: ""
     property var dialogOptions: []
 
+    function finishReleaseNotice() {
+        var celebrate = Boolean(noticePopup.noticeInfo.platinumCelebration)
+        noticePopup.close()
+        if (celebrate)
+            platinumDelay.restart()
+    }
+
     background: Item {
         Rectangle {
             anchors.fill: parent
@@ -69,6 +76,7 @@ ApplicationWindow {
                     source: appController.catSource
                     rarity: appController.catRarity
                     rarityColor: appController.catRarityColor
+                    animationStyle: appController.catAnimationStyle
                     animatedEffects: settingsController.state.animationsEnabled
                     SequentialAnimation on scale {
                         loops: Animation.Infinite
@@ -361,6 +369,7 @@ ApplicationWindow {
                         source: appController.catSource
                         rarity: appController.catRarity
                         rarityColor: "#FFE35A"
+                        animationStyle: appController.catAnimationStyle
                         animatedEffects: noticePopup.opened && settingsController.state.animationsEnabled
                     }
 
@@ -499,7 +508,239 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
-                XButton { text: "¡A descargar!"; onClicked: noticePopup.close() }
+                XButton {
+                    objectName: "releaseNoticeContinueButton"
+                    text: "¡A descargar!"
+                    onClicked: window.finishReleaseNotice()
+                }
+            }
+        }
+    }
+
+    Timer {
+        id: platinumDelay
+        interval: 190
+        repeat: false
+        onTriggered: platinumPopup.open()
+    }
+
+    Popup {
+        id: platinumPopup
+        objectName: "platinumCelebrationPopup"
+        x: 0
+        y: 0
+        width: window.width
+        height: window.height
+        modal: true
+        focus: true
+        padding: 0
+        closePolicy: Popup.CloseOnEscape
+        enter: Transition {
+            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 260 }
+        }
+        exit: Transition {
+            NumberAnimation { property: "opacity"; to: 0; duration: 220 }
+        }
+        onOpened: platinumCardAnimation.restart()
+
+        background: Rectangle {
+            color: "#E6000712"
+            Rectangle {
+                anchors.fill: parent
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0; color: "#B51D0B3A" }
+                    GradientStop { position: 0.5; color: "#B5032532" }
+                    GradientStop { position: 1; color: "#B52E123D" }
+                }
+            }
+        }
+
+        contentItem: Item {
+            clip: true
+
+            QtObject {
+                id: confettiMotion
+                property real phase: 0
+            }
+            NumberAnimation {
+                target: confettiMotion
+                property: "phase"
+                from: 0
+                to: 1
+                duration: 4200
+                loops: Animation.Infinite
+                running: platinumPopup.opened && settingsController.state.animationsEnabled
+            }
+
+            Repeater {
+                model: 76
+                Rectangle {
+                    required property int index
+                    property var confettiColors: [
+                        "#20D8E8", "#9CFF57", "#FFE35A", "#FF5FE7",
+                        "#FF6B6B", "#7B8DFF", "#FFFFFF"
+                    ]
+                    x: ((index * 73) % 101) / 100 * (platinumPopup.width - width)
+                    y: -70 + (
+                        ((index * 97) + confettiMotion.phase * (platinumPopup.height + 140))
+                        % (platinumPopup.height + 140)
+                    )
+                    width: 6 + (index % 4) * 2
+                    height: index % 3 === 0 ? width : width * 2.1
+                    radius: index % 4 === 0 ? width / 2 : 2
+                    color: confettiColors[index % confettiColors.length]
+                    opacity: 0.92
+                    rotation: ((index * 37) % 180) + confettiMotion.phase * 720
+                    visible: platinumPopup.opened
+                }
+            }
+
+            Rectangle {
+                id: platinumHaloOuter
+                anchors.centerIn: platinumCard
+                width: platinumCard.width + 110
+                height: width
+                radius: width / 2
+                color: "transparent"
+                border.width: 2
+                border.color: "#66FFE35A"
+                opacity: 0.55
+                SequentialAnimation on scale {
+                    running: platinumPopup.opened && settingsController.state.animationsEnabled
+                    loops: Animation.Infinite
+                    NumberAnimation { from: 0.86; to: 1.05; duration: 1250; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 0.86; duration: 1250; easing.type: Easing.InOutSine }
+                }
+            }
+
+            Rectangle {
+                anchors.centerIn: platinumCard
+                width: platinumCard.width + 44
+                height: width
+                radius: width / 2
+                color: "transparent"
+                border.width: 3
+                border.color: "#669CFF57"
+                opacity: 0.72
+                SequentialAnimation on rotation {
+                    running: platinumPopup.opened && settingsController.state.animationsEnabled
+                    loops: Animation.Infinite
+                    NumberAnimation { from: 0; to: 360; duration: 9000 }
+                }
+            }
+
+            Rectangle {
+                id: platinumCard
+                objectName: "platinumCelebrationCard"
+                anchors.centerIn: parent
+                width: Math.min(650, platinumPopup.width - 54)
+                height: Math.min(390, platinumPopup.height - 70)
+                radius: 28
+                color: theme.colors.surfaceRaised
+                border.width: 2
+                border.color: "#FFE35A"
+                scale: 1
+
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: 7
+                    radius: 22
+                    color: "transparent"
+                    border.width: 1
+                    border.color: "#339CFF57"
+                }
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 28
+                    spacing: 10
+
+                    Text {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: "✦  LEYENDA GATUNA DESBLOQUEADA  ✦"
+                        color: "#9CFF57"
+                        font.pixelSize: 11
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.6
+                    }
+                    Text {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: "🏆"
+                        color: "#FFE35A"
+                        font.pixelSize: 58
+                    }
+                    Text {
+                        objectName: "platinumCelebrationTitle"
+                        Layout.fillWidth: true
+                        text: "¡ALGUIEN YA SE PLATINÓ\nXOMACITO!"
+                        color: "white"
+                        horizontalAlignment: Text.AlignHCenter
+                        font.pixelSize: platinumPopup.width < 700 ? 27 : 34
+                        font.weight: Font.Black
+                        font.letterSpacing: 0.5
+                        wrapMode: Text.WordWrap
+                    }
+                    Rectangle {
+                        Layout.alignment: Qt.AlignHCenter
+                        width: 138
+                        height: 38
+                        radius: 19
+                        color: "#1CFFE35A"
+                        border.width: 1
+                        border.color: "#FFE35A"
+                        Text {
+                            anchors.centerIn: parent
+                            text: "105 / 105  ✓"
+                            color: "#FFE35A"
+                            font.pixelSize: 16
+                            font.weight: Font.Bold
+                        }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "La colección original fue completada antes de que llegaran los nuevos gatos. Historia pura del gacha."
+                        color: theme.colors.textMuted
+                        horizontalAlignment: Text.AlignHCenter
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                    }
+                    Item { Layout.fillHeight: true }
+                    XButton {
+                        Layout.alignment: Qt.AlignHCenter
+                        implicitWidth: 190
+                        text: "¡Que siga la colección!"
+                        onClicked: platinumPopup.close()
+                    }
+                }
+            }
+
+            SequentialAnimation {
+                id: platinumCardAnimation
+                ParallelAnimation {
+                    NumberAnimation {
+                        target: platinumCard
+                        property: "scale"
+                        from: 0.62
+                        to: 1.06
+                        duration: settingsController.state.animationsEnabled ? 520 : 0
+                        easing.type: Easing.OutBack
+                    }
+                    NumberAnimation {
+                        target: platinumCard
+                        property: "opacity"
+                        from: 0
+                        to: 1
+                        duration: settingsController.state.animationsEnabled ? 300 : 0
+                    }
+                }
+                NumberAnimation {
+                    target: platinumCard
+                    property: "scale"
+                    to: 1
+                    duration: settingsController.state.animationsEnabled ? 190 : 0
+                    easing.type: Easing.OutCubic
+                }
             }
         }
     }

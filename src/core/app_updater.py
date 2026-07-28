@@ -25,6 +25,25 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "2.6": {
+        "eyebrow": "ACTUALIZACIÓN INSTALADA",
+        "title": "Xomacito 2.6",
+        "subtitle": "¡LA PLATINO GACHA UPDATE!!",
+        "message": (
+            "La colección gatuna crece, estrena una categoría mítica de seis estrellas "
+            "y celebra a quienes ya completaron el Xomacito original."
+        ),
+        "highlights": [
+            "37 gatos nuevos se unen al gacha: ahora hay 142 para coleccionar.",
+            "Todos los nombres están estandarizados en mayúsculas.",
+            "Nueva rareza mítica de 6★ con efectos visuales propios.",
+            "GATO MAGO debuta como el primer 6★ con animaciones arcanas exclusivas.",
+            "Rarezas revisadas para GATO DIOS, GATO DETECTIVE, GATO PIXELART y otros favoritos.",
+        ],
+        "contributors": ["Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike"],
+        "closing": "Gracias a Spike y a toda la comunidad por llevar el gacha mucho más lejos.",
+        "platinumCelebration": True,
+    },
     "2.5": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
         "title": "Xomacito 2.5",

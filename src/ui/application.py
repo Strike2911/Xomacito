@@ -96,8 +96,8 @@ class AppController(QObject):
     def _connect_routes(self):
         for controller in (self.download, self.batch, self.image_studio, self.config, self.cats):
             controller.notificationRequested.connect(self.toastRequested)
-        self.download.successfulDownload.connect(self.cats.recordSuccessfulDownloads)
-        self.batch.successfulDownload.connect(self.cats.recordSuccessfulDownloads)
+        self.download.gachaSourceCompleted.connect(self.cats.recordSuccessfulSource)
+        self.batch.gachaSourceCompleted.connect(self.cats.recordSuccessfulSource)
         self.download.successfulDownload.connect(self._play_download_completion)
         self.batch.successfulDownload.connect(self._play_download_completion)
         self.cats.revealRequested.connect(self._play_cat_reveal)
@@ -196,6 +196,10 @@ class AppController(QObject):
     @Property(str, notify=catChanged)
     def catRarityColor(self):
         return str(self.cats.state.get("equippedColor", "#A8B0BC"))
+
+    @Property(str, notify=catChanged)
+    def catAnimationStyle(self):
+        return str(self.cats.state.get("equippedAnimationStyle", "standard"))
 
     @Property("QVariantMap", notify=updateStateChanged)
     def updateState(self):
