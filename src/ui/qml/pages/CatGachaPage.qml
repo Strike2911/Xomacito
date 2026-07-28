@@ -62,6 +62,7 @@ Item {
                     source: catController.state.equippedSource
                     rarity: catController.state.equippedRarity
                     rarityColor: catController.state.equippedColor
+                    animationStyle: catController.state.equippedAnimationStyle
                     animatedEffects: settingsController.state.animationsEnabled
                 }
                 ColumnLayout {
@@ -145,7 +146,7 @@ Item {
             }
             Item { Layout.fillWidth: true }
             Text {
-                text: "1★ común   ·   2★ peculiar   ·   3★ raro   ·   4★ épico   ·   5★ legendario"
+                text: "1★ común  ·  2★ peculiar  ·  3★ raro  ·  4★ épico  ·  5★ legendario  ·  6★ mítico"
                 color: theme.colors.textMuted
                 font.pixelSize: 10
             }
@@ -171,6 +172,7 @@ Item {
                 required property int rarity
                 required property color rarityColor
                 required property string stars
+                required property string animationStyle
                 required property bool unlocked
                 required property bool equipped
                 required property int duplicateCount
@@ -199,6 +201,7 @@ Item {
                                 source: catCard.source
                                 rarity: catCard.rarity
                                 rarityColor: catCard.rarityColor
+                                animationStyle: catCard.animationStyle
                                 opacity: catCard.unlocked ? 1 : 0.2
                             }
                             Rectangle {
@@ -252,9 +255,10 @@ Item {
         closePolicy: Popup.NoAutoClose
         property var result: ({})
         property real revealProgress: 1
-        readonly property int resultRarity: Math.max(1, Math.min(5, Number(result.rarity || 1)))
+        readonly property int resultRarity: Math.max(1, Math.min(6, Number(result.rarity || 1)))
         readonly property color revealColor: result.rarityColor || theme.colors.primary
-        readonly property string rarityTitle: ["", "COMÚN", "PECULIAR", "RARO", "ÉPICO", "LEGENDARIO"][resultRarity]
+        readonly property string rarityTitle: ["", "COMÚN", "PECULIAR", "RARO", "ÉPICO", "LEGENDARIO", "MÍTICO ARCANO"][resultRarity]
+        readonly property bool arcaneMage: result.animationStyle === "arcane-mage"
 
         function beginReveal() {
             revealProgress = settingsController.state.animationsEnabled ? 0 : 1
@@ -278,7 +282,7 @@ Item {
         background: Rectangle {
             radius: 26
             color: theme.colors.backgroundAlt
-            border.width: revealPopup.resultRarity >= 4 ? 3 : 2
+            border.width: revealPopup.resultRarity >= 6 ? 5 : revealPopup.resultRarity >= 4 ? 3 : 2
             border.color: revealPopup.revealColor
         }
 
@@ -290,7 +294,7 @@ Item {
                 property: "revealProgress"
                 from: 0
                 to: 0.48
-                duration: revealPopup.resultRarity >= 5 ? 1050 : revealPopup.resultRarity >= 4 ? 860 : 620
+                duration: revealPopup.arcaneMage ? 1650 : revealPopup.resultRarity >= 5 ? 1050 : revealPopup.resultRarity >= 4 ? 860 : 620
                 easing.type: Easing.InCubic
             }
             NumberAnimation {
@@ -300,12 +304,12 @@ Item {
                 duration: 150
                 easing.type: Easing.OutExpo
             }
-            PauseAnimation { duration: revealPopup.resultRarity >= 4 ? 90 : 40 }
+            PauseAnimation { duration: revealPopup.arcaneMage ? 220 : revealPopup.resultRarity >= 4 ? 90 : 40 }
             NumberAnimation {
                 target: revealPopup
                 property: "revealProgress"
                 to: 1
-                duration: revealPopup.resultRarity >= 4 ? 560 : 420
+                duration: revealPopup.arcaneMage ? 860 : revealPopup.resultRarity >= 4 ? 560 : 420
                 easing.type: Easing.OutBack
             }
         }
@@ -320,7 +324,7 @@ Item {
                 radius: 24
                 gradient: Gradient {
                     GradientStop { position: 0; color: theme.colors.backgroundAlt }
-                    GradientStop { position: 0.52; color: Qt.rgba(revealPopup.revealColor.r, revealPopup.revealColor.g, revealPopup.revealColor.b, revealPopup.resultRarity >= 4 ? 0.15 : 0.08) }
+                    GradientStop { position: 0.52; color: Qt.rgba(revealPopup.revealColor.r, revealPopup.revealColor.g, revealPopup.revealColor.b, revealPopup.arcaneMage ? 0.28 : revealPopup.resultRarity >= 4 ? 0.15 : 0.08) }
                     GradientStop { position: 1; color: theme.colors.surface }
                 }
             }
@@ -334,7 +338,7 @@ Item {
                 opacity: 0.08 + revealPopup.resultRarity * 0.035
 
                 Repeater {
-                    model: revealPopup.resultRarity >= 5 ? 28 : revealPopup.resultRarity >= 4 ? 22 : 14
+                    model: revealPopup.resultRarity >= 6 ? 44 : revealPopup.resultRarity >= 5 ? 28 : revealPopup.resultRarity >= 4 ? 22 : 14
                     Rectangle {
                         required property int index
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -344,7 +348,7 @@ Item {
                         radius: width / 2
                         color: index % 5 === 0 && revealPopup.resultRarity >= 4 ? "white" : revealPopup.revealColor
                         transformOrigin: Item.Bottom
-                        rotation: index * (360 / (revealPopup.resultRarity >= 5 ? 28 : revealPopup.resultRarity >= 4 ? 22 : 14))
+                        rotation: index * (360 / (revealPopup.resultRarity >= 6 ? 44 : revealPopup.resultRarity >= 5 ? 28 : revealPopup.resultRarity >= 4 ? 22 : 14))
                     }
                 }
 
@@ -352,16 +356,16 @@ Item {
                     running: revealPopup.opened && settingsController.state.animationsEnabled
                     from: 0
                     to: 360
-                    duration: revealPopup.resultRarity >= 5 ? 10000 : 16000
+                    duration: revealPopup.arcaneMage ? 5200 : revealPopup.resultRarity >= 5 ? 10000 : 16000
                     loops: Animation.Infinite
                 }
             }
 
             Repeater {
-                model: revealPopup.resultRarity >= 5 ? 30 : revealPopup.resultRarity >= 4 ? 22 : 14
+                model: revealPopup.resultRarity >= 6 ? 48 : revealPopup.resultRarity >= 5 ? 30 : revealPopup.resultRarity >= 4 ? 22 : 14
                 Rectangle {
                     required property int index
-                    property real angle: index * Math.PI * 2 / (revealPopup.resultRarity >= 5 ? 30 : revealPopup.resultRarity >= 4 ? 22 : 14)
+                    property real angle: index * Math.PI * 2 / (revealPopup.resultRarity >= 6 ? 48 : revealPopup.resultRarity >= 5 ? 30 : revealPopup.resultRarity >= 4 ? 22 : 14)
                     property real travel: (70 + (index % 6) * 27) * Math.max(0, (revealPopup.revealProgress - 0.42) / 0.58)
                     width: 3 + (index % 3) * 2
                     height: width
@@ -379,7 +383,7 @@ Item {
                 height: width
                 radius: width / 2
                 color: "transparent"
-                border.width: revealPopup.resultRarity >= 5 ? 5 : revealPopup.resultRarity >= 4 ? 3 : 2
+                border.width: revealPopup.resultRarity >= 6 ? 7 : revealPopup.resultRarity >= 5 ? 5 : revealPopup.resultRarity >= 4 ? 3 : 2
                 border.color: revealPopup.revealColor
                 opacity: revealPopup.revealProgress < 0.58 ? 0.7 : 0.18
             }
@@ -398,7 +402,7 @@ Item {
 
                 Text {
                     anchors.centerIn: parent
-                    text: revealPopup.resultRarity >= 5 ? "✦" : "★"
+                    text: revealPopup.resultRarity >= 6 ? "✺" : revealPopup.resultRarity >= 5 ? "✦" : "★"
                     color: "white"
                     font.pixelSize: parent.width * 0.34
                     opacity: 0.72
@@ -411,6 +415,66 @@ Item {
                 color: "white"
                 opacity: Math.max(0, 1 - Math.abs(revealPopup.revealProgress - 0.64) * 18)
             }
+
+            Item {
+                id: arcanePortal
+                anchors.centerIn: parent
+                width: Math.min(parent.width, parent.height) * 0.88
+                height: width
+                visible: revealPopup.arcaneMage
+                opacity: Math.min(1, revealPopup.revealProgress * 2.2)
+
+                Repeater {
+                    model: 3
+                    Rectangle {
+                        required property int index
+                        anchors.centerIn: parent
+                        width: parent.width - index * 46
+                        height: width
+                        radius: width / 2
+                        color: "transparent"
+                        border.width: index === 0 ? 3 : 2
+                        border.color: index === 1 ? "#FFF2A8" : revealPopup.revealColor
+                        opacity: 0.2 + index * 0.12
+                        RotationAnimation on rotation {
+                            running: revealPopup.opened && settingsController.state.animationsEnabled
+                            from: index % 2 ? 360 : 0
+                            to: index % 2 ? 0 : 360
+                            duration: 3300 + index * 900
+                            loops: Animation.Infinite
+                        }
+                    }
+                }
+
+                Repeater {
+                    model: 12
+                    Text {
+                        required property int index
+                        readonly property var glyphs: ["✦", "◇", "✧", "☾", "✶", "✺"]
+                        text: glyphs[index % glyphs.length]
+                        color: index % 3 === 0 ? "#FFF2A8" : revealPopup.revealColor
+                        font.pixelSize: index % 2 ? 14 : 20
+                        font.weight: Font.Bold
+                        x: parent.width / 2 + Math.cos(index * Math.PI / 6) * (parent.width / 2 - 24) - width / 2
+                        y: parent.height / 2 + Math.sin(index * Math.PI / 6) * (parent.height / 2 - 24) - height / 2
+                        SequentialAnimation on opacity {
+                            running: revealPopup.opened && settingsController.state.animationsEnabled
+                            loops: Animation.Infinite
+                            PauseAnimation { duration: index * 65 }
+                            NumberAnimation { from: 0.18; to: 1; duration: 380 }
+                            NumberAnimation { to: 0.2; duration: 620 }
+                        }
+                    }
+                }
+
+                RotationAnimation on rotation {
+                    running: revealPopup.opened && settingsController.state.animationsEnabled
+                    from: 0
+                    to: 360
+                    duration: 14000
+                    loops: Animation.Infinite
+                }
+            }
         }
 
         ColumnLayout {
@@ -420,7 +484,9 @@ Item {
             Text {
                 Layout.alignment: Qt.AlignHCenter
                 text: revealPopup.revealProgress < 0.58
-                      ? (revealPopup.resultRarity >= 4 ? "UNA PRESENCIA EXTRAORDINARIA…" : "DESCUBRIENDO TU GATO…")
+                      ? (revealPopup.arcaneMage
+                         ? "EL FIRMAMENTO RESPONDE AL GATO MAGO…"
+                         : revealPopup.resultRarity >= 4 ? "UNA PRESENCIA EXTRAORDINARIA…" : "DESCUBRIENDO TU GATO…")
                       : revealPopup.result.isNew ? "¡NUEVO GATO DESBLOQUEADO!" : "GATO REPETIDO · BRILLO +1"
                 color: revealPopup.revealProgress < 0.58 ? theme.colors.text : revealPopup.revealColor
                 font.pixelSize: 11
@@ -440,7 +506,7 @@ Item {
                     height: Math.min(350, parent.height - 4)
                     radius: 24
                     color: theme.colors.surfaceRaised
-                    border.width: revealPopup.resultRarity >= 5 ? 4 : revealPopup.resultRarity >= 4 ? 3 : 2
+                    border.width: revealPopup.resultRarity >= 6 ? 6 : revealPopup.resultRarity >= 5 ? 4 : revealPopup.resultRarity >= 4 ? 3 : 2
                     border.color: revealPopup.revealColor
                     opacity: Math.max(0, Math.min(1, (revealPopup.revealProgress - 0.57) / 0.16))
                     scale: 0.66 + Math.max(0, Math.min(1, (revealPopup.revealProgress - 0.57) / 0.43)) * 0.34
@@ -477,6 +543,7 @@ Item {
                                 source: revealPopup.result.source || ""
                                 rarity: revealPopup.resultRarity
                                 rarityColor: revealPopup.revealColor
+                                animationStyle: revealPopup.result.animationStyle || "standard"
                                 animatedEffects: revealPopup.opened && revealPopup.revealProgress >= 0.66 && settingsController.state.animationsEnabled
                             }
                         }
@@ -509,10 +576,142 @@ Item {
                     visible: revealPopup.result.isNew === true
                     text: "Equipar ahora"
                     kind: "secondary"
-                    onClicked: { catController.equip(revealPopup.result.catId); revealPopup.close() }
+                    onClicked: { revealPopup.close(); catController.equip(revealPopup.result.catId) }
                 }
                 XButton { text: "Continuar"; onClicked: revealPopup.close() }
                 Item { Layout.fillWidth: true }
+            }
+        }
+    }
+
+    Item {
+        id: equipCelebration
+        objectName: "catEquipCelebration"
+        anchors.fill: parent
+        z: 500
+        visible: opacity > 0
+        opacity: 0
+        property var result: ({})
+        property real pulseScale: 0.5
+        readonly property bool arcaneMage: result.animationStyle === "arcane-mage"
+        readonly property color effectColor: result.rarityColor || theme.colors.primary
+
+        function celebrate(value) {
+            result = value
+            if (!settingsController.state.animationsEnabled)
+                return
+            opacity = 0
+            pulseScale = 0.5
+            equipSequence.restart()
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: equipCelebration.arcaneMage ? "#D90A001A" : "#A8000710"
+        }
+
+        Item {
+            anchors.centerIn: parent
+            width: Math.min(parent.width, parent.height) * (equipCelebration.arcaneMage ? 0.72 : 0.5)
+            height: width
+            scale: equipCelebration.pulseScale
+
+            Repeater {
+                model: equipCelebration.arcaneMage ? 3 : 1
+                Rectangle {
+                    required property int index
+                    anchors.centerIn: parent
+                    width: parent.width - index * 42
+                    height: width
+                    radius: width / 2
+                    color: "transparent"
+                    border.width: equipCelebration.arcaneMage ? 4 - index : 2
+                    border.color: index === 1 ? "#FFF2A8" : equipCelebration.effectColor
+                    opacity: 0.38 + index * 0.12
+                    RotationAnimation on rotation {
+                        running: equipCelebration.visible && equipCelebration.arcaneMage
+                        from: index % 2 ? 360 : 0
+                        to: index % 2 ? 0 : 360
+                        duration: 1800 + index * 650
+                        loops: Animation.Infinite
+                    }
+                }
+            }
+
+            Repeater {
+                model: equipCelebration.arcaneMage ? 18 : 8
+                Text {
+                    required property int index
+                    readonly property var glyphs: ["✦", "◇", "✧", "☾", "✶", "✺"]
+                    text: glyphs[index % glyphs.length]
+                    color: index % 3 ? equipCelebration.effectColor : "#FFF2A8"
+                    font.pixelSize: equipCelebration.arcaneMage ? 16 + index % 3 * 3 : 11
+                    x: parent.width / 2 + Math.cos(index * Math.PI * 2 / (equipCelebration.arcaneMage ? 18 : 8))
+                       * (parent.width / 2 - 12) - width / 2
+                    y: parent.height / 2 + Math.sin(index * Math.PI * 2 / (equipCelebration.arcaneMage ? 18 : 8))
+                       * (parent.height / 2 - 12) - height / 2
+                }
+            }
+
+            CatAvatar {
+                anchors.centerIn: parent
+                width: equipCelebration.arcaneMage ? 178 : 118
+                height: width
+                source: equipCelebration.result.source || ""
+                rarity: Number(equipCelebration.result.rarity || 1)
+                rarityColor: equipCelebration.effectColor
+                animationStyle: equipCelebration.result.animationStyle || "standard"
+                animatedEffects: equipCelebration.visible
+            }
+        }
+
+        Column {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: root.dense ? 36 : 54
+            spacing: 5
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: equipCelebration.arcaneMage ? "PACTO ARCANO COMPLETADO" : "GATO EQUIPADO"
+                color: equipCelebration.arcaneMage ? "#FFF2A8" : equipCelebration.effectColor
+                font.pixelSize: equipCelebration.arcaneMage ? 18 : 13
+                font.weight: Font.Bold
+                font.letterSpacing: 2
+            }
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: equipCelebration.result.name || ""
+                color: theme.colors.text
+                font.pixelSize: equipCelebration.arcaneMage ? 28 : 20
+                font.weight: Font.Bold
+            }
+        }
+
+        SequentialAnimation {
+            id: equipSequence
+            ParallelAnimation {
+                NumberAnimation {
+                    target: equipCelebration
+                    property: "opacity"
+                    from: 0
+                    to: 1
+                    duration: equipCelebration.arcaneMage ? 360 : 180
+                }
+                NumberAnimation {
+                    target: equipCelebration
+                    property: "pulseScale"
+                    from: 0.5
+                    to: 1
+                    duration: equipCelebration.arcaneMage ? 980 : 420
+                    easing.type: equipCelebration.arcaneMage ? Easing.OutElastic : Easing.OutBack
+                }
+            }
+            PauseAnimation { duration: equipCelebration.arcaneMage ? 1250 : 500 }
+            NumberAnimation {
+                target: equipCelebration
+                property: "opacity"
+                to: 0
+                duration: equipCelebration.arcaneMage ? 520 : 260
             }
         }
     }
@@ -522,6 +721,9 @@ Item {
         function onRevealRequested(result) {
             revealPopup.result = result
             revealPopup.beginReveal()
+        }
+        function onEquippedRequested(result) {
+            equipCelebration.celebrate(result)
         }
     }
 }

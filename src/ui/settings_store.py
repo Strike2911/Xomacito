@@ -42,6 +42,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "appearance_mode": "Dark",
     "clean_titles": True,
     "open_explorer_after_download": True,
+    "download_tags": [],
+    "selected_download_tag": "Sin etiqueta",
     "release_notice_seen_version": "",
     "cat_gacha": {
         "schema": 1,
@@ -53,6 +55,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "unlockedIds": [],
         "equippedId": "",
         "duplicates": {},
+        "rewardedSourceHashes": [],
     },
 }
 

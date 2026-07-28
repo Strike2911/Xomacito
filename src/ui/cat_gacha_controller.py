@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import hashlib
 from datetime import date
 from pathlib import Path
 from typing import Callable
@@ -16,11 +17,12 @@ from .settings_store import SettingsStore
 class CatGachaController(QObject):
     stateChanged = Signal()
     revealRequested = Signal("QVariantMap")
+    equippedRequested = Signal("QVariantMap")
     notificationRequested = Signal(str, str, str)
 
     ROLES = [
         "catId", "name", "source", "rarity", "rarityColor", "stars",
-        "unlocked", "equipped", "duplicateCount",
+        "animationStyle", "unlocked", "equipped", "duplicateCount",
     ]
 
     def __init__(
@@ -72,6 +74,10 @@ class CatGachaController(QObject):
         self._total_downloads = max(0, int(saved.get("totalDownloads", 0)))
         self._total_rolls = max(0, int(saved.get("totalRolls", 0)))
         self._last_daily_roll = str(saved.get("lastDailyRoll", ""))
+        hashes = saved.get("rewardedSourceHashes", [])
+        self._rewarded_source_hashes = {
+            str(value) for value in hashes if isinstance(value, str) and value
+        } if isinstance(hashes, list) else set()
         self._known_day = self._today().isoformat()
         self._state: dict = {}
         self._daily_timer = QTimer(self)
@@ -92,6 +98,24 @@ class CatGachaController(QObject):
 
     def _url(self, cat: CatDefinition) -> str:
         return QUrl.fromLocalFile(str(cat.avatar_path)).toString()
+
+    @staticmethod
+    def _animation_style(cat: CatDefinition) -> str:
+        if cat.animation_style != "standard":
+            return cat.animation_style
+        return "celestial" if cat.rarity >= 6 else "standard"
+
+    def _result(self, cat: CatDefinition, **extra) -> dict:
+        return {
+            "catId": cat.id,
+            "name": cat.name,
+            "source": self._url(cat),
+            "rarity": cat.rarity,
+            "rarityColor": cat.rarity_color,
+            "stars": "★" * cat.rarity,
+            "animationStyle": self._animation_style(cat),
+            **extra,
+        }
 
     def _daily_available(self) -> bool:
         return self._last_daily_roll != self._today().isoformat()
@@ -123,6 +147,7 @@ class CatGachaController(QObject):
             "equippedRarity": equipped.rarity,
             "equippedColor": equipped.rarity_color,
             "equippedStars": "★" * equipped.rarity,
+            "equippedAnimationStyle": self._animation_style(equipped),
             "rollButtonText": (
                 "Tirada diaria gratis"
                 if daily_available
@@ -141,6 +166,7 @@ class CatGachaController(QObject):
                     "rarity": cat.rarity,
                     "rarityColor": cat.rarity_color,
                     "stars": "★" * cat.rarity,
+                    "animationStyle": self._animation_style(cat),
                     "unlocked": cat.id in self._unlocked,
                     "equipped": cat.id == self._equipped_id,
                     "duplicateCount": self._duplicates.get(cat.id, 0),
@@ -153,7 +179,7 @@ class CatGachaController(QObject):
         self.settings.set(
             "cat_gacha",
             {
-                "schema": 1,
+                "schema": 2,
                 "downloadProgress": self._download_progress,
                 "earnedRolls": self._earned_rolls,
                 "totalDownloads": self._total_downloads,
@@ -162,6 +188,7 @@ class CatGachaController(QObject):
                 "unlockedIds": sorted(self._unlocked),
                 "equippedId": self._equipped_id,
                 "duplicates": dict(sorted(self._duplicates.items())),
+                "rewardedSourceHashes": sorted(self._rewarded_source_hashes),
             },
         )
 
@@ -197,6 +224,21 @@ class CatGachaController(QObject):
                 f"Tienes {pending} disponible{'s' if pending != 1 else ''}. Abre Personalización para usarlas.",
             )
 
+    @Slot(str)
+    def recordSuccessfulSource(self, source_key: str):
+        source_key = str(source_key or "").strip()
+        if not source_key:
+            return
+        fingerprint = hashlib.sha256(source_key.encode("utf-8")).hexdigest()
+        if fingerprint in self._rewarded_source_hashes:
+            self.notificationRequested.emit(
+                "info", "Descarga repetida",
+                "El archivo se descargó, pero este contenido ya contó para la colección gatuna.",
+            )
+            return
+        self._rewarded_source_hashes.add(fingerprint)
+        self.recordSuccessfulDownloads(1)
+
     @Slot(result="QVariantMap")
     def roll(self):
         daily_available = self._daily_available()
@@ -217,15 +259,7 @@ class CatGachaController(QObject):
         else:
             self._duplicates[cat.id] = self._duplicates.get(cat.id, 0) + 1
         self._total_rolls += 1
-        result = {
-            "catId": cat.id,
-            "name": cat.name,
-            "source": self._url(cat),
-            "rarity": cat.rarity,
-            "rarityColor": cat.rarity_color,
-            "stars": "★" * cat.rarity,
-            "isNew": is_new,
-        }
+        result = self._result(cat, isNew=is_new)
         self._refresh()
         self._persist()
         self.revealRequested.emit(result)
@@ -243,4 +277,5 @@ class CatGachaController(QObject):
         cat = self._by_id[cat_id]
         self._refresh()
         self._persist()
+        self.equippedRequested.emit(self._result(cat))
         self.notificationRequested.emit("success", "Gato equipado", cat.name)

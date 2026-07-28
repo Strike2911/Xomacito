@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -15,8 +16,8 @@ from urllib.parse import urlparse
 
 import requests
 from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
-from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QFileDialog
+from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtWidgets import QColorDialog, QFileDialog, QInputDialog, QMessageBox
 
 from src.core.constants import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS
 from src.core.downloader import (
@@ -51,9 +52,8 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "cleanSubtitle": True,
     "keepFullSubtitle": False,
     "autoSaveThumbnail": False,
-    "speedLimit": "",
     "fragmentEnabled": False,
-    "startTime": "",
+    "startTime": "00:00:00",
     "endTime": "",
     "preciseClip": False,
     "forceFullDownload": False,
@@ -136,6 +136,7 @@ def editor_mp4_fallback_options(options: dict) -> dict:
 class DownloadController(QObject):
     stateChanged = Signal()
     optionsChanged = Signal()
+    tagsChanged = Signal()
     videoChoicesChanged = Signal()
     audioChoicesChanged = Signal()
     subtitleLanguagesChanged = Signal()
@@ -145,6 +146,7 @@ class DownloadController(QObject):
     queueRequested = Signal(str)
     notificationRequested = Signal(str, str, str)
     successfulDownload = Signal(int)
+    gachaSourceCompleted = Signal(str)
 
     def __init__(
         self,
@@ -174,7 +176,18 @@ class DownloadController(QObject):
             "selectedSubtitleFormat": "", "hasVideo": False, "hasAudio": False,
             "imagePost": False, "sourceHasAlpha": False, "duration": 0.0,
             "originalWidth": 0, "originalHeight": 0, "estimatedSize": "",
+            "selectedTag": "Sin etiqueta", "selectedTagColor": "#6F7F8F",
+            "effectiveOutputPath": output,
         }
+        self._tags = self._load_download_tags()
+        saved_tag = str(settings.get("selected_download_tag", "Sin etiqueta"))
+        selected_tag = next((tag for tag in self._tags if tag["name"] == saved_tag), None)
+        if selected_tag:
+            self._state.update({
+                "selectedTag": selected_tag["name"],
+                "selectedTagColor": selected_tag["color"],
+                "effectiveOutputPath": selected_tag["folder"],
+            })
         saved_recode = settings.get("recode_settings", {})
         self._options = {**DEFAULT_OPTIONS}
         if isinstance(saved_recode, dict):
@@ -212,6 +225,10 @@ class DownloadController(QObject):
     def options(self):
         return self._options
 
+    @Property("QStringList", notify=tagsChanged)
+    def downloadTags(self):
+        return ["Sin etiqueta", *[tag["name"] for tag in self._tags]]
+
     @Property("QStringList", notify=videoChoicesChanged)
     def videoChoices(self):
         return self._video_choices
@@ -244,10 +261,14 @@ class DownloadController(QObject):
         self._set_state(**{key: value})
         if key == "outputPath":
             self.settings.set("default_download_path", str(value))
+            self._refresh_tag_state()
         elif key == "preset":
             self.settings.set("quick_preset_saved", str(value))
         elif key == "mode":
             self._ensure_preset_for_mode(str(value))
+        elif key == "selectedTag":
+            self.settings.set("selected_download_tag", str(value))
+            self._refresh_tag_state()
         elif key == "selectedSubtitleLanguage":
             self._refresh_subtitle_formats(str(value))
 
@@ -273,11 +294,101 @@ class DownloadController(QObject):
         if presets and self._state["preset"] not in presets:
             self._set_state(preset=presets[0])
 
+    def _load_download_tags(self) -> list[dict[str, str]]:
+        saved = self.settings.get("download_tags", [])
+        tags: list[dict[str, str]] = []
+        seen: set[str] = set()
+        if not isinstance(saved, list):
+            return tags
+        for raw in saved:
+            if not isinstance(raw, dict):
+                continue
+            name = str(raw.get("name") or "").strip()
+            folder = str(raw.get("folder") or "").strip()
+            color = str(raw.get("color") or "#22D3EE")
+            if not name or not folder or name.casefold() in seen:
+                continue
+            if not QColor(color).isValid():
+                color = "#22D3EE"
+            seen.add(name.casefold())
+            tags.append({"name": name, "folder": folder, "color": color})
+        return tags
+
+    def _selected_tag(self) -> dict[str, str] | None:
+        selected = str(self._state.get("selectedTag") or "")
+        return next((tag for tag in self._tags if tag["name"] == selected), None)
+
+    def _refresh_tag_state(self):
+        tag = self._selected_tag()
+        self._set_state(
+            selectedTag=tag["name"] if tag else "Sin etiqueta",
+            selectedTagColor=tag["color"] if tag else "#6F7F8F",
+            effectiveOutputPath=tag["folder"] if tag else self._state["outputPath"],
+        )
+
+    def _save_tags(self):
+        self.settings.set("download_tags", self._tags)
+        self.settings.set("selected_download_tag", self._state["selectedTag"])
+        self.tagsChanged.emit()
+        self._refresh_tag_state()
+
+    @Slot()
+    def createDownloadTag(self):
+        name, accepted = QInputDialog.getText(
+            None, "Nueva etiqueta", "Nombre (por ejemplo: SFX, Música o Material):",
+        )
+        name = str(name).strip()
+        if not accepted or not name:
+            return
+        if any(tag["name"].casefold() == name.casefold() for tag in self._tags):
+            self.notificationRequested.emit("warning", "La etiqueta ya existe", name)
+            return
+        folder = QFileDialog.getExistingDirectory(
+            None, f"Carpeta para {name}", self._state["outputPath"],
+        )
+        if not folder:
+            return
+        color = QColorDialog.getColor(QColor("#22D3EE"), None, f"Color de {name}")
+        if not color.isValid():
+            return
+        self._tags.append({"name": name, "folder": folder, "color": color.name().upper()})
+        self._set_state(selectedTag=name)
+        self._save_tags()
+        self.notificationRequested.emit(
+            "success", "Etiqueta guardada", f"{name} enviará tus archivos a {folder}",
+        )
+
+    @Slot()
+    def deleteSelectedTag(self):
+        tag = self._selected_tag()
+        if not tag:
+            return
+        choice = QMessageBox.question(
+            None,
+            "Eliminar etiqueta",
+            f"Se eliminará «{tag['name']}». Los archivos existentes no se modificarán.",
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        if choice != QMessageBox.Yes:
+            return
+        self._tags = [item for item in self._tags if item["name"] != tag["name"]]
+        self._set_state(selectedTag="Sin etiqueta")
+        self._save_tags()
+
     @Slot()
     def chooseOutputFolder(self):
-        folder = QFileDialog.getExistingDirectory(None, "Carpeta de salida", self._state["outputPath"])
+        tag = self._selected_tag()
+        current = tag["folder"] if tag else self._state["outputPath"]
+        title = f"Carpeta para {tag['name']}" if tag else "Carpeta de salida"
+        folder = QFileDialog.getExistingDirectory(None, title, current)
         if folder:
-            self.setValue("outputPath", folder)
+            if tag:
+                tag["folder"] = folder
+                self._save_tags()
+            else:
+                self.setValue("outputPath", folder)
+                self._refresh_tag_state()
 
     @Slot()
     def chooseLocalFile(self):
@@ -433,13 +544,22 @@ class DownloadController(QObject):
         raw_title = str(info.get("title") or "Sin título")
         title = safe_filename(raw_title) if self.settings.get("clean_titles", True) else raw_title
         thumbnail = info.get("thumbnail") or ""
+        duration = float(info.get("duration") or 0)
+        mode = "Video+Audio" if self._video_choices else "Solo Audio"
+        self._options.update({
+            "fragmentEnabled": False,
+            "startTime": "00:00:00",
+            "endTime": self._format_clock(duration) if duration > 0 else "",
+        })
+        self.optionsChanged.emit()
         self._set_state(
             title=title, busy=False, analyzed=True, progress=1.0, imagePost=image_post,
             status="Publicación de imagen lista." if image_post else "Enlace analizado. Elige calidad y descarga.",
-            thumbnailSource=thumbnail, duration=float(info.get("duration") or 0),
+            thumbnailSource=thumbnail, duration=duration, mode=mode,
             originalWidth=int(info.get("width") or 0), originalHeight=int(info.get("height") or 0),
             hasVideo=choices["hasVideo"], hasAudio=choices["hasAudio"], sourceHasAlpha=False,
         )
+        self._ensure_preset_for_mode(mode)
 
     def _apply_local_analysis(self, result: dict):
         video_choices = []
@@ -472,7 +592,41 @@ class DownloadController(QObject):
             sourceHasAlpha=source_has_alpha, duration=result["duration"],
             originalWidth=int(first_video.get("width") or 0), originalHeight=int(first_video.get("height") or 0),
         )
+        self._options.update({
+            "fragmentEnabled": False,
+            "startTime": "00:00:00",
+            "endTime": self._format_clock(float(result["duration"] or 0)) if result["duration"] else "",
+        })
+        self.optionsChanged.emit()
         self._ensure_preset_for_mode("Video+Audio" if self._video_choices else "Solo Audio")
+
+    @staticmethod
+    def _format_clock(seconds: float) -> str:
+        total = max(0, int(float(seconds or 0)))
+        hours, remainder = divmod(total, 3600)
+        minutes, secs = divmod(remainder, 60)
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+    @staticmethod
+    def _parse_clock(value: str) -> float | None:
+        match = re.fullmatch(r"(\d{1,3}):([0-5]\d):([0-5]\d(?:\.\d{1,3})?)", str(value).strip())
+        if not match:
+            return None
+        return int(match.group(1)) * 3600 + int(match.group(2)) * 60 + float(match.group(3))
+
+    def _fragment_error(self) -> str:
+        if not self._options.get("fragmentEnabled"):
+            return ""
+        start = self._parse_clock(self._options.get("startTime", ""))
+        end = self._parse_clock(self._options.get("endTime", ""))
+        if start is None or end is None:
+            return "Usa el formato HH:MM:SS en Inicio y Final; por ejemplo 00:01:30."
+        if end <= start:
+            return "El tiempo Final debe ser posterior al tiempo de Inicio."
+        duration = float(self._state.get("duration") or 0)
+        if duration > 0 and end > duration + 0.75:
+            return f"El Final supera la duración ({self._format_clock(duration)})."
+        return ""
 
     def _apply_choices(self, choices: dict):
         self._video_map = {entry["label"]: entry for entry in choices["video"]}
@@ -521,7 +675,11 @@ class DownloadController(QObject):
         if not self._state["analyzed"]:
             self.notificationRequested.emit("warning", "Analiza primero", "Analiza un enlace o importa un archivo.")
             return
-        output = Path(str(self._state["outputPath"]))
+        fragment_error = self._fragment_error()
+        if fragment_error:
+            self.notificationRequested.emit("warning", "Revisa el fragmento", fragment_error)
+            return
+        output = Path(str(self._state["effectiveOutputPath"]))
         try:
             output.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
@@ -540,7 +698,7 @@ class DownloadController(QObject):
     def _collect_process_options(self) -> dict:
         options = {
             "url": self._state["url"], "local_file": self._state["localFile"],
-            "output_path": self._state["outputPath"], "title": safe_filename(self._state["title"]),
+            "output_path": self._state["effectiveOutputPath"], "title": safe_filename(self._state["title"]),
             "mode": self._state["mode"], "video_label": self._state["selectedVideo"],
             "audio_label": self._state["selectedAudio"], "subtitle": self._selected_subtitle(),
             "duration": self._state["duration"], "operation_mode": self._state["operationMode"],
@@ -691,11 +849,6 @@ class DownloadController(QObject):
             })
             if options.get("cleanSubtitle"):
                 ydl_options["convertsubtitles"] = "srt"
-        if options.get("speedLimit"):
-            try:
-                ydl_options["ratelimit"] = float(options["speedLimit"]) * 1024 * 1024
-            except ValueError:
-                pass
         cookie, using_cookies = self._cookie_options()
         ydl_options.update(cookie)
         if using_cookies:
@@ -711,6 +864,7 @@ class DownloadController(QObject):
             except Exception:
                 partial = False
         self.progressReported.emit(0.02, "Descargando…")
+        invalid_argument_retry = False
         try:
             result = download_media(options["url"], ydl_options, self._download_progress, self.cancellation)
         except Exception as first_error:
@@ -730,19 +884,52 @@ class DownloadController(QObject):
                     "bestvideo+bestaudio/best"
                 )
             )
-            choice = self.dialogs.ask(
-                "choice", "Calidad no disponible",
-                "El formato exacto falló. ¿Deseas descargar la mejor alternativa compatible?",
-                ["Usar alternativa", "Cancelar"], "Cancelar",
-            )
-            if choice != "Usar alternativa":
-                raise UserCancelledError("Descarga cancelada.") from first_error
+            invalid_argument_retry = self._is_invalid_argument_error(first_error)
+            if invalid_argument_retry:
+                # Algunos volúmenes sincronizados de Windows rechazan temporalmente
+                # el nombre final aunque la carpeta sea válida. Un nombre ASCII corto
+                # evita EINVAL; al terminar restauramos el título elegido.
+                staging_name = f"xomacito-{os.getpid()}-{threading.get_ident()}-{time.time_ns()}"
+                fallback["outtmpl"] = str(Path(options["output_path"]) / f"{staging_name}.%(ext)s")
+                self.progressReported.emit(0.02, "Reintentando con una ruta compatible con Windows…")
+            else:
+                choice = self.dialogs.ask(
+                    "choice", "Calidad no disponible",
+                    "El formato exacto falló. ¿Deseas descargar la mejor alternativa compatible?",
+                    ["Usar alternativa", "Cancelar"], "Cancelar",
+                )
+                if choice != "Usar alternativa":
+                    raise UserCancelledError("Descarga cancelada.") from first_error
             result = download_media(options["url"], fallback, self._download_progress, self.cancellation)
         if not result or not Path(result).is_file():
             raise RuntimeError("La descarga terminó sin producir un archivo válido.")
+        if invalid_argument_retry:
+            result = self._restore_download_title(result, options)
         if options.get("autoSaveThumbnail"):
             self._save_thumbnail_to(Path(options["output_path"]), options["title"])
         return str(result)
+
+    @staticmethod
+    def _is_invalid_argument_error(error: BaseException) -> bool:
+        """Reconoce EINVAL incluso cuando yt-dlp lo envuelve en DownloadError."""
+        current: BaseException | None = error
+        visited: set[int] = set()
+        while current is not None and id(current) not in visited:
+            visited.add(id(current))
+            if getattr(current, "errno", None) == 22 or "[Errno 22]" in str(current):
+                return True
+            current = current.__cause__ or current.__context__
+        return False
+
+    def _restore_download_title(self, downloaded_path: str, options: dict) -> str:
+        source = Path(downloaded_path)
+        desired = self._resolve_output(
+            Path(options["output_path"]), options["title"], source.suffix, ask=False,
+        )
+        if desired is None or source == desired:
+            return str(source)
+        os.replace(source, desired)
+        return str(desired)
 
     def _download_progress(self, percent, message):
         value = float(percent or 0)
@@ -913,9 +1100,20 @@ class DownloadController(QObject):
         self.notificationRequested.emit("success", "Proceso completado", output)
         if completed_download:
             self.successfulDownload.emit(1)
+            self.gachaSourceCompleted.emit(self._reward_source_key())
             if self.settings.get("open_explorer_after_download", True):
                 reveal_in_file_manager(output)
         self._current_counts_as_download = False
+
+    def _reward_source_key(self) -> str:
+        info = self._analysis_info or {}
+        extractor = str(info.get("extractor_key") or info.get("extractor") or "url").strip().casefold()
+        media_id = str(info.get("id") or "").strip()
+        if media_id:
+            return f"{extractor}:{media_id}"
+        parsed = urlparse(str(self._state.get("url") or "").strip())
+        normalized = f"{parsed.netloc.casefold()}{parsed.path.rstrip('/')}"
+        return normalized or str(self._state.get("url") or "").strip()
 
     def _operation_error(self, message: str, detail: str = ""):
         cancelled = self.cancellation.is_set() or "cancel" in message.lower()

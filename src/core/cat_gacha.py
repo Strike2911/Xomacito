@@ -13,8 +13,9 @@ RARITY_COLORS = {
     3: "#50BFFF",
     4: "#B06CFF",
     5: "#FFD75E",
+    6: "#FF5FE7",
 }
-ROLL_WEIGHTS = {1: 48, 2: 28, 3: 15, 4: 7, 5: 2}
+ROLL_WEIGHTS = {1: 48, 2: 28, 3: 15, 4: 7, 5: 1.8, 6: 0.2}
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +26,7 @@ class CatDefinition:
     image_path: Path
     avatar_path: Path
     original_file: str = ""
+    animation_style: str = "standard"
 
     @property
     def rarity_color(self) -> str:
@@ -50,7 +52,7 @@ def load_cat_catalog(project_root: str | Path) -> list[CatDefinition]:
         if not cat_id or cat_id in seen or not image_path.is_file() or not avatar_path.is_file():
             continue
         try:
-            rarity = max(1, min(5, int(item.get("rarity", 1))))
+            rarity = max(1, min(6, int(item.get("rarity", 1))))
         except (TypeError, ValueError):
             rarity = 1
         seen.add(cat_id)
@@ -62,6 +64,7 @@ def load_cat_catalog(project_root: str | Path) -> list[CatDefinition]:
                 image_path=image_path,
                 avatar_path=avatar_path,
                 original_file=str(item.get("originalFile") or ""),
+                animation_style=str(item.get("animationStyle") or "standard"),
             )
         )
 
@@ -77,7 +80,7 @@ def load_cat_catalog(project_root: str | Path) -> list[CatDefinition]:
                 CatDefinition(
                     id=f"classic-{number:02d}",
                     name=f"Gatito clásico {number:02d}",
-                    rarity=min(5, 1 + (number - 1) // 2),
+                    rarity=min(6, 1 + (number - 1) // 2),
                     image_path=path,
                     avatar_path=path,
                     original_file=path.name,

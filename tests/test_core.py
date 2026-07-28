@@ -196,6 +196,18 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("arrastra", highlights)
         self.assertIn("portada", highlights)
 
+    def test_release_26_announces_the_platinum_gacha_and_spike(self):
+        notice = release_notice_for_version("v2.6")
+        self.assertIsNotNone(notice)
+        self.assertEqual(notice["title"], "Xomacito 2.6")
+        self.assertEqual(notice["subtitle"], "¡LA PLATINO GACHA UPDATE!!")
+        self.assertIn("Spike", notice["contributors"])
+        self.assertTrue(notice["platinumCelebration"])
+        highlights = " ".join(notice["highlights"]).lower()
+        self.assertIn("142", highlights)
+        self.assertIn("6★", highlights)
+        self.assertIn("gato mago", highlights)
+
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
         digest = "sha256:" + hashlib.sha256(payload).hexdigest()
@@ -662,9 +674,9 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertEqual(completion_sound_path(), sound)
 
     def test_gacha_reveal_sounds_cover_every_rarity(self):
-        self.assertEqual(set(GACHA_SOUND_FILENAMES), {1, 2, 3, 4, 5})
+        self.assertEqual(set(GACHA_SOUND_FILENAMES), {1, 2, 3, 4, 5, 6})
         sizes = []
-        for rarity in range(1, 6):
+        for rarity in range(1, 7):
             sound = gacha_sound_path(rarity)
             self.assertIsNotNone(sound)
             self.assertTrue(sound.is_file())

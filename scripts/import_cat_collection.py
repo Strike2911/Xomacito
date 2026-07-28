@@ -12,7 +12,20 @@ from PIL import Image, ImageDraw, ImageOps
 
 SUPPORTED_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 RARITY_QUOTAS = {1: 46, 2: 29, 3: 17, 4: 9, 5: 4}
-CATALOG_SCHEMA = 1
+RARITY_OVERRIDES = {
+    "gato dios": 5,
+    "gato detective": 5,
+    "gato raro": 3,
+    "gato pixelart": 5,
+    "jorge": 3,
+    "gato conductor": 3,
+    "gato inteligente": 3,
+    "gato mago": 6,
+}
+ANIMATION_OVERRIDES = {
+    "gato mago": "arcane-mage",
+}
+CATALOG_SCHEMA = 2
 AVATAR_SIZE = 384
 
 
@@ -45,7 +58,25 @@ def initial_rarities(files: list[Path]) -> dict[str, int]:
     return {path.name.casefold(): rarity for path, rarity in zip(shuffled, rarities)}
 
 
-def import_collection(source: Path, destination: Path) -> dict:
+def stable_rarity(filename: str) -> int:
+    """Asigna una rareza reproducible sin cambiarla en futuras importaciones."""
+    roll = int(hashlib.sha256(filename.casefold().encode("utf-8")).hexdigest()[:8], 16) % 1000
+    if roll < 480:
+        return 1
+    if roll < 760:
+        return 2
+    if roll < 910:
+        return 3
+    if roll < 980:
+        return 4
+    return 5
+
+
+def _normalized_name(value: str) -> str:
+    return Path(value).stem.strip().casefold()
+
+
+def import_collection(source: Path, destination: Path, *, append: bool = False) -> dict:
     files = sorted(
         (path for path in source.iterdir() if path.is_file() and path.suffix.lower() in SUPPORTED_SUFFIXES),
         key=lambda path: path.name.casefold(),
@@ -60,10 +91,32 @@ def import_collection(source: Path, destination: Path) -> dict:
     assigned = initial_rarities(files)
     cats = []
 
+    if append:
+        try:
+            current_payload = json.loads(catalog_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            current_payload = {}
+        cats.extend(
+            item for item in current_payload.get("cats", [])
+            if isinstance(item, dict)
+        )
+    imported_names = {path.name.casefold() for path in files}
+    cats = [
+        item for item in cats
+        if str(item.get("originalFile", "")).casefold() not in imported_names
+    ]
+
     for source_path in files:
         previous_item = previous.get(source_path.name.casefold(), {})
         cat_id = str(previous_item.get("id") or stable_id(source_path.name))
-        rarity = int(previous_item.get("rarity") or assigned[source_path.name.casefold()])
+        normalized_name = _normalized_name(source_path.name)
+        rarity = int(
+            RARITY_OVERRIDES.get(
+                normalized_name,
+                previous_item.get("rarity")
+                or (assigned[source_path.name.casefold()] if first_import else stable_rarity(source_path.name)),
+            )
+        )
         output_name = f"{cat_id}{source_path.suffix.lower()}"
         avatar_name = f"{cat_id}-avatar.webp"
         shutil.copy2(source_path, destination / output_name)
@@ -82,13 +135,29 @@ def import_collection(source: Path, destination: Path) -> dict:
         cats.append(
             {
                 "id": cat_id,
-                "name": source_path.stem.strip(),
-                "rarity": max(1, min(5, rarity)),
+                "name": source_path.stem.strip().upper(),
+                "rarity": max(1, min(6, rarity)),
                 "image": output_name,
                 "avatar": avatar_name,
                 "originalFile": source_path.name,
+                "animationStyle": ANIMATION_OVERRIDES.get(normalized_name, "standard"),
             }
         )
+
+    for item in cats:
+        normalized_name = _normalized_name(str(item.get("name") or item.get("originalFile") or ""))
+        item["name"] = str(
+            item.get("name")
+            or Path(str(item.get("originalFile") or "")).stem
+        ).strip().upper()
+        if normalized_name in RARITY_OVERRIDES:
+            item["rarity"] = RARITY_OVERRIDES[normalized_name]
+        item["rarity"] = max(1, min(6, int(item.get("rarity", 1))))
+        item["animationStyle"] = ANIMATION_OVERRIDES.get(
+            normalized_name,
+            str(item.get("animationStyle") or "standard"),
+        )
+    cats.sort(key=lambda item: str(item.get("name", "")).casefold())
 
     active_names = {item["image"] for item in cats} | {item["avatar"] for item in cats} | {"catalog.json"}
     for path in destination.iterdir():
@@ -110,9 +179,18 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Importa la colección de gatos de Xomacito.")
     parser.add_argument("source", type=Path)
     parser.add_argument("destination", type=Path)
+    parser.add_argument(
+        "--append",
+        action="store_true",
+        help="Conserva el catálogo existente y añade o reemplaza los archivos indicados.",
+    )
     args = parser.parse_args()
-    payload = import_collection(args.source.resolve(), args.destination.resolve())
-    counts = {rarity: 0 for rarity in range(1, 6)}
+    payload = import_collection(
+        args.source.resolve(),
+        args.destination.resolve(),
+        append=args.append,
+    )
+    counts = {rarity: 0 for rarity in range(1, 7)}
     for cat in payload["cats"]:
         counts[cat["rarity"]] += 1
     print(f"Importados: {len(payload['cats'])}")

@@ -15,6 +15,7 @@ GACHA_SOUND_FILENAMES = {
     3: "gacha-reveal-3.mp3",
     4: "gacha-reveal-4.mp3",
     5: "gacha-reveal-5.mp3",
+    6: "gacha-reveal-5.mp3",
 }
 
 
@@ -43,7 +44,7 @@ def completion_sound_path() -> Path | None:
 
 
 def gacha_sound_path(rarity: int) -> Path | None:
-    normalized = max(1, min(5, int(rarity or 1)))
+    normalized = max(1, min(6, int(rarity or 1)))
     return _asset_path("sfx", GACHA_SOUND_FILENAMES[normalized])
 
 

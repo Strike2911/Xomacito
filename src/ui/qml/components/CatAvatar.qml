@@ -5,24 +5,26 @@ Item {
     property url source
     property int rarity: 1
     property color rarityColor: "#A8B0BC"
+    property string animationStyle: "standard"
     property bool animatedEffects: false
+    readonly property bool arcaneMage: animationStyle === "arcane-mage"
     implicitWidth: 64
     implicitHeight: 64
 
     Rectangle {
         anchors.centerIn: parent
-        width: parent.width + (root.rarity >= 4 ? 8 : 4)
+        width: parent.width + (root.rarity >= 6 ? 14 : root.rarity >= 4 ? 8 : 4)
         height: width
         radius: width / 2
         color: "transparent"
-        border.width: root.rarity >= 5 ? 3 : root.rarity >= 3 ? 2 : 1
+        border.width: root.rarity >= 6 ? 4 : root.rarity >= 5 ? 3 : root.rarity >= 3 ? 2 : 1
         border.color: root.rarityColor
         opacity: root.rarity >= 2 ? 0.42 : 0.2
         SequentialAnimation on opacity {
             running: root.animatedEffects && root.rarity >= 2
             loops: Animation.Infinite
-            NumberAnimation { to: 0.9; duration: root.rarity >= 5 ? 620 : 1050; easing.type: Easing.InOutSine }
-            NumberAnimation { to: 0.32; duration: root.rarity >= 5 ? 620 : 1050; easing.type: Easing.InOutSine }
+            NumberAnimation { to: 0.9; duration: root.rarity >= 6 ? 360 : root.rarity >= 5 ? 620 : 1050; easing.type: Easing.InOutSine }
+            NumberAnimation { to: 0.32; duration: root.rarity >= 6 ? 360 : root.rarity >= 5 ? 620 : 1050; easing.type: Easing.InOutSine }
         }
     }
 
@@ -51,7 +53,7 @@ Item {
         RotationAnimation on rotation {
             running: root.animatedEffects
             from: 0; to: 360
-            duration: root.rarity >= 5 ? 2500 : root.rarity >= 4 ? 3800 : 5200
+            duration: root.rarity >= 6 ? 1500 : root.rarity >= 5 ? 2500 : root.rarity >= 4 ? 3800 : 5200
             loops: Animation.Infinite
         }
     }
@@ -64,7 +66,7 @@ Item {
         radius: width / 2
         color: "#071824"
         border.color: root.rarityColor
-        border.width: root.rarity >= 4 ? 3 : 2
+        border.width: root.rarity >= 6 ? 4 : root.rarity >= 4 ? 3 : 2
 
         Image {
             anchors.fill: parent
@@ -79,15 +81,15 @@ Item {
     }
 
     Repeater {
-        model: root.rarity >= 5 ? 7 : 0
+        model: root.rarity >= 6 ? 12 : root.rarity >= 5 ? 7 : 0
         Rectangle {
             required property int index
             width: index % 2 ? 3 : 5
             height: width
             radius: width / 2
             color: index % 3 ? root.rarityColor : "#FFFFFF"
-            x: root.width / 2 + Math.cos(index * Math.PI * 2 / 7) * (root.width / 2 + 7) - width / 2
-            y: root.height / 2 + Math.sin(index * Math.PI * 2 / 7) * (root.height / 2 + 7) - height / 2
+            x: root.width / 2 + Math.cos(index * Math.PI * 2 / (root.rarity >= 6 ? 12 : 7)) * (root.width / 2 + 7) - width / 2
+            y: root.height / 2 + Math.sin(index * Math.PI * 2 / (root.rarity >= 6 ? 12 : 7)) * (root.height / 2 + 7) - height / 2
             SequentialAnimation on opacity {
                 running: root.animatedEffects
                 loops: Animation.Infinite
@@ -95,6 +97,35 @@ Item {
                 NumberAnimation { from: 0.15; to: 1; duration: 420 }
                 NumberAnimation { to: 0.12; duration: 540 }
             }
+        }
+    }
+
+    Item {
+        anchors.centerIn: parent
+        width: parent.width + 28
+        height: width
+        visible: root.arcaneMage
+        opacity: root.animatedEffects ? 1 : 0.72
+
+        Repeater {
+            model: 6
+            Text {
+                required property int index
+                readonly property var glyphs: ["✦", "◇", "✧", "☾", "✶", "✺"]
+                text: glyphs[index]
+                color: index % 2 ? "#FFF2A8" : root.rarityColor
+                font.pixelSize: index % 2 ? 9 : 12
+                x: parent.width / 2 + Math.cos(index * Math.PI / 3) * (parent.width / 2 - 7) - width / 2
+                y: parent.height / 2 + Math.sin(index * Math.PI / 3) * (parent.height / 2 - 7) - height / 2
+            }
+        }
+
+        RotationAnimation on rotation {
+            running: root.animatedEffects
+            from: 360
+            to: 0
+            duration: 3200
+            loops: Animation.Infinite
         }
     }
 }
