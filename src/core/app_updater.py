@@ -25,6 +25,27 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "2.8": {
+        "eyebrow": "ACTUALIZACIÓN INSTALADA",
+        "title": "Xomacito 2.8",
+        "subtitle": "¡LA MP3 DE VERDAD UPDATE!!",
+        "message": (
+            "La cola ahora analiza playlists grandes sin hacerte esperar por cada canción "
+            "y entrega archivos de audio reales, compatibles y listos para reproducir."
+        ),
+        "highlights": [
+            "Análisis progresivo de playlists incluso con el modo rápido compatible desactivado.",
+            "Los formatos completos se consultan sólo cuando cada elemento va a descargarse.",
+            "Solo Audio en playlists convierte siempre el stream WEBM de origen a MP3 real.",
+            "Salida MP3 a 192 kbps mediante FFmpeg, compatible con reproductores y editores.",
+            "La comprobación final sigue validando que cada archivo exista antes de marcar éxito.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike", "BlackBull",
+        ],
+        "closing": "Gracias por seguir cazando esos WEBM disfrazados de audio.",
+        "platinumCelebration": True,
+    },
     "2.7": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
         "title": "Xomacito 2.7",

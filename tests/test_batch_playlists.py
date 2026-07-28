@@ -4,7 +4,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from src.core.batch_processor import Job, QueueManager, resolve_playlist_entry_url
+from src.core.batch_processor import (
+    Job,
+    QueueManager,
+    build_batch_analysis_options,
+    playlist_audio_postprocessors,
+    resolve_playlist_entry_url,
+)
 
 
 class _Value:
@@ -33,6 +39,31 @@ def _runtime(output_path: str):
 
 
 class PlaylistDownloadTests(unittest.TestCase):
+    def test_full_playlist_analysis_is_progressive_even_without_fast_toggle(self):
+        options = build_batch_analysis_options(
+            "https://www.youtube.com/watch?v=abc123XYZ09&list=PL123",
+            playlist_enabled=True,
+            fast_requested=False,
+        )
+        self.assertEqual(options["extract_flat"], "in_playlist")
+        self.assertNotIn("lazy_playlist", options)
+        self.assertFalse(options["noplaylist"])
+
+    def test_fast_playlist_analysis_keeps_lazy_playlist_hint(self):
+        options = build_batch_analysis_options(
+            "https://www.youtube.com/playlist?list=PL123",
+            playlist_enabled=True,
+            fast_requested=True,
+        )
+        self.assertEqual(options["extract_flat"], "in_playlist")
+        self.assertTrue(options["lazy_playlist"])
+
+    def test_playlist_audio_is_always_extracted_to_mp3(self):
+        postprocessors = playlist_audio_postprocessors()
+        self.assertEqual(postprocessors[0]["key"], "FFmpegExtractAudio")
+        self.assertEqual(postprocessors[0]["preferredcodec"], "mp3")
+        self.assertEqual(postprocessors[0]["preferredquality"], "192")
+
     def test_flat_youtube_entry_is_rebuilt_as_a_watch_url(self):
         entry = {"id": "abc123XYZ09", "url": "abc123XYZ09", "title": "Tema"}
         playlist = {"extractor_key": "YoutubeTab"}

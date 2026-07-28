@@ -30,6 +30,7 @@ if (-not (Test-Path -LiteralPath $Python)) {
 
 if (-not $SkipApplicationBuild) {
     try {
+        New-Item -ItemType Directory -Path (Join-Path $BuildWork 'XomacitoInstaller') -Force | Out-Null
         & $Python -m PyInstaller --noconfirm --clean --workpath $BuildWork $Spec
         if ($LASTEXITCODE -ne 0) {
             throw 'PyInstaller no pudo crear la distribución instalada.'
@@ -68,7 +69,7 @@ if ($LASTEXITCODE -ne 0) {
     throw 'Inno Setup no pudo crear el instalador.'
 }
 
-$Installer = Join-Path $ProjectRoot 'release\Xomacito-2.7-Setup.exe'
+$Installer = Join-Path $ProjectRoot 'release\Xomacito-2.8-Setup.exe'
 if (-not (Test-Path -LiteralPath $Installer)) {
     throw "No se generó el instalador esperado: $Installer"
 }
