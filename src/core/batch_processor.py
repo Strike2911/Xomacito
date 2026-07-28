@@ -24,8 +24,43 @@ from main import UPSCALING_DIR
 
 from src.core.constants import (
     EDITOR_FRIENDLY_CRITERIA, LANGUAGE_ORDER, DEFAULT_PRIORITY,
-    VIDEO_EXTENSIONS, AUDIO_EXTENSIONS
+    VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, FAST_MODE_SUPPORTED_DOMAINS
 )
+
+
+def build_batch_analysis_options(url: str, playlist_enabled: bool, fast_requested: bool) -> dict:
+    """Crea opciones de análisis que no resuelven toda la playlist por adelantado.
+
+    Las entradas planas ya incluyen nombre, id y miniatura. Los formatos completos
+    se resuelven después, únicamente para el elemento que se va a descargar. Esto
+    evita esperar varios minutos en playlists grandes incluso si el modo rápido
+    compatible está desactivado.
+    """
+    options = {
+        "no_warnings": True,
+        "quiet": True,
+        "noplaylist": not playlist_enabled,
+        "ignoreerrors": True,
+        "referer": url,
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    }
+    supported_playlist = playlist_enabled and any(
+        domain in str(url).lower() for domain in FAST_MODE_SUPPORTED_DOMAINS
+    )
+    if supported_playlist:
+        options["extract_flat"] = "in_playlist"
+        if fast_requested:
+            options["lazy_playlist"] = True
+    return options
+
+
+def playlist_audio_postprocessors() -> list[dict]:
+    """Salida de audio universal para elementos descargados desde playlists."""
+    return [{
+        "key": "FFmpegExtractAudio",
+        "preferredcodec": "mp3",
+        "preferredquality": "192",
+    }]
 
 
 def resolve_playlist_entry_url(entry: dict, playlist_info: dict | None = None) -> str:
@@ -655,6 +690,12 @@ class QueueManager:
             'noprogress': True,
             'ffmpeg_location': self.main_app.ffmpeg_processor.ffmpeg_path
         }
+        if options.get("mode") == "Solo Audio":
+            # El stream de mayor calidad de YouTube suele venir dentro de WEBM.
+            # En la cola siempre lo extraemos a MP3 para entregar un archivo de
+            # audio real y compatible, igual que en la pantalla principal.
+            ydl_opts["postprocessors"] = playlist_audio_postprocessors()
+            ydl_opts["keepvideo"] = False
         
         # Cookies (Importante heredar esto)
         cookie_mode = self.main_app.cookies_mode_saved

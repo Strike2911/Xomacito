@@ -220,6 +220,15 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("playlist", highlights)
         self.assertIn("zarking", highlights)
 
+    def test_release_28_mentions_progressive_analysis_and_real_mp3(self):
+        notice = release_notice_for_version("v2.8")
+        self.assertIsNotNone(notice)
+        self.assertEqual(notice["title"], "Xomacito 2.8")
+        highlights = " ".join(notice["highlights"])
+        self.assertIn("progresivo", highlights.lower())
+        self.assertIn("mp3 real", highlights.lower())
+        self.assertTrue(notice["platinumCelebration"])
+
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
         digest = "sha256:" + hashlib.sha256(payload).hexdigest()
@@ -1085,7 +1094,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-2.7-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-2.8-Setup.exe", build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)

@@ -8,13 +8,12 @@ from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFileDialog
 
-from src.core.batch_processor import Job, QueueManager
+from src.core.batch_processor import Job, QueueManager, build_batch_analysis_options
 from src.core.constants import (
     AUDIO_EXTENSIONS,
     COMPATIBILITY_RULES,
     DEFAULT_PRIORITY,
     EDITOR_FRIENDLY_CRITERIA,
-    FAST_MODE_SUPPORTED_DOMAINS,
     FORMAT_MUXER_MAP,
     LANG_CODE_MAP,
     LANGUAGE_ORDER,
@@ -195,13 +194,11 @@ class BatchController(QObject):
 
     def _analyze_worker(self, url):
         playlist = bool(self._state["playlistAnalysis"])
-        fast = playlist and bool(self._state["fastMode"]) and any(domain in url.lower() for domain in FAST_MODE_SUPPORTED_DOMAINS)
-        options = {
-            "no_warnings": True, "quiet": True, "noplaylist": not playlist,
-            "ignoreerrors": True, "referer": url,
-            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        }
-        if fast: options["extract_flat"] = "in_playlist"
+        options = build_batch_analysis_options(
+            url,
+            playlist_enabled=playlist,
+            fast_requested=bool(self._state["fastMode"]),
+        )
         cookies, using = self._cookie_options()
         options.update(cookies)
         if using: options = apply_yt_patch(options)
