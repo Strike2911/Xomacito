@@ -25,8 +25,11 @@ from src.core.app_updater import (
 )
 from src.core.daily_icon import CAT_COUNT, daily_cat_assets, daily_cat_number
 from src.core.notification_sound import (
+    GACHA_EQUIP_SOUND_FILENAMES,
     GACHA_SOUND_FILENAMES,
+    GACHA_STYLE_SOUND_FILENAMES,
     completion_sound_path,
+    gacha_equip_sound_path,
     gacha_sound_path,
     platinum_sound_path,
 )
@@ -238,6 +241,18 @@ class XomacitoWrapperTests(unittest.TestCase):
         highlights = " ".join(notice["highlights"]).lower()
         self.assertIn("previsualización", highlights)
         self.assertIn("etiquetas", highlights)
+
+    def test_release_30_announces_mythic_gacha_and_fair_queue_progress(self):
+        notice = release_notice_for_version("v3.0")
+
+        self.assertIsNotNone(notice)
+        self.assertEqual(notice["title"], "Xomacito 3.0")
+        self.assertEqual(notice["subtitle"], "¡LA GACHA MÍTICA UPDATE!!")
+        highlights = " ".join(notice["highlights"]).upper()
+        self.assertIn("GATO MAGO", highlights)
+        self.assertIn("GATO PLAYERA", highlights)
+        self.assertIn("GATO ZARKING", highlights)
+        self.assertIn("COLA", highlights)
 
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
@@ -721,12 +736,24 @@ class XomacitoWrapperTests(unittest.TestCase):
             self.assertGreater(sound.stat().st_size, 2_000)
             sizes.append(sound.stat().st_size)
         self.assertEqual(gacha_sound_path(0), gacha_sound_path(1))
-        self.assertEqual(gacha_sound_path(99), gacha_sound_path(5))
+        self.assertEqual(gacha_sound_path(99), gacha_sound_path(6))
         self.assertEqual(sizes, sorted(sizes))
+        self.assertEqual(
+            set(GACHA_STYLE_SOUND_FILENAMES),
+            {"arcane-mage", "playera-prismatic", "zarking-cyber"},
+        )
+        self.assertEqual(set(GACHA_EQUIP_SOUND_FILENAMES), set(GACHA_STYLE_SOUND_FILENAMES))
+        for style in GACHA_STYLE_SOUND_FILENAMES:
+            reveal = gacha_sound_path(6, style)
+            equip = gacha_equip_sound_path(style)
+            self.assertTrue(reveal and reveal.is_file())
+            self.assertTrue(equip and equip.is_file())
+            self.assertNotEqual(reveal, equip)
 
         application = (ROOT / "src" / "ui" / "application.py").read_text(encoding="utf-8")
         self.assertIn("successfulDownload.connect(self._play_download_completion)", application)
         self.assertIn("revealRequested.connect(self._play_cat_reveal)", application)
+        self.assertIn("equippedRequested.connect(self._play_cat_equip)", application)
 
     def test_runtime_uses_updatable_ytdlp_zip(self):
         helper = (ROOT / "src" / "core" / "ytdlp_runtime.py").read_text(encoding="utf-8")
@@ -1104,7 +1131,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-2.9-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-3.0-Setup.exe", build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)

@@ -25,6 +25,29 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "3.0": {
+        "eyebrow": "ACTUALIZACIÓN INSTALADA",
+        "title": "Xomacito 3.0",
+        "subtitle": "¡LA GACHA MÍTICA UPDATE!!",
+        "message": (
+            "El gacha entra en su era mítica con tres gatos de seis estrellas, "
+            "revelaciones más espectaculares y una progresión justa para las colas."
+        ),
+        "highlights": [
+            "GATO PLAYERA y GATO ZARKING llegan como nuevos gatos míticos de 6★.",
+            "GATO MAGO, GATO PLAYERA y GATO ZARKING tienen animaciones de equipamiento únicas.",
+            "Cada rareza estrena una identidad sonora de revelación más clara y emocionante.",
+            "Partículas, portales, confeti prismático y escáneres digitales enriquecen el desbloqueo.",
+            "Una cola completa cuenta como una sola descarga para el progreso del gacha.",
+            "La colección crece a 144 gatos, todos con nombres estandarizados en mayúsculas.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d",
+        ],
+        "closing": "Gracias a Playera y Zarking por convertirse oficialmente en leyendas míticas de Xomacito.",
+        "platinumCelebration": True,
+    },
     "2.9": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
         "title": "Xomacito 2.9",

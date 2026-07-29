@@ -8,6 +8,8 @@ Item {
     property string animationStyle: "standard"
     property bool animatedEffects: false
     readonly property bool arcaneMage: animationStyle === "arcane-mage"
+    readonly property bool playeraPrismatic: animationStyle === "playera-prismatic"
+    readonly property bool zarkingCyber: animationStyle === "zarking-cyber"
     implicitWidth: 64
     implicitHeight: 64
 
@@ -126,6 +128,76 @@ Item {
             to: 0
             duration: 3200
             loops: Animation.Infinite
+        }
+    }
+
+    Item {
+        anchors.centerIn: parent
+        width: parent.width + 24
+        height: width
+        visible: root.playeraPrismatic
+        Repeater {
+            model: 10
+            Rectangle {
+                required property int index
+                readonly property var palette: ["#FFDD42", "#FF6BAA", "#77F4FF", "#A7FF63"]
+                width: index % 2 ? 4 : 7
+                height: index % 3 ? width : width * 2
+                radius: 2
+                color: palette[index % palette.length]
+                x: parent.width / 2 + Math.cos(index * Math.PI / 5) * (parent.width / 2 - 5) - width / 2
+                y: parent.height / 2 + Math.sin(index * Math.PI / 5) * (parent.height / 2 - 5) - height / 2
+                rotation: index * 37
+            }
+        }
+        RotationAnimation on rotation {
+            running: root.animatedEffects
+            from: 0
+            to: 360
+            duration: 2200
+            loops: Animation.Infinite
+        }
+    }
+
+    Item {
+        anchors.centerIn: parent
+        width: parent.width + 24
+        height: width
+        visible: root.zarkingCyber
+        Rectangle {
+            anchors.centerIn: parent
+            width: parent.width
+            height: width
+            radius: width / 2
+            color: "transparent"
+            border.width: 2
+            border.color: "#00E8FF"
+            opacity: 0.7
+        }
+        Rectangle {
+            id: avatarScanner
+            width: parent.width * 0.72
+            height: 2
+            anchors.horizontalCenter: parent.horizontalCenter
+            color: "#8AFFFF"
+            SequentialAnimation on y {
+                running: root.animatedEffects
+                loops: Animation.Infinite
+                NumberAnimation { from: 8; to: root.height + 16; duration: 820; easing.type: Easing.InOutQuad }
+                NumberAnimation { to: 8; duration: 560; easing.type: Easing.InOutQuad }
+            }
+        }
+        Repeater {
+            model: 6
+            Rectangle {
+                required property int index
+                width: 5
+                height: 5
+                rotation: 45
+                color: index % 2 ? "#596CFF" : "#00E8FF"
+                x: parent.width / 2 + Math.cos(index * Math.PI / 3) * (parent.width / 2 - 5) - width / 2
+                y: parent.height / 2 + Math.sin(index * Math.PI / 3) * (parent.height / 2 - 5) - height / 2
+            }
         }
     }
 }

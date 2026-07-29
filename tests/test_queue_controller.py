@@ -18,7 +18,7 @@ from src.core.batch_processor import Job
 from src.ui.application import AppController
 
 app = QApplication([])
-controller = AppController(app, Path.cwd(), "2.9")
+controller = AppController(app, Path.cwd(), "3.0")
 batch = controller.batch
 
 controller.settings.update({
@@ -71,6 +71,17 @@ assert job.config["selected_indices"] == []
 batch.selectAllPlaylistEntries(True)
 assert job.config["selected_indices"] == [0, 1, 2]
 assert batch.runtime.batch_tab.output_path_entry.get() == r"C:\Media\Musica"
+
+rewards = []
+sources = []
+batch.successfulDownload.connect(lambda count: rewards.append(count))
+batch.gachaSourceCompleted.connect(lambda source: sources.append(source))
+batch._prepare_reward_session()
+job.completed_items = 3
+batch._apply_queue_event(job.job_id, "COMPLETED", "Playlist completa", 1.0)
+batch._apply_queue_event(job.job_id, "COMPLETED", "Playlist completa", 1.0)
+assert rewards == [1], rewards
+assert len(sources) == 1 and sources[0].startswith("queue:"), sources
 controller.shutdown()
 '''
         with tempfile.TemporaryDirectory() as appdata:
@@ -94,6 +105,14 @@ controller.shutdown()
         self.assertIn("Etiqueta de destino", qml)
         self.assertIn("batchController.downloadTags", qml)
         self.assertIn("Opciones avanzadas", qml)
+        self.assertIn("expandedPlaylistJobId", qml)
+        self.assertIn("id: playlistPanel", qml)
+        self.assertIn("modelData.thumbnail", qml)
+        self.assertIn("entryThumbnail", qml)
+        self.assertIn("id: advanced", qml)
+        self.assertIn("reuseItems: true", qml)
+        self.assertNotIn('id: playlistPreview', qml)
+        self.assertNotIn("anchors.top: jobHeader.bottom", qml)
         self.assertNotIn("Configurar playlist completa", qml)
 
 
