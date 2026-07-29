@@ -5,8 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
-from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QFileDialog
+from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtWidgets import QColorDialog, QFileDialog, QInputDialog, QMessageBox
 
 from src.core.batch_processor import Job, QueueManager, build_batch_analysis_options
 from src.core.constants import (
@@ -76,7 +76,7 @@ class _RuntimeAdapter:
             auto_download_checkbox=_Value(lambda: int(owner._state["autoDownload"])),
             auto_send_to_it_checkbox=_Value(lambda: int(owner._state["autoSendImages"])),
             conflict_policy_menu=_Value(lambda: owner._state["conflictPolicy"]),
-            output_path_entry=_Value(lambda: owner._state["outputPath"]),
+            output_path_entry=_Value(lambda: owner._state["effectiveOutputPath"]),
             speed_limit_entry=_Value(lambda: owner._state["speedLimit"]),
             thumbnail_mode_var=_Value(lambda: owner._state["thumbnailMode"]),
             combined_audio_map={},
@@ -90,6 +90,8 @@ class _RuntimeAdapter:
 class BatchController(QObject):
     stateChanged = Signal()
     selectedChanged = Signal()
+    selectedPlaylistEntriesChanged = Signal()
+    tagsChanged = Signal()
     selectedVideoChoicesChanged = Signal()
     selectedAudioChoicesChanged = Signal()
     queueEvent = Signal(str, str, str, float)
@@ -100,7 +102,8 @@ class BatchController(QObject):
 
     ROLES = [
         "jobId", "title", "status", "detail", "progress", "thumbnail", "jobType",
-        "mode", "recode", "preset", "keepOriginal", "downloadThumbnail", "itemCount",
+        "mode", "quality", "recode", "preset", "keepOriginal", "downloadThumbnail",
+        "itemCount", "destinationTag",
     ]
 
     def __init__(self, project_root, settings: SettingsStore, pool: TaskPool, presets: PresetStore, app_version: str, parent=None):
@@ -120,17 +123,30 @@ class BatchController(QObject):
             "globalPreset": "Archivo - H.265 Normal", "globalKeepOriginal": True,
             "allAudioTracks": False, "status": "Cola lista.", "progress": 0.0,
             "running": False, "analyzing": False, "selectedJobId": "",
+            "selectedTag": "Sin etiqueta", "selectedTagColor": "#6F7F8F",
+            "effectiveOutputPath": settings.get("batch_download_path", str(Path.home() / "Downloads")),
         }
+        self._tags = self._load_download_tags()
+        saved_tag = str(settings.get("selected_download_tag", "Sin etiqueta"))
+        selected_tag = next((tag for tag in self._tags if tag["name"] == saved_tag), None)
+        if selected_tag:
+            self._state.update({
+                "selectedTag": selected_tag["name"],
+                "selectedTagColor": selected_tag["color"],
+                "effectiveOutputPath": selected_tag["folder"],
+            })
         self.jobs = ObjectListModel(self.ROLES, self)
         self._selected: dict = {}
         self._selected_video_choices: list[str] = []
         self._selected_audio_choices: list[str] = []
         self._pending_jobs: dict[str, Job] = {}
         self._playlist_entries: dict[str, list[dict]] = {}
+        self._selected_playlist_entries: list[dict] = []
         self._rewarded_jobs: set[str] = set()
         self.runtime = _RuntimeAdapter(self, self.ffmpeg, settings, presets)
         self.manager = QueueManager(self.runtime, self._queue_callback)
         self.queueEvent.connect(self._apply_queue_event)
+        self.settings.changed.connect(self._on_settings_changed)
 
     @Property("QVariantMap", notify=stateChanged)
     def state(self): return self._state
@@ -140,6 +156,12 @@ class BatchController(QObject):
 
     @Property("QVariantMap", notify=selectedChanged)
     def selected(self): return self._selected
+
+    @Property("QVariantList", notify=selectedPlaylistEntriesChanged)
+    def selectedPlaylistEntries(self): return self._selected_playlist_entries
+
+    @Property("QStringList", notify=tagsChanged)
+    def downloadTags(self): return ["Sin etiqueta", *[tag["name"] for tag in self._tags]]
 
     @Property("QStringList", notify=selectedVideoChoicesChanged)
     def selectedVideoChoices(self): return self._selected_video_choices
@@ -159,14 +181,108 @@ class BatchController(QObject):
     def setValue(self, key, value):
         if key not in self._state: return
         self._set_state(**{key: value})
-        if key == "outputPath": self.settings.set("batch_download_path", str(value))
+        if key == "outputPath":
+            self.settings.set("batch_download_path", str(value))
+            self._refresh_tag_state()
         elif key == "playlistAnalysis": self.settings.set("batch_playlist_analysis", bool(value))
         elif key == "fastMode": self.settings.set("batch_fast_mode", bool(value))
+        elif key == "selectedTag":
+            self.settings.set("selected_download_tag", str(value))
+            self._refresh_tag_state()
+
+    def _load_download_tags(self):
+        tags = []
+        seen = set()
+        saved = self.settings.get("download_tags", [])
+        if not isinstance(saved, list):
+            return tags
+        for raw in saved:
+            if not isinstance(raw, dict):
+                continue
+            name = str(raw.get("name") or "").strip()
+            folder = str(raw.get("folder") or "").strip()
+            color = str(raw.get("color") or "#22D3EE")
+            if not name or not folder or name.casefold() in seen:
+                continue
+            if not QColor(color).isValid():
+                color = "#22D3EE"
+            seen.add(name.casefold())
+            tags.append({"name": name, "folder": folder, "color": color})
+        return tags
+
+    def _selected_tag(self):
+        selected = str(self._state.get("selectedTag") or "")
+        return next((tag for tag in self._tags if tag["name"] == selected), None)
+
+    def _refresh_tag_state(self):
+        tag = self._selected_tag()
+        self._set_state(
+            selectedTag=tag["name"] if tag else "Sin etiqueta",
+            selectedTagColor=tag["color"] if tag else "#6F7F8F",
+            effectiveOutputPath=tag["folder"] if tag else self._state["outputPath"],
+        )
+
+    @Slot(str, "QVariant")
+    def _on_settings_changed(self, key, _value):
+        if key == "download_tags":
+            self._tags = self._load_download_tags()
+            self.tagsChanged.emit()
+            self._refresh_tag_state()
+        elif key == "selected_download_tag":
+            self._set_state(selectedTag=str(self.settings.get(key, "Sin etiqueta")))
+            self._refresh_tag_state()
+
+    @Slot()
+    def createDownloadTag(self):
+        name, accepted = QInputDialog.getText(
+            None, "Nueva etiqueta", "Nombre (por ejemplo: SFX, Música o Material):",
+        )
+        name = str(name).strip()
+        if not accepted or not name:
+            return
+        if any(tag["name"].casefold() == name.casefold() for tag in self._tags):
+            self.notificationRequested.emit("warning", "La etiqueta ya existe", name)
+            return
+        folder = QFileDialog.getExistingDirectory(
+            None, f"Carpeta para {name}", self._state["effectiveOutputPath"],
+        )
+        if not folder:
+            return
+        color = QColorDialog.getColor(QColor("#22D3EE"), None, f"Color de {name}")
+        if not color.isValid():
+            return
+        tags = [*self._tags, {"name": name, "folder": folder, "color": color.name().upper()}]
+        self.settings.update({"download_tags": tags, "selected_download_tag": name})
+
+    @Slot()
+    def deleteSelectedTag(self):
+        tag = self._selected_tag()
+        if not tag:
+            return
+        answer = QMessageBox.question(
+            None, "Eliminar etiqueta", f"¿Eliminar la etiqueta «{tag['name']}»?\nLa carpeta no se borrará.",
+        )
+        if answer != QMessageBox.Yes:
+            return
+        tags = [item for item in self._tags if item["name"] != tag["name"]]
+        self.settings.update({"download_tags": tags, "selected_download_tag": "Sin etiqueta"})
 
     @Slot()
     def chooseOutputFolder(self):
-        folder = QFileDialog.getExistingDirectory(None, "Carpeta de la cola", self._state["outputPath"])
-        if folder: self.setValue("outputPath", folder)
+        folder = QFileDialog.getExistingDirectory(
+            None, "Carpeta de la cola", self._state["effectiveOutputPath"],
+        )
+        if not folder:
+            return
+        tag = self._selected_tag()
+        if tag:
+            tags = [
+                {**item, "folder": folder} if item["name"] == tag["name"] else item
+                for item in self._tags
+            ]
+            self.settings.set("download_tags", tags)
+        else:
+            self.setValue("outputPath", folder)
 
     @Slot()
     def analyze(self):
@@ -223,6 +339,8 @@ class BatchController(QObject):
                 "playlist_mode": self._state["globalMode"], "playlist_quality": self._state["globalQuality"],
                 "recode_enabled": bool(self._state["globalRecode"]), "recode_preset_name": preset,
                 "recode_keep_original": bool(self._state["globalKeepOriginal"]),
+                "output_path": self._state["effectiveOutputPath"],
+                "destination_tag": self._state["selectedTag"],
             })
             self._playlist_entries[job.job_id] = entries
         else:
@@ -236,6 +354,8 @@ class BatchController(QObject):
                 "resolved_video_format_id": video.get("formatId"), "resolved_audio_format_id": audio.get("formatId"),
                 "recode_enabled": bool(self._state["globalRecode"]), "recode_preset_name": preset,
                 "recode_keep_original": bool(self._state["globalKeepOriginal"]), "recode_all_audio_tracks": bool(self._state["allAudioTracks"]),
+                "output_path": self._state["effectiveOutputPath"],
+                "destination_tag": self._state["selectedTag"],
             })
         self.manager.add_job(job)
         self._replace_job_model(job, "PENDING", "Listo para procesar", 0.0)
@@ -265,6 +385,8 @@ class BatchController(QObject):
                 "local_file_path": path, "title": Path(path).stem, "mode": self._state["globalMode"],
                 "recode_enabled": True, "recode_preset_name": self._state["globalPreset"],
                 "recode_keep_original": self._state["globalKeepOriginal"], "recode_all_audio_tracks": self._state["allAudioTracks"],
+                "output_path": self._state["effectiveOutputPath"],
+                "destination_tag": self._state["selectedTag"],
             }, "LOCAL_RECODE")
             info = self.ffmpeg.get_local_media_info(path)
             if not info:
@@ -283,7 +405,7 @@ class BatchController(QObject):
     @Slot()
     def startQueue(self):
         if self._state["createSubfolder"]:
-            folder = Path(self._state["outputPath"]) / safe_filename(self._state["subfolderName"])
+            folder = Path(self._state["effectiveOutputPath"]) / safe_filename(self._state["subfolderName"])
             folder.mkdir(parents=True, exist_ok=True)
             self.manager.subfolder_path = str(folder)
         elif hasattr(self.manager, "subfolder_path"):
@@ -356,9 +478,11 @@ class BatchController(QObject):
             "status": status or job.status, "detail": detail or job.progress_message,
             "progress": progress, "thumbnail": (job.analysis_data or {}).get("thumbnail", ""),
             "jobType": job.job_type, "mode": config.get("mode", config.get("playlist_mode", "Video+Audio")),
+            "quality": config.get("playlist_quality", self._state["globalQuality"]),
             "recode": bool(config.get("recode_enabled")), "preset": config.get("recode_preset_name", "-"),
             "keepOriginal": bool(config.get("recode_keep_original", True)),
             "downloadThumbnail": bool(config.get("download_thumbnail", False)), "itemCount": job.total_items,
+            "destinationTag": config.get("destination_tag", "Sin etiqueta"),
         }
 
     def _find_row(self, job_id):
@@ -381,7 +505,25 @@ class BatchController(QObject):
         choices = build_media_choices(job.analysis_data) if job.analysis_data and job.job_type == "DOWNLOAD" else {"video": [], "audio": []}
         self._selected_video_choices = [item["label"] for item in choices["video"]]
         self._selected_audio_choices = [item["label"] for item in choices["audio"]]
+        self._refresh_selected_playlist_entries(job)
         self.selectedVideoChoicesChanged.emit(); self.selectedAudioChoicesChanged.emit(); self.selectedChanged.emit()
+
+    def _refresh_selected_playlist_entries(self, job=None):
+        job = job or self.manager.get_job_by_id(self._state["selectedJobId"])
+        if not job or job.job_type != "PLAYLIST":
+            self._selected_playlist_entries = []
+        else:
+            selected = {int(index) for index in job.config.get("selected_indices", [])}
+            self._selected_playlist_entries = [
+                {
+                    "index": index,
+                    "title": entry.get("title") or entry.get("id") or f"Elemento {index + 1}",
+                    "thumbnail": entry.get("thumbnail", ""),
+                    "selected": index in selected,
+                }
+                for index, entry in enumerate(self._playlist_entries.get(job.job_id, []))
+            ]
+        self.selectedPlaylistEntriesChanged.emit()
 
     @Slot(str, "QVariant")
     def setSelectedOption(self, key, value):
@@ -392,7 +534,12 @@ class BatchController(QObject):
             "keepOriginal": "recode_keep_original", "downloadThumbnail": "download_thumbnail",
             "video": "video_format_label", "audio": "audio_format_label", "allAudioTracks": "recode_all_audio_tracks",
         }
-        config_key = mapping.get(key)
+        if job.job_type == "PLAYLIST" and key == "mode":
+            config_key = "playlist_mode"
+        elif job.job_type == "PLAYLIST" and key == "quality":
+            config_key = "playlist_quality"
+        else:
+            config_key = mapping.get(key)
         if not config_key: return
         job.config[config_key] = value
         self.selectJob(job.job_id)
@@ -406,6 +553,37 @@ class BatchController(QObject):
         job.config.update({"selected_indices": valid, "playlist_mode": mode, "playlist_quality": quality})
         job.total_items = len(valid)
         self._replace_job_model(job, job.status, f"{len(valid)} elementos seleccionados")
+        if self._state["selectedJobId"] == job_id:
+            self.selectJob(job_id)
+
+    @Slot(int, bool)
+    def setPlaylistEntrySelected(self, index, selected):
+        job = self.manager.get_job_by_id(self._state["selectedJobId"])
+        if not job or job.job_type != "PLAYLIST":
+            return
+        entries = self._playlist_entries.get(job.job_id, [])
+        if not 0 <= int(index) < len(entries):
+            return
+        chosen = {int(value) for value in job.config.get("selected_indices", [])}
+        if selected:
+            chosen.add(int(index))
+        else:
+            chosen.discard(int(index))
+        job.config["selected_indices"] = sorted(chosen)
+        job.total_items = len(chosen)
+        self._replace_job_model(job, job.status, f"{len(chosen)} de {len(entries)} seleccionados")
+        self.selectJob(job.job_id)
+
+    @Slot(bool)
+    def selectAllPlaylistEntries(self, selected):
+        job = self.manager.get_job_by_id(self._state["selectedJobId"])
+        if not job or job.job_type != "PLAYLIST":
+            return
+        entries = self._playlist_entries.get(job.job_id, [])
+        job.config["selected_indices"] = list(range(len(entries))) if selected else []
+        job.total_items = len(job.config["selected_indices"])
+        self._replace_job_model(job, job.status, f"{job.total_items} de {len(entries)} seleccionados")
+        self.selectJob(job.job_id)
 
     @Slot(str, result="QVariantList")
     def playlistEntries(self, job_id):
@@ -419,7 +597,11 @@ class BatchController(QObject):
         row = self._find_row(job_id)
         if row >= 0: self.jobs.remove(row)
         if self._state["selectedJobId"] == job_id:
-            self._selected = {}; self.selectedChanged.emit(); self._set_state(selectedJobId="")
+            self._selected = {}
+            self._selected_playlist_entries = []
+            self.selectedChanged.emit()
+            self.selectedPlaylistEntriesChanged.emit()
+            self._set_state(selectedJobId="")
 
     @Slot()
     def clearFinished(self):
@@ -436,7 +618,7 @@ class BatchController(QObject):
 
     @Slot()
     def openOutput(self):
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._state["outputPath"])))
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._state["effectiveOutputPath"])))
 
     def shutdown(self):
         self.manager.stop_worker_thread()

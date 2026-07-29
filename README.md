@@ -1,6 +1,6 @@
 # Xomacito
 
-Versión actual: **Xomacito 2.8**.
+Versión actual: **Xomacito 2.9**.
 
 Aplicación independiente para Windows que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike**.
 
@@ -15,6 +15,8 @@ Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión 
 ## Funciones principales
 
 - Descarga individual y por lotes mediante yt-dlp.
+- Previsualización seleccionable de canciones y videos dentro de cada playlist.
+- Etiquetas compartidas entre Descargar y Cola para organizar cada destino por color y carpeta.
 - Video con audio, extracción de audio, miniaturas y subtítulos.
 - Descarga de fotografías públicas de Instagram, incluidas publicaciones con `img_index`.
 - Corte de fragmentos y recodificación mediante FFmpeg.
@@ -52,7 +54,7 @@ Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión 
 
 Los runtimes de compilación, herramientas externas, modelos, builds y preferencias personales están excluidos del repositorio. Los binarios distribuidos a usuarios se publican únicamente en [GitHub Releases](https://github.com/Strike2911/Xomacito/releases).
 
-La versión 2.8 acelera el análisis de playlists y garantiza MP3 real en el modo Solo Audio. También agradece especialmente a **BlackBull** por detectar el fallo de playlists y a **Spike** por sus aportes al sistema de colección gatuna.
+La versión 2.9 presenta **¡LA EDUARDITO UPDATE!!**: previsualización real de playlists, selección por elemento, etiquetas en la cola y una interfaz progresiva que mantiene las opciones avanzadas disponibles sin saturar el flujo principal. Gracias a **Eduardito3d** por aportar la idea y ayudar a mejorar esta experiencia.
 
 Para volver a importar o ampliar la colección sin cambiar las rarezas ya asignadas:
 
