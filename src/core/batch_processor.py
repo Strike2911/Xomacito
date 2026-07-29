@@ -19,6 +19,7 @@ from src.core.downloader import (
     extract_info_resilient,
 )
 from src.core.exceptions import UserCancelledError
+from src.core.file_naming import next_available_media_stem
 from src.core.video_upscaler import VideoUpscaler
 from main import UPSCALING_DIR
 
@@ -677,6 +678,7 @@ class QueueManager:
         """
         output_dir = options['output_path']
         title = self.main_app.single_tab.sanitize_filename(options['title'])
+        title = next_available_media_stem(output_dir, title)
         
         # Template de salida
         output_template = os.path.join(output_dir, f"{title}.%(ext)s")

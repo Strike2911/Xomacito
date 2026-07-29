@@ -7,9 +7,9 @@ import "pages"
 ApplicationWindow {
     id: window
     width: 1280
-    height: 860
+    height: 720
     minimumWidth: 960
-    minimumHeight: 700
+    minimumHeight: 680
     visible: true
     title: "Xomacito " + appController.version
     color: theme.colors.background

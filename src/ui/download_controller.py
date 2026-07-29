@@ -29,6 +29,7 @@ from src.core.downloader import (
     is_instagram_post_url,
 )
 from src.core.exceptions import UserCancelledError
+from src.core.file_naming import next_available_media_stem, next_available_path
 from src.core.processor import FFmpegProcessor, clean_and_convert_vtt_to_srt, pixel_format_has_alpha
 from src.core.video_upscaler import VideoUpscaler
 from src.core.ytdlp_runtime import configure_ytdlp_options, friendly_ytdlp_error, safe_console_print
@@ -830,6 +831,10 @@ class DownloadController(QObject):
         return str(source)
 
     def _download_worker(self, options: dict) -> str:
+        options = dict(options)
+        options["title"] = next_available_media_stem(
+            options["output_path"], options["title"]
+        )
         video = self._video_map.get(options["video_label"], {})
         audio = self._audio_map.get(options["audio_label"], {})
         video_id, audio_id = video.get("formatId"), audio.get("formatId")
@@ -1089,12 +1094,7 @@ class DownloadController(QObject):
                 return None
             if choice == "Reemplazar":
                 return desired
-        counter = 1
-        while True:
-            candidate = desired.with_stem(f"{desired.stem}_{counter}")
-            if not candidate.exists():
-                return candidate
-            counter += 1
+        return next_available_path(desired)
 
     def _ffmpeg_progress(self, percent, message):
         value = float(percent or 0)

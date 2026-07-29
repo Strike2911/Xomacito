@@ -788,6 +788,15 @@
       "animationStyle": "standard"
     },
     {
+      "id": "cat-3fbb2a6fdb2e",
+      "name": "GATO PLAYERA",
+      "rarity": 6,
+      "image": "cat-3fbb2a6fdb2e.png",
+      "avatar": "cat-3fbb2a6fdb2e-avatar.webp",
+      "originalFile": "GATO PLAYERA.png",
+      "animationStyle": "playera-prismatic"
+    },
+    {
       "id": "cat-39018fb703a2",
       "name": "GATO PREPUCIO",
       "rarity": 1,
@@ -984,6 +993,15 @@
       "avatar": "cat-655d97e229cb-avatar.webp",
       "originalFile": "gato xomacito.png",
       "animationStyle": "standard"
+    },
+    {
+      "id": "cat-40eaa59f7dbf",
+      "name": "GATO ZARKING",
+      "rarity": 6,
+      "image": "cat-40eaa59f7dbf.png",
+      "avatar": "cat-40eaa59f7dbf-avatar.webp",
+      "originalFile": "GATO ZARKING.png",
+      "animationStyle": "zarking-cyber"
     },
     {
       "id": "cat-54df6df04d00",

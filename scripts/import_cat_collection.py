@@ -21,9 +21,13 @@ RARITY_OVERRIDES = {
     "gato conductor": 3,
     "gato inteligente": 3,
     "gato mago": 6,
+    "gato playera": 6,
+    "gato zarking": 6,
 }
 ANIMATION_OVERRIDES = {
     "gato mago": "arcane-mage",
+    "gato playera": "playera-prismatic",
+    "gato zarking": "zarking-cyber",
 }
 CATALOG_SCHEMA = 2
 AVATAR_SIZE = 384

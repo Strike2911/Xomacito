@@ -22,6 +22,7 @@ from src.core.app_updater import (
 from src.core.daily_icon import daily_cat_assets
 from src.core.notification_sound import (
     play_completion_sound,
+    play_gacha_equip_sound,
     play_gacha_reveal_sound,
     play_platinum_celebration_sound,
 )
@@ -105,6 +106,7 @@ class AppController(QObject):
         self.download.successfulDownload.connect(self._play_download_completion)
         self.batch.successfulDownload.connect(self._play_download_completion)
         self.cats.revealRequested.connect(self._play_cat_reveal)
+        self.cats.equippedRequested.connect(self._play_cat_equip)
         self.download.navigateRequested.connect(self.navigate)
         self.download.queueRequested.connect(self._send_url_to_queue)
         self.batch.imageFilesRequested.connect(self._send_files_to_image)
@@ -115,7 +117,15 @@ class AppController(QObject):
 
     @Slot("QVariantMap")
     def _play_cat_reveal(self, result):
-        play_gacha_reveal_sound(int(dict(result or {}).get("rarity", 1)))
+        payload = dict(result or {})
+        play_gacha_reveal_sound(
+            int(payload.get("rarity", 1)),
+            str(payload.get("animationStyle") or ""),
+        )
+
+    @Slot("QVariantMap")
+    def _play_cat_equip(self, result):
+        play_gacha_equip_sound(str(dict(result or {}).get("animationStyle") or ""))
 
     @Slot()
     def playPlatinumCelebration(self):

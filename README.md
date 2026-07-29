@@ -1,6 +1,6 @@
 # Xomacito
 
-Versión actual: **Xomacito 2.9**.
+Versión actual: **Xomacito 3.0**.
 
 Aplicación independiente para Windows que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike**.
 
@@ -25,7 +25,7 @@ Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión 
 - Removedor de fondos renovado con modelos BiRefNet para retratos, bordes finos y escenas complejas.
 - Temas claros y oscuros, fondos adaptativos y colección gatuna equipable.
 - Gacha de gatos: una tirada diaria gratis y una tirada adicional por cada 10 descargas exitosas.
-- 142 gatos con nombres estandarizados en mayúsculas y rarezas estables de 1 a 6 estrellas.
+- 144 gatos con nombres estandarizados en mayúsculas y rarezas estables de 1 a 6 estrellas.
 - Gatos míticos de 6 estrellas con animaciones exclusivas de desbloqueo y equipamiento.
 - Sonido de confirmación al finalizar una descarga.
 - Instalación por usuario y desinstalador integrado en Windows.
@@ -54,7 +54,7 @@ Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión 
 
 Los runtimes de compilación, herramientas externas, modelos, builds y preferencias personales están excluidos del repositorio. Los binarios distribuidos a usuarios se publican únicamente en [GitHub Releases](https://github.com/Strike2911/Xomacito/releases).
 
-La versión 2.9 presenta **¡LA EDUARDITO UPDATE!!**: previsualización real de playlists, selección por elemento, etiquetas en la cola y una interfaz progresiva que mantiene las opciones avanzadas disponibles sin saturar el flujo principal. Gracias a **Eduardito3d** por aportar la idea y ayudar a mejorar esta experiencia.
+La versión 3.0 presenta **¡LA GACHA MÍTICA UPDATE!!**: GATO MAGO, GATO PLAYERA y GATO ZARKING encabezan la rareza 6★ con animaciones y SFX propios. Cada ejecución de la cola suma como una sola descarga al progreso del gacha, incluso si contiene una playlist completa.
 
 Para volver a importar o ampliar la colección sin cambiar las rarezas ya asignadas:
 

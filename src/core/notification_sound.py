@@ -11,12 +11,22 @@ from pathlib import Path
 SOUND_FILENAME = "download-complete.mp3"
 PLATINUM_SOUND_FILENAME = "platinum-celebration.mp3"
 GACHA_SOUND_FILENAMES = {
-    1: "gacha-reveal-1.mp3",
-    2: "gacha-reveal-2.mp3",
-    3: "gacha-reveal-3.mp3",
-    4: "gacha-reveal-4.mp3",
-    5: "gacha-reveal-5.mp3",
-    6: "gacha-reveal-5.mp3",
+    1: "gacha-reveal-1.wav",
+    2: "gacha-reveal-2.wav",
+    3: "gacha-reveal-3.wav",
+    4: "gacha-reveal-4.wav",
+    5: "gacha-reveal-5.wav",
+    6: "gacha-reveal-6-arcane.wav",
+}
+GACHA_STYLE_SOUND_FILENAMES = {
+    "arcane-mage": "gacha-reveal-6-arcane.wav",
+    "playera-prismatic": "gacha-reveal-6-playera.wav",
+    "zarking-cyber": "gacha-reveal-6-zarking.wav",
+}
+GACHA_EQUIP_SOUND_FILENAMES = {
+    "arcane-mage": "gacha-equip-6-arcane.wav",
+    "playera-prismatic": "gacha-equip-6-playera.wav",
+    "zarking-cyber": "gacha-equip-6-zarking.wav",
 }
 
 
@@ -44,9 +54,18 @@ def completion_sound_path() -> Path | None:
     return _asset_path(SOUND_FILENAME)
 
 
-def gacha_sound_path(rarity: int) -> Path | None:
+def gacha_sound_path(rarity: int, animation_style: str = "") -> Path | None:
     normalized = max(1, min(6, int(rarity or 1)))
-    return _asset_path("sfx", GACHA_SOUND_FILENAMES[normalized])
+    filename = GACHA_STYLE_SOUND_FILENAMES.get(
+        str(animation_style or "").strip(),
+        GACHA_SOUND_FILENAMES[normalized],
+    )
+    return _asset_path("sfx", filename)
+
+
+def gacha_equip_sound_path(animation_style: str) -> Path | None:
+    filename = GACHA_EQUIP_SOUND_FILENAMES.get(str(animation_style or "").strip())
+    return _asset_path("sfx", filename) if filename else None
 
 
 def platinum_sound_path() -> Path | None:
@@ -55,6 +74,14 @@ def platinum_sound_path() -> Path | None:
 
 def _play_with_mci(path: Path) -> None:
     if os.name != "nt":
+        return
+    if path.suffix.casefold() == ".wav":
+        try:
+            import winsound
+
+            winsound.PlaySound(str(path), winsound.SND_FILENAME)
+        except (OSError, RuntimeError):
+            pass
         return
     alias = f"xomacito_complete_{os.getpid()}_{threading.get_ident()}_{time.time_ns()}"
     send = ctypes.windll.winmm.mciSendStringW
@@ -79,9 +106,14 @@ def play_completion_sound() -> bool:
     return _play_async(completion_sound_path())
 
 
-def play_gacha_reveal_sound(rarity: int) -> bool:
+def play_gacha_reveal_sound(rarity: int, animation_style: str = "") -> bool:
     """Reproduce el efecto sincronizado con la revelación de la rareza."""
-    return _play_async(gacha_sound_path(rarity))
+    return _play_async(gacha_sound_path(rarity, animation_style))
+
+
+def play_gacha_equip_sound(animation_style: str) -> bool:
+    """Da identidad sonora propia a cada gato mítico al equiparlo."""
+    return _play_async(gacha_equip_sound_path(animation_style))
 
 
 def play_platinum_celebration_sound() -> bool:

@@ -24,14 +24,14 @@ class CatGachaTests(unittest.TestCase):
         payload = json.loads(catalog_path.read_text(encoding="utf-8"))
         catalog = load_cat_catalog(ROOT)
 
-        self.assertEqual(len(catalog), 142)
-        self.assertEqual(len(payload["cats"]), 142)
+        self.assertEqual(len(catalog), 144)
+        self.assertEqual(len(payload["cats"]), 144)
         self.assertIn("GATITO PENSATIVO", {cat.name for cat in catalog})
         self.assertIn("GATO DIOS", {cat.name for cat in catalog})
         self.assertIn("GATO XOMACITO", {cat.name for cat in catalog})
         self.assertEqual(
             Counter(cat.rarity for cat in catalog),
-            {1: 61, 2: 36, 3: 28, 4: 9, 5: 7, 6: 1},
+            {1: 61, 2: 36, 3: 28, 4: 9, 5: 7, 6: 3},
         )
         expected_rarities = {
             "GATO DIOS": 5,
@@ -42,11 +42,15 @@ class CatGachaTests(unittest.TestCase):
             "GATO CONDUCTOR": 3,
             "GATO INTELIGENTE": 3,
             "GATO MAGO": 6,
+            "GATO PLAYERA": 6,
+            "GATO ZARKING": 6,
         }
         by_name = {cat.name.casefold(): cat for cat in catalog}
         for name, rarity in expected_rarities.items():
             self.assertEqual(by_name[name.casefold()].rarity, rarity)
         self.assertEqual(by_name["gato mago"].animation_style, "arcane-mage")
+        self.assertEqual(by_name["gato playera"].animation_style, "playera-prismatic")
+        self.assertEqual(by_name["gato zarking"].animation_style, "zarking-cyber")
         self.assertTrue(all(cat.name == cat.name.upper() for cat in catalog))
         for cat in catalog:
             self.assertTrue(cat.image_path.is_file())

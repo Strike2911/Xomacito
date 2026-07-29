@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -143,6 +144,9 @@ class BatchController(QObject):
         self._playlist_entries: dict[str, list[dict]] = {}
         self._selected_playlist_entries: list[dict] = []
         self._rewarded_jobs: set[str] = set()
+        self._reward_session_jobs: set[str] = set()
+        self._reward_session_source = ""
+        self._reward_session_granted = False
         self.runtime = _RuntimeAdapter(self, self.ffmpeg, settings, presets)
         self.manager = QueueManager(self.runtime, self._queue_callback)
         self.queueEvent.connect(self._apply_queue_event)
@@ -410,8 +414,38 @@ class BatchController(QObject):
             self.manager.subfolder_path = str(folder)
         elif hasattr(self.manager, "subfolder_path"):
             delattr(self.manager, "subfolder_path")
+        self._prepare_reward_session()
         self.manager.start_queue()
         self._set_state(running=True, status="Procesando cola…")
+
+    def _prepare_reward_session(self):
+        """Agrupa una ejecución completa de la cola en un solo progreso gacha."""
+        active = [
+            job for job in self.manager.jobs
+            if job.job_type in {"DOWNLOAD", "PLAYLIST"} and job.status in {"PENDING", "RUNNING"}
+        ]
+        if not active:
+            return
+        active_ids = {job.job_id for job in active}
+        if self._reward_session_jobs & active_ids:
+            self._reward_session_jobs.update(active_ids)
+            return
+        source_parts = []
+        for job in active:
+            info = job.analysis_data or {}
+            source_parts.append(
+                str(
+                    job.config.get("url")
+                    or info.get("webpage_url")
+                    or info.get("original_url")
+                    or info.get("id")
+                    or job.job_id
+                )
+            )
+        digest = hashlib.sha256("\n".join(sorted(source_parts)).encode("utf-8")).hexdigest()
+        self._reward_session_jobs = active_ids
+        self._reward_session_source = f"queue:{digest}"
+        self._reward_session_granted = False
 
     @Slot()
     def pauseQueue(self):
@@ -439,37 +473,15 @@ class BatchController(QObject):
             job.progress_message = detail
             self._replace_job_model(job, status, detail, progress)
             if self._state["selectedJobId"] == job_id: self.selectJob(job_id)
-            if status == "COMPLETED" and job_id not in self._rewarded_jobs:
-                if job.job_type == "DOWNLOAD":
-                    self._rewarded_jobs.add(job_id)
-                    self.successfulDownload.emit(1)
-                    info = job.analysis_data or {}
-                    extractor = str(info.get("extractor_key") or info.get("extractor") or "url").casefold()
-                    media_id = str(info.get("id") or "").strip()
-                    self.gachaSourceCompleted.emit(
-                        f"{extractor}:{media_id}" if media_id else str(job.config.get("url") or "")
-                    )
-                elif job.job_type == "PLAYLIST":
-                    self._rewarded_jobs.add(job_id)
-                    successful_items = max(0, int(getattr(job, "completed_items", 0) or 0))
-                    if successful_items:
-                        self.successfulDownload.emit(successful_items)
-                        entries = [
-                            entry for entry in (job.analysis_data or {}).get("entries", []) if entry
-                        ]
-                        selected = job.config.get("selected_indices", list(range(len(entries))))
-                        for index in selected[:successful_items]:
-                            if not 0 <= int(index) < len(entries):
-                                continue
-                            entry = entries[int(index)]
-                            extractor = str(
-                                entry.get("extractor_key") or entry.get("extractor") or "playlist"
-                            ).casefold()
-                            media_id = str(entry.get("id") or "").strip()
-                            source = str(entry.get("webpage_url") or entry.get("url") or "")
-                            self.gachaSourceCompleted.emit(
-                                f"{extractor}:{media_id}" if media_id else source
-                            )
+            if (
+                status == "COMPLETED"
+                and job_id in self._reward_session_jobs
+                and not self._reward_session_granted
+            ):
+                self._reward_session_granted = True
+                self._rewarded_jobs.update(self._reward_session_jobs)
+                self.successfulDownload.emit(1)
+                self.gachaSourceCompleted.emit(self._reward_session_source)
 
     def _model_item(self, job, status=None, detail="", progress=0.0):
         config = job.config
