@@ -216,6 +216,7 @@ class DownloadController(QObject):
         self._active_worker = None
         self._current_counts_as_download = False
         self.progressReported.connect(self._apply_progress)
+        self.settings.changed.connect(self._on_settings_changed)
 
     @Property("QVariantMap", notify=stateChanged)
     def state(self):
@@ -331,6 +332,17 @@ class DownloadController(QObject):
         self.settings.set("selected_download_tag", self._state["selectedTag"])
         self.tagsChanged.emit()
         self._refresh_tag_state()
+
+    @Slot(str, "QVariant")
+    def _on_settings_changed(self, key, _value):
+        """Mantiene las mismas etiquetas activas en Descargar y Cola."""
+        if key == "download_tags":
+            self._tags = self._load_download_tags()
+            self.tagsChanged.emit()
+            self._refresh_tag_state()
+        elif key == "selected_download_tag":
+            self._set_state(selectedTag=str(self.settings.get(key, "Sin etiqueta")))
+            self._refresh_tag_state()
 
     @Slot()
     def createDownloadTag(self):

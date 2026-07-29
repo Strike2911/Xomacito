@@ -373,7 +373,7 @@ class QueueManager:
         conflict_policy = batch_tab.conflict_policy_menu.get() if hasattr(batch_tab, 'conflict_policy_menu') else "Renombrar"
         
         # Directorio base y subcarpeta
-        base_output_dir = batch_tab.output_path_entry.get()
+        base_output_dir = job.config.get('output_path') or batch_tab.output_path_entry.get()
         # Verificar si hay subcarpeta de lote activa
         if hasattr(self, 'subfolder_path') and self.subfolder_path:
             base_output_dir = self.subfolder_path
@@ -788,7 +788,7 @@ class QueueManager:
 
         single_tab = self.main_app.single_tab
         
-        output_dir = batch_tab.output_path_entry.get()
+        output_dir = job.config.get('output_path') or batch_tab.output_path_entry.get()
         if not output_dir:
             raise Exception("Carpeta de salida no especificada.")
         
@@ -1338,7 +1338,7 @@ class QueueManager:
 
             # 4. Determinar la carpeta de salida
             batch_tab = self.main_app.batch_tab
-            output_dir = batch_tab.output_path_entry.get()
+            output_dir = job.config.get('output_path') or batch_tab.output_path_entry.get()
             if hasattr(self, 'subfolder_path') and self.subfolder_path:
                 output_dir = self.subfolder_path
             
@@ -1471,7 +1471,7 @@ class QueueManager:
             batch_tab = self.main_app.batch_tab
             single_tab = self.main_app.single_tab
             
-            output_dir = batch_tab.output_path_entry.get()
+            output_dir = job.config.get('output_path') or batch_tab.output_path_entry.get()
             if not output_dir:
                 raise Exception("Carpeta de salida no especificada.")
             

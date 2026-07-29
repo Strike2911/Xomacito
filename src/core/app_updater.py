@@ -25,6 +25,28 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "2.9": {
+        "eyebrow": "ACTUALIZACIÓN INSTALADA",
+        "title": "Xomacito 2.9",
+        "subtitle": "¡LA EDUARDITO UPDATE!!",
+        "message": (
+            "La cola ahora enseña lo que contiene cada playlist antes de descargar, "
+            "organiza los destinos con etiquetas y deja las opciones técnicas en segundo plano."
+        ),
+        "highlights": [
+            "Previsualización completa y seleccionable de canciones y videos dentro de cada playlist.",
+            "Controles Todos y Ninguno para decidir rápidamente qué elementos procesar.",
+            "Modo y calidad se guardan correctamente por cada playlist seleccionada.",
+            "Etiquetas con color y carpeta disponibles también en la Cola.",
+            "Interfaz simplificada con opciones avanzadas plegables y un destino visual más claro.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d",
+        ],
+        "closing": "Gracias a Eduardito3d por ayudar a convertir la cola en un flujo más claro y controlable.",
+        "platinumCelebration": True,
+    },
     "2.8": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
         "title": "Xomacito 2.8",
