@@ -169,27 +169,30 @@ Item {
                                     objectName: "downloadModeCombo"
                                     Layout.fillWidth: true
                                     compact: page.denseLayout
-                                    model: ["Video+Audio", "Solo Audio"]
-                                    currentIndex: viewState.mode === "Solo Audio" ? 1 : 0
+                                    model: viewState.imagePost ? ["Imágenes"] : ["Video+Audio", "Solo Audio"]
+                                    currentIndex: viewState.imagePost ? 0 : (viewState.mode === "Solo Audio" ? 1 : 0)
                                     onActivated: downloadController.setValue("mode", currentText)
                                     Connections {
                                         target: downloadController
                                         function onStateChanged() {
-                                            modeCombo.currentIndex = viewState.mode === "Solo Audio" ? 1 : 0
+                                            modeCombo.currentIndex = viewState.imagePost ? 0 : (viewState.mode === "Solo Audio" ? 1 : 0)
                                         }
                                     }
                                 }
                             }
                             LabeledControl {
+                                visible: !viewState.imagePost
                                 Layout.fillWidth: true; compact: page.denseLayout; label: viewState.mode === "Solo Audio" ? "Calidad de audio" : "Calidad de video"
                                 XComboBox { Layout.fillWidth: true; compact: page.denseLayout; model: viewState.mode === "Solo Audio" ? downloadController.audioChoices : downloadController.videoChoices; currentIndex: Math.max(0, find(viewState.mode === "Solo Audio" ? viewState.selectedAudio : viewState.selectedVideo)); onActivated: downloadController.setValue(viewState.mode === "Solo Audio" ? "selectedAudio" : "selectedVideo", currentText) }
                             }
                         }
                         LabeledControl {
+                            visible: !viewState.imagePost
                             Layout.fillWidth: true; compact: page.denseLayout; label: "Preset de conversión"
                             XComboBox { Layout.fillWidth: true; compact: page.denseLayout; model: viewState.mode === "Solo Audio" ? presetStore.audioPresets : presetStore.videoPresets; currentIndex: Math.max(0, find(viewState.preset)); onActivated: downloadController.setValue("preset", currentText) }
                         }
                         RowLayout {
+                            visible: !viewState.imagePost
                             Layout.fillWidth: true
                             spacing: 12
                             XSwitch { text: "Aplicar preset"; checked: options.applyPreset; onToggled: downloadController.setOption("applyPreset", checked) }
@@ -206,6 +209,16 @@ Item {
                             }
                             Item { Layout.fillWidth: true }
                             XButton { objectName: "advancedToolsButton"; compact: true; text: "Todas las herramientas"; kind: "secondary"; onClicked: advanced.open() }
+                        }
+                        Text {
+                            visible: viewState.imagePost
+                            Layout.fillWidth: true
+                            text: viewState.imageCount > 1
+                                ? viewState.imageCount + " imágenes detectadas · se descargarán todas"
+                                : "1 imagen detectada · lista para descargar"
+                            color: theme.colors.success
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
                         }
                     }
                 }
@@ -539,7 +552,7 @@ Item {
                         }
                         XButton {
                             compact: page.denseLayout
-                            text: viewState.busy ? "Cancelar" : viewState.localFile ? "Procesar" : "Iniciar descarga"
+                            text: viewState.busy ? "Cancelar" : viewState.localFile ? "Procesar" : viewState.imagePost ? "Descargar imágenes" : "Iniciar descarga"
                             kind: viewState.busy ? "danger" : "primary"
                             enabled: viewState.busy || viewState.analyzed
                             onClicked: viewState.busy ? downloadController.cancel() : downloadController.start()

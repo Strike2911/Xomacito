@@ -106,6 +106,7 @@ class BatchController(QObject):
         "mode", "quality", "recode", "preset", "keepOriginal", "downloadThumbnail",
         "itemCount", "destinationTag",
     ]
+    PLAYLIST_ENTRY_ROLES = ["index", "title", "thumbnail", "selected"]
 
     def __init__(self, project_root, settings: SettingsStore, pool: TaskPool, presets: PresetStore, app_version: str, parent=None):
         super().__init__(parent)
@@ -143,6 +144,7 @@ class BatchController(QObject):
         self._pending_jobs: dict[str, Job] = {}
         self._playlist_entries: dict[str, list[dict]] = {}
         self._selected_playlist_entries: list[dict] = []
+        self.playlist_entries_model = ObjectListModel(self.PLAYLIST_ENTRY_ROLES, self)
         self._rewarded_jobs: set[str] = set()
         self._reward_session_jobs: set[str] = set()
         self._reward_session_source = ""
@@ -163,6 +165,9 @@ class BatchController(QObject):
 
     @Property("QVariantList", notify=selectedPlaylistEntriesChanged)
     def selectedPlaylistEntries(self): return self._selected_playlist_entries
+
+    @Property(QObject, constant=True)
+    def selectedPlaylistEntriesModel(self): return self.playlist_entries_model
 
     @Property("QStringList", notify=tagsChanged)
     def downloadTags(self): return ["Sin etiqueta", *[tag["name"] for tag in self._tags]]
@@ -535,6 +540,7 @@ class BatchController(QObject):
                 }
                 for index, entry in enumerate(self._playlist_entries.get(job.job_id, []))
             ]
+        self.playlist_entries_model.replace(self._selected_playlist_entries)
         self.selectedPlaylistEntriesChanged.emit()
 
     @Slot(str, "QVariant")
@@ -584,7 +590,11 @@ class BatchController(QObject):
         job.config["selected_indices"] = sorted(chosen)
         job.total_items = len(chosen)
         self._replace_job_model(job, job.status, f"{len(chosen)} de {len(entries)} seleccionados")
-        self.selectJob(job.job_id)
+        row = int(index)
+        self._selected_playlist_entries[row]["selected"] = bool(selected)
+        self.playlist_entries_model.update_item(row, {"selected": bool(selected)})
+        self._selected = self._model_item(job)
+        self.selectedChanged.emit()
 
     @Slot(bool)
     def selectAllPlaylistEntries(self, selected):
@@ -595,7 +605,11 @@ class BatchController(QObject):
         job.config["selected_indices"] = list(range(len(entries))) if selected else []
         job.total_items = len(job.config["selected_indices"])
         self._replace_job_model(job, job.status, f"{job.total_items} de {len(entries)} seleccionados")
-        self.selectJob(job.job_id)
+        for row, entry in enumerate(self._selected_playlist_entries):
+            entry["selected"] = bool(selected)
+            self.playlist_entries_model.update_item(row, {"selected": bool(selected)})
+        self._selected = self._model_item(job)
+        self.selectedChanged.emit()
 
     @Slot(str, result="QVariantList")
     def playlistEntries(self, job_id):
@@ -611,6 +625,7 @@ class BatchController(QObject):
         if self._state["selectedJobId"] == job_id:
             self._selected = {}
             self._selected_playlist_entries = []
+            self.playlist_entries_model.clear()
             self.selectedChanged.emit()
             self.selectedPlaylistEntriesChanged.emit()
             self._set_state(selectedJobId="")

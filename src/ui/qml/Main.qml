@@ -638,7 +638,7 @@ ApplicationWindow {
                 objectName: "platinumCelebrationCard"
                 anchors.centerIn: parent
                 width: Math.min(650, platinumPopup.width - 54)
-                height: Math.min(390, platinumPopup.height - 70)
+                height: Math.min(520, platinumPopup.height - 54)
                 radius: 28
                 color: theme.colors.surfaceRaised
                 border.width: 2
@@ -661,58 +661,86 @@ ApplicationWindow {
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: "✦  LEYENDA GATUNA DESBLOQUEADA  ✦"
+                        text: "✦  MENSAJE DE LA COMUNIDAD  ✦"
                         color: "#9CFF57"
                         font.pixelSize: 11
                         font.weight: Font.Bold
                         font.letterSpacing: 1.6
                     }
                     Text {
-                        Layout.alignment: Qt.AlignHCenter
-                        text: "🏆"
-                        color: "#FFE35A"
-                        font.pixelSize: 58
-                    }
-                    Text {
                         objectName: "platinumCelebrationTitle"
                         Layout.fillWidth: true
-                        text: "¡ZARKING SE PLATINÓ\nXOMACITO!"
+                        text: "¡GAKO NOS COMENTÓ\nEN RECURSOS!!"
                         color: "white"
                         horizontalAlignment: Text.AlignHCenter
-                        font.pixelSize: platinumPopup.width < 700 ? 27 : 34
+                        font.pixelSize: platinumPopup.width < 700 ? 25 : 31
                         font.weight: Font.Black
                         font.letterSpacing: 0.5
                         wrapMode: Text.WordWrap
                     }
-                    Rectangle {
+
+                    Item {
                         Layout.alignment: Qt.AlignHCenter
-                        width: 138
-                        height: 38
-                        radius: 19
-                        color: "#1CFFE35A"
-                        border.width: 1
-                        border.color: "#FFE35A"
-                        Text {
+                        Layout.preferredWidth: Math.min(330, platinumCard.width - 86)
+                        Layout.preferredHeight: Math.min(215, platinumCard.height * 0.43)
+
+                        Rectangle {
                             anchors.centerIn: parent
-                            text: "105 / 105  ✓"
-                            color: "#FFE35A"
-                            font.pixelSize: 16
-                            font.weight: Font.Bold
+                            width: parent.width + 10
+                            height: parent.height + 10
+                            rotation: -1.7
+                            radius: 13
+                            color: "#FF5FE7"
+                            opacity: 0.34
+                        }
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: parent.width + 7
+                            height: parent.height + 8
+                            rotation: 1.4
+                            radius: 13
+                            color: "#20D8E8"
+                            opacity: 0.48
+                        }
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 11
+                            color: "#10121B"
+                            border.width: 2
+                            border.color: "#FFE35A"
+                            clip: true
+                            Image {
+                                anchors.fill: parent
+                                anchors.margins: 7
+                                source: "../../../assets/release/gako-recursos.png"
+                                fillMode: Image.PreserveAspectFit
+                                asynchronous: true
+                                cache: true
+                            }
                         }
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "Zarking completó la colección original antes de que llegaran los nuevos gatos. Historia pura del gacha."
-                        color: theme.colors.textMuted
+                        text: "“Me asusto el maullido pero goty”"
+                        color: "#FFE35A"
                         horizontalAlignment: Text.AlignHCenter
-                        font.pixelSize: 12
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
                         wrapMode: Text.WordWrap
                     }
-                    Item { Layout.fillHeight: true }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Un comentario que ya es parte de la historia de Xomacito."
+                        color: theme.colors.textMuted
+                        horizontalAlignment: Text.AlignHCenter
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    Item { Layout.fillHeight: true; Layout.minimumHeight: 2 }
                     XButton {
                         Layout.alignment: Qt.AlignHCenter
                         implicitWidth: 190
-                        text: "¡Que siga la colección!"
+                        text: "¡Viva Recursos!"
                         onClicked: platinumPopup.close()
                     }
                 }

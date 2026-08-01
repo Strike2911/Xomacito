@@ -4,10 +4,13 @@ import os
 import shutil
 import tempfile
 import threading
+import uuid
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
+from PIL import Image, UnidentifiedImageError
 from PySide6.QtCore import QObject, Property, QMimeData, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QColorDialog, QFileDialog
@@ -18,7 +21,7 @@ from src.core.constants import (
     REMBG_MODEL_FAMILIES,
     UPSCAYL_MODELS_MAP,
 )
-from src.core.downloader import extract_info_resilient
+from src.core.downloader import extract_info_resilient, extract_instagram_image_post_info, is_instagram_post_url
 from src.core.processor import FFmpegProcessor
 
 from .list_model import ObjectListModel
@@ -188,7 +191,7 @@ class ImageController(QObject):
 
     @Property("QStringList", constant=True)
     def formats(self):
-        return ["No Convertir", "PNG", "JPG", "WEBP", "AVIF", "PDF", "TIFF", "ICO", "BMP", ".mp4 (H.264)", ".mov (ProRes)", ".webm (VP9)", ".gif (Animado)"]
+        return ["No Convertir", "PNG", "JPEG", "JPG", "WEBP", "AVIF", "PDF", "TIFF", "ICO", "BMP", ".mp4 (H.264)", ".mov (ProRes)", ".webm (VP9)", ".gif (Animado)"]
 
     @Property("QStringList", constant=True)
     def rembgFamilies(self): return list(REMBG_MODEL_FAMILIES)
@@ -326,6 +329,11 @@ class ImageController(QObject):
         paths = [url.toLocalFile() for url in mime.urls() if url.isLocalFile()]
         if paths:
             self.addPaths(paths); return
+        if mime.hasImage():
+            target = Path(tempfile.gettempdir()) / f"xomacito_clipboard_{uuid.uuid4().hex}.png"
+            if QGuiApplication.clipboard().image().save(str(target), "PNG"):
+                self.addPaths([str(target)])
+                return
         text = mime.text().strip()
         if text.startswith(("http://", "https://")):
             self.setValue("url", text); self.analyzeUrl()
@@ -337,22 +345,71 @@ class ImageController(QObject):
         url = str(self._state["url"]).strip()
         if not url or self._state["busy"]: return
         self._set_state(busy=True, progress=-1.0, status="Buscando imagen o miniatura…")
-        self.pool.submit(self._url_image_worker, url, on_result=lambda path: self._url_image_done(path), on_error=lambda m, d: self._failed(m, d))
+        self.pool.submit(self._url_image_worker, url, on_result=self._url_images_done, on_error=lambda m, d: self._failed(m, d))
 
     def _url_image_worker(self, url):
-        info = extract_info_resilient(url, {"noplaylist": True, "quiet": True}, download=False)
-        image_url = (info or {}).get("thumbnail")
-        if not image_url: raise RuntimeError("El enlace no contiene una imagen accesible.")
-        response = requests.get(image_url, timeout=40); response.raise_for_status()
-        suffix = Path(urlparse(image_url).path).suffix.lower()
-        if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".avif"}: suffix = ".jpg"
-        target = Path(tempfile.gettempdir()) / f"xomacito_url_{int(os.times().elapsed * 1000)}{suffix}"
-        target.write_bytes(response.content)
-        return str(target)
+        host = urlparse(url).netloc.casefold()
+        referer = "https://www.pinterest.com/" if "pinimg.com" in host or "pinterest." in host else url
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+            "Accept-Language": "es-PE,es;q=0.9,en;q=0.8",
+            "Referer": referer,
+        }
+        image_urls = []
+        if is_instagram_post_url(url):
+            info = extract_instagram_image_post_info(url, ydl_options={"quiet": True})
+            if info:
+                image_urls = info.get("xomacito_images") or [info.get("url") or info.get("thumbnail")]
+        if not image_urls:
+            try:
+                response = requests.get(url, headers=headers, timeout=40, allow_redirects=True)
+                response.raise_for_status()
+                if response.headers.get("Content-Type", "").lower().startswith("image/"):
+                    image_urls = [response.url]
+            except requests.RequestException:
+                pass
+        if not image_urls:
+            info = extract_info_resilient(url, {"noplaylist": False, "quiet": True}, download=False)
+            image_urls = (info or {}).get("xomacito_images") or [(info or {}).get("thumbnail")]
+        image_urls = [value for value in image_urls if value]
+        if not image_urls:
+            raise RuntimeError("El enlace no contiene una imagen accesible.")
+        targets = []
+        for image_url in image_urls:
+            image_host = urlparse(image_url).netloc.casefold()
+            image_headers = dict(headers)
+            if "pinimg.com" in image_host:
+                image_headers["Referer"] = "https://www.pinterest.com/"
+            elif "cdninstagram.com" in image_host or "fbcdn.net" in image_host:
+                image_headers["Referer"] = "https://www.instagram.com/"
+            response = requests.get(image_url, headers=image_headers, timeout=40, allow_redirects=True)
+            response.raise_for_status()
+            try:
+                with Image.open(BytesIO(response.content)) as image:
+                    detected_format = str(image.format or "JPEG").upper()
+                    image.verify()
+            except (UnidentifiedImageError, OSError, ValueError) as exc:
+                raise RuntimeError("El servidor no entregó una imagen válida.") from exc
+            suffix = Path(urlparse(response.url).path).suffix.lower()
+            if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".avif"}:
+                suffix = {
+                    "PNG": ".png", "WEBP": ".webp", "AVIF": ".avif",
+                    "JPEG": ".jpg", "JPG": ".jpg",
+                }.get(detected_format, ".jpg")
+            target = Path(tempfile.gettempdir()) / f"xomacito_url_{uuid.uuid4().hex}{suffix}"
+            target.write_bytes(response.content)
+            targets.append(str(target))
+        return targets
 
-    def _url_image_done(self, path):
-        self._set_state(busy=False, progress=1.0, status="Imagen del enlace importada.", url="")
-        self.addPaths([path])
+    def _url_images_done(self, paths):
+        count = len(paths)
+        self._set_state(
+            busy=False, progress=1.0,
+            status=f"{count} imagen{'es' if count != 1 else ''} importada{'s' if count != 1 else ''}.",
+            url="",
+        )
+        self.addPaths(paths)
 
     @Slot(int)
     def select(self, index):
@@ -598,7 +655,7 @@ class ImageController(QObject):
 
     def _output_path(self, folder, item, output_format):
         if output_format == "No Convertir": extension = Path(item["path"]).suffix
-        elif output_format == "JPG": extension = ".jpg"
+        elif output_format in {"JPG", "JPEG"}: extension = ".jpg"
         else: extension = "." + str(output_format).lower()
         page = f"_pagina_{item['page']}" if item["pages"] > 1 else ""
         return folder / f"{safe_filename(item['title'])}{page}{extension}"

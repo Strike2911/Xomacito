@@ -291,7 +291,7 @@ Item {
                                 Text {
                                     Layout.fillWidth: true
                                     text: Number(selected.itemCount || 0) + " de "
-                                        + batchController.selectedPlaylistEntries.length
+                                        + batchController.selectedPlaylistEntriesModel.count()
                                     color: theme.colors.textMuted
                                     font.pixelSize: 9
                                     horizontalAlignment: Text.AlignRight
@@ -316,21 +316,20 @@ Item {
                                 Layout.fillHeight: true
                                 clip: true
                                 spacing: 4
-                                model: batchController.selectedPlaylistEntries
+                                model: batchController.selectedPlaylistEntriesModel
                                 boundsBehavior: Flickable.StopAtBounds
                                 reuseItems: true
                                 cacheBuffer: 300
                                 ScrollBar.vertical: XScrollBar {}
 
                                 delegate: Rectangle {
-                                    required property var modelData
                                     width: playlistEntries.width
                                     height: page.dense ? 42 : 49
                                     radius: 8
-                                    color: modelData.selected
+                                    color: selected
                                         ? theme.colors.surfaceSoft : theme.colors.surface
                                     border.width: 1
-                                    border.color: modelData.selected
+                                    border.color: selected
                                         ? theme.colors.primary : theme.colors.border
 
                                     RowLayout {
@@ -339,9 +338,9 @@ Item {
                                         spacing: 7
                                         XSwitch {
                                             compact: true
-                                            checked: modelData.selected
+                                            checked: selected
                                             onToggled: batchController.setPlaylistEntrySelected(
-                                                modelData.index, checked)
+                                                index, checked)
                                         }
                                         Rectangle {
                                             Layout.preferredWidth: page.dense ? 48 : 56
@@ -352,7 +351,7 @@ Item {
                                             Image {
                                                 id: entryThumbnail
                                                 anchors.fill: parent
-                                                source: modelData.thumbnail
+                                                source: thumbnail
                                                 fillMode: Image.PreserveAspectCrop
                                                 asynchronous: true
                                                 cache: true
@@ -366,14 +365,14 @@ Item {
                                             }
                                         }
                                         Text {
-                                            text: (modelData.index + 1) + "."
+                                            text: (index + 1) + "."
                                             color: theme.colors.textDim
                                             font.pixelSize: 9
                                         }
                                         Text {
                                             Layout.fillWidth: true
-                                            text: modelData.title
-                                            color: modelData.selected
+                                            text: title
+                                            color: selected
                                                 ? theme.colors.text : theme.colors.textMuted
                                             font.pixelSize: page.dense ? 10 : 11
                                             elide: Text.ElideRight

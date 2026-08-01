@@ -15,12 +15,24 @@ from src.ui.media_logic import build_media_choices, is_editor_mp4_selection, nor
 from src.ui.application import normalize_clipboard_url
 from src.ui.presets import ALPHA_PRESET, BUILT_IN_PRESETS, resolve_recode_parameters
 from src.ui.settings_store import SettingsStore
+from src.ui.theme import ThemeController
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class QtMigrationTests(unittest.TestCase):
+    def test_selected_theme_survives_a_full_settings_restart(self):
+        with tempfile.TemporaryDirectory() as appdata, patch.dict(os.environ, {"APPDATA": appdata}):
+            first_store = SettingsStore("XomacitoThemePersistenceTest")
+            first_theme = ThemeController(ROOT, first_store)
+            first_theme.setTheme("coffee_noir")
+
+            second_store = SettingsStore("XomacitoThemePersistenceTest")
+            second_theme = ThemeController(ROOT, second_store)
+            self.assertEqual(second_theme.themeName, "coffee_noir")
+            self.assertTrue(second_store.get("theme_selection_explicit"))
+
     def test_release_27_opens_the_zarking_confetti_after_the_update_notice(self):
         script = r'''
 from pathlib import Path
@@ -435,7 +447,8 @@ controller.shutdown()
         main = (ROOT / "src" / "ui" / "qml" / "Main.qml").read_text(encoding="utf-8")
         self.assertIn("StackLayout", main)
         self.assertIn('objectName: "platinumCelebrationPopup"', main)
-        self.assertIn("¡ZARKING SE PLATINÓ", main)
+        self.assertIn("¡GAKO NOS COMENTÓ", main)
+        self.assertIn("gako-recursos.png", main)
         self.assertIn("platinumCelebration", main)
         for page in ("DownloadPage", "QueuePage", "ImageStudioPage", "SettingsPage", "CatGachaPage"):
             self.assertEqual(main.count(page), 1)

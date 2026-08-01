@@ -25,6 +25,29 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "3.1": {
+        "eyebrow": "ACTUALIZACIÓN INSTALADA",
+        "title": "Xomacito 3.1",
+        "subtitle": "¡GAKO NOS COMENTÓ EN RECURSOS!!",
+        "message": (
+            "Una actualización centrada en conservar tu lugar, recordar tus preferencias "
+            "y hacer que imágenes y videos difíciles se procesen con mayor seguridad."
+        ),
+        "highlights": [
+            "La selección de playlists conserva la posición: ya no vuelve al primer elemento.",
+            "La apariencia y la paleta elegidas permanecen después de reiniciar Xomacito.",
+            "El reescalado de video reintenta con memoria segura en equipos AMD y de VRAM limitada.",
+            "El convertidor incorpora JPEG como formato visible y compatible.",
+            "Pinterest e Instagram admiten imágenes directas y publicaciones con varias imágenes.",
+            "El descargador activa el modo Imágenes y guarda todos los elementos de un carrusel.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d",
+        ],
+        "closing": "Gracias a Gako por comentar en Recursos y regalarnos un momento histórico del proyecto.",
+        "platinumCelebration": True,
+    },
     "3.0": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
         "title": "Xomacito 3.0",

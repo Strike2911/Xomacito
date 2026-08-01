@@ -1,6 +1,6 @@
 # Xomacito
 
-Versión actual: **Xomacito 3.0**.
+Versión actual: **Xomacito 3.1**.
 
 Aplicación independiente para Windows que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike**.
 
@@ -54,7 +54,7 @@ Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión 
 
 Los runtimes de compilación, herramientas externas, modelos, builds y preferencias personales están excluidos del repositorio. Los binarios distribuidos a usuarios se publican únicamente en [GitHub Releases](https://github.com/Strike2911/Xomacito/releases).
 
-La versión 3.0 presenta **¡LA GACHA MÍTICA UPDATE!!**: GATO MAGO, GATO PLAYERA y GATO ZARKING encabezan la rareza 6★ con animaciones y SFX propios. Cada ejecución de la cola suma como una sola descarga al progreso del gacha, incluso si contiene una playlist completa.
+La versión 3.1 presenta **¡GAKO NOS COMENTÓ EN RECURSOS!!**: la cola conserva tu posición, las paletas se recuerdan, el reescalado de video usa reintentos seguros y las publicaciones de imágenes de Instagram o Pinterest tienen un flujo propio.
 
 Para volver a importar o ampliar la colección sin cambiar las rarezas ya asignadas:
 
