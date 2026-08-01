@@ -175,7 +175,7 @@ class DownloadController(QObject):
             "operationMode": "Rápido", "preset": settings.get("quick_preset_saved", "Archivo - H.265 Normal"),
             "selectedVideo": "", "selectedAudio": "", "selectedSubtitleLanguage": "",
             "selectedSubtitleFormat": "", "hasVideo": False, "hasAudio": False,
-            "imagePost": False, "sourceHasAlpha": False, "duration": 0.0,
+            "imagePost": False, "imageCount": 0, "sourceHasAlpha": False, "duration": 0.0,
             "originalWidth": 0, "originalHeight": 0, "estimatedSize": "",
             "selectedTag": "Sin etiqueta", "selectedTagColor": "#6F7F8F",
             "effectiveOutputPath": output,
@@ -291,6 +291,8 @@ class DownloadController(QObject):
         self.settings.set("recode_settings", persisted)
 
     def _ensure_preset_for_mode(self, mode: str):
+        if mode == "Imágenes":
+            return
         """Mantiene sincronizados el preset visible y el preset que se ejecutará."""
         presets = self.presets.videoPresets if mode == "Video+Audio" else self.presets.audioPresets
         if presets and self._state["preset"] not in presets:
@@ -456,7 +458,7 @@ class DownloadController(QObject):
         self._image_post = None
         self._clear_analysis_lists()
         self._set_state(
-            localFile="", title="", analyzed=False, thumbnailSource="", imagePost=False,
+            localFile="", title="", analyzed=False, thumbnailSource="", imagePost=False, imageCount=0,
             hasVideo=False, hasAudio=False, sourceHasAlpha=False, status="Pega un enlace o importa un archivo.",
         )
 
@@ -474,7 +476,7 @@ class DownloadController(QObject):
         self._clear_analysis_lists()
         self._set_state(
             localFile="", title="Analizando…", busy=True, analyzed=False, progress=-1.0,
-            status="Contactando el sitio y leyendo formatos…", thumbnailSource="", imagePost=False,
+            status="Contactando el sitio y leyendo formatos…", thumbnailSource="", imagePost=False, imageCount=0,
         )
         self._active_worker = self.pool.submit(
             self._analyze_url_worker, url,
@@ -505,12 +507,15 @@ class DownloadController(QObject):
             warning = debug
             error = debug
 
+        instagram_post = is_instagram_post_url(url)
         options = configure_ytdlp_options({
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "referer": url, "noplaylist": True, "playlist_items": "1", "listsubtitles": True,
+            "referer": url, "noplaylist": not instagram_post, "listsubtitles": True,
             "logger": Logger(),
             "progress_hooks": [lambda _data: self.cancellation.is_set() and (_ for _ in ()).throw(UserCancelledError("Análisis cancelado."))],
         })
+        if not instagram_post:
+            options["playlist_items"] = "1"
         cookie, using_cookies = self._cookie_options()
         options.update(cookie)
         if using_cookies:
@@ -558,7 +563,8 @@ class DownloadController(QObject):
         title = safe_filename(raw_title) if self.settings.get("clean_titles", True) else raw_title
         thumbnail = info.get("thumbnail") or ""
         duration = float(info.get("duration") or 0)
-        mode = "Video+Audio" if self._video_choices else "Solo Audio"
+        mode = "Imágenes" if image_post else ("Video+Audio" if self._video_choices else "Solo Audio")
+        image_count = int(info.get("image_count") or len(info.get("xomacito_images") or []) or (1 if image_post else 0))
         self._options.update({
             "fragmentEnabled": False,
             "startTime": "00:00:00",
@@ -566,13 +572,14 @@ class DownloadController(QObject):
         })
         self.optionsChanged.emit()
         self._set_state(
-            title=title, busy=False, analyzed=True, progress=1.0, imagePost=image_post,
+            title=title, busy=False, analyzed=True, progress=1.0, imagePost=image_post, imageCount=image_count,
             status="Publicación de imagen lista." if image_post else "Enlace analizado. Elige calidad y descarga.",
             thumbnailSource=thumbnail, duration=duration, mode=mode,
             originalWidth=int(info.get("width") or 0), originalHeight=int(info.get("height") or 0),
             hasVideo=choices["hasVideo"], hasAudio=choices["hasAudio"], sourceHasAlpha=False,
         )
-        self._ensure_preset_for_mode(mode)
+        if not image_post:
+            self._ensure_preset_for_mode(mode)
 
     def _apply_local_analysis(self, result: dict):
         video_choices = []
@@ -1070,10 +1077,18 @@ class DownloadController(QObject):
         if not entries:
             raise RuntimeError("La publicación no contiene imágenes descargables.")
         outputs = []
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+            "Referer": str(self._image_post.get("webpage_url") or options.get("url") or "https://www.instagram.com/"),
+        }
         for index, url in enumerate(entries, 1):
-            response = requests.get(url, timeout=45)
+            response = requests.get(url, headers=headers, timeout=45, allow_redirects=True)
             response.raise_for_status()
-            suffix = Path(urlparse(url).path).suffix.lower()
+            content_type = response.headers.get("Content-Type", "").lower()
+            if content_type and not content_type.startswith("image/"):
+                raise RuntimeError(f"La imagen {index} no pudo descargarse: el servidor no entregó una imagen.")
+            suffix = Path(urlparse(response.url).path).suffix.lower()
             if suffix not in {".jpg", ".jpeg", ".png", ".webp", ".avif"}:
                 suffix = ".jpg"
             name = options["title"] + (f"_{index}" if len(entries) > 1 else "")

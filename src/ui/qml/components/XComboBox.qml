@@ -13,13 +13,6 @@ ComboBox {
     focusPolicy: Qt.StrongFocus
     Component.onCompleted: selectionReady = true
     onActivated: root.valueSelected(root.currentText)
-    onCurrentIndexChanged: {
-        // Algunos estilos personalizados de ComboBox actualizan currentIndex
-        // sin emitir activated. Reemitirlo aquí garantiza que ratón, teclado y
-        // delegado personalizado ejecuten el controlador asociado.
-        if (selectionReady && currentIndex >= 0)
-            root.valueSelected(root.currentText)
-    }
     contentItem: Text {
         text: root.displayText
         color: root.enabled ? theme.colors.text : theme.colors.textDim

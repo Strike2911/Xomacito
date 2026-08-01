@@ -12,6 +12,7 @@ import subprocess
 import multiprocessing
 import time
 import threading
+from pathlib import Path
 
 from src.core.constants import (
     WAIFU2X_MODELS,
@@ -359,20 +360,20 @@ class VideoUpscaler:
         
         # --- NUEVAS VALIDACIONES DE ERROR ---
         
-        # 1. Verificar retorno de error
+        # Detectar memoria agotada antes del error genérico (Windows suele devolver 3221225477).
+        lowered = stderr_out.lower()
+        vulkan_errors = ["vkqueuesubmit failed", "vkallocatememory failed", "invalid gpu device", "out of gpu memory", "out of device memory", "error -2"]
+        memory_failure = any(err in lowered for err in vulkan_errors) or proc.returncode in {3221225477, -1073741819}
+        if memory_failure:
+            print(f"CRITICAL ERROR (Vulkan): {stderr_out}")
+            raise Exception(
+                "GPU_MEMORY: La tarjeta gráfica se quedó sin memoria durante el reescalado.\n\n"
+                f"Detalles:\n{stderr_out[:500]}"
+            )
+
         if proc.returncode != 0:
             print(f"ERROR NCNN: {stderr_out}")
             raise Exception(f"El motor AI falló (Código {proc.returncode}).\n\nDetalles:\n{stderr_out[:500]}")
-
-        # 2. Verificar errores críticos de Vulkan en el log (incluso si retornó 0)
-        vulkan_errors = ["vkQueueSubmit failed", "vkAllocateMemory failed", "invalid gpu device", "out of gpu memory"]
-        if any(err in stderr_out for err in vulkan_errors):
-            print(f"CRITICAL ERROR (Vulkan): {stderr_out}")
-            raise Exception(
-                "Error de Hardware (Vulkan) detectado.\n\n"
-                "Tu tarjeta gráfica no pudo procesar los fotogramas. "
-                "Intenta reducir el 'Tamaño de Mosaico (Tile Size)' a 128 o 64 en los ajustes."
-            )
 
         # 3. Verificar integridad de los frames producidos
         out_frames = [f for f in os.listdir(out_dir) if f.endswith(".png")]
@@ -545,8 +546,34 @@ class VideoUpscaler:
             concurrency = options.get("upscale_concurrency", "Automático")
             transparency = options.get("upscale_transparency", False)
             
-            self._run_ncnn(engine, model, scale, frames_dir, upscaled_dir, total, 
-                           tile_size=tile_size, denoise=denoise, tta=tta, concurrency=concurrency)
+            attempts = [(tile_size, concurrency)]
+            for fallback in (("128", "Seguro (Estabilidad)"), ("64", "Seguro (Estabilidad)")):
+                if fallback not in attempts:
+                    attempts.append(fallback)
+            for attempt_index, (attempt_tile, attempt_concurrency) in enumerate(attempts):
+                if attempt_index:
+                    for frame in Path(upscaled_dir).glob("*.png"):
+                        frame.unlink(missing_ok=True)
+                    self._report(
+                        15,
+                        f"Memoria de GPU limitada; reintentando en modo seguro (tile {attempt_tile})...",
+                    )
+                try:
+                    self._run_ncnn(
+                        engine, model, scale, frames_dir, upscaled_dir, total,
+                        tile_size=attempt_tile, denoise=denoise, tta=tta,
+                        concurrency=attempt_concurrency,
+                    )
+                    break
+                except Exception as error:
+                    if "GPU_MEMORY:" not in str(error) or attempt_index == len(attempts) - 1:
+                        if "GPU_MEMORY:" in str(error):
+                            raise Exception(
+                                "La GPU no tiene memoria suficiente. Xomacito ya probó los modos "
+                                "seguros de 128 y 64. Intenta 2x, cierra aplicaciones que usen la "
+                                "GPU o utiliza un video más corto."
+                            ) from error
+                        raise
 
             # Paso 3: Reensamblar
             self._reassemble(upscaled_dir, input_path, output_path, fps, ext_out, has_audio, transparency=transparency)

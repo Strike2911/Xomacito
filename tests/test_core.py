@@ -254,6 +254,18 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("GATO ZARKING", highlights)
         self.assertIn("COLA", highlights)
 
+    def test_release_31_announces_gako_and_media_workflow_fixes(self):
+        notice = release_notice_for_version("v3.1")
+
+        self.assertIsNotNone(notice)
+        self.assertEqual(notice["title"], "Xomacito 3.1")
+        self.assertIn("GAKO", notice["subtitle"].upper())
+        highlights = " ".join(notice["highlights"]).lower()
+        self.assertIn("playlists", highlights)
+        self.assertIn("jpeg", highlights)
+        self.assertIn("instagram", highlights)
+        self.assertTrue(notice["platinumCelebration"])
+
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
         digest = "sha256:" + hashlib.sha256(payload).hexdigest()
@@ -431,10 +443,11 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         class FakeSession:
             @staticmethod
-            def get(url, timeout, allow_redirects):
+            def get(url, timeout, allow_redirects, headers=None):
                 self.assertEqual(url, "https://www.instagram.com/p/ABC123/")
                 self.assertEqual(timeout, 5)
                 self.assertTrue(allow_redirects)
+                self.assertIn("User-Agent", headers or {})
                 return FakeResponse()
 
         info = downloader.extract_instagram_image_post_info(
@@ -1131,7 +1144,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-3.0-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-3.1-Setup.exe", build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)

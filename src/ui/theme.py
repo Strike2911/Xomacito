@@ -191,6 +191,7 @@ class ThemeController(QObject):
     def setTheme(self, name: str):
         name = self._normalized_theme_name(name)
         if name == self._theme_name:
+            self.settings.update({"selected_theme_accent": name, "theme_selection_explicit": True})
             return
         self._theme_name = name
         self.settings.update({"selected_theme_accent": name, "theme_selection_explicit": True})

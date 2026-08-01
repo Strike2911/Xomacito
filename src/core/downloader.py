@@ -14,6 +14,7 @@ import threading
 import os
 import re
 import sys
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import requests
@@ -57,13 +58,57 @@ def _instagram_image_title(raw_title, shortcode):
     return title or f"Instagram_{shortcode}"
 
 
+def _instagram_entry_image_url(entry):
+    """Return an image URL only when yt-dlp did not expose playable video."""
+    if not isinstance(entry, dict):
+        return ""
+    image_extensions = {"jpg", "jpeg", "png", "webp", "avif"}
+    entry_ext = str(entry.get("ext") or "").lower().lstrip(".")
+    formats = [item for item in (entry.get("formats") or []) if isinstance(item, dict)]
+    has_video = any(
+        str(item.get("vcodec") or "none").lower() not in {"", "none"}
+        and str(item.get("ext") or "").lower() not in image_extensions
+        for item in formats
+    )
+    if has_video:
+        return ""
+    candidates = [entry.get("url"), entry.get("thumbnail")]
+    candidates.extend(
+        thumbnail.get("url")
+        for thumbnail in (entry.get("thumbnails") or [])
+        if isinstance(thumbnail, dict)
+    )
+    for candidate in candidates:
+        if not candidate:
+            continue
+        suffix = Path(urlparse(str(candidate)).path).suffix.lower().lstrip(".")
+        if entry_ext in image_extensions or suffix in image_extensions or not formats:
+            return str(candidate)
+    return ""
+
+
+def _instagram_images_from_html(html):
+    """Collect public carousel images embedded in Instagram's page payload."""
+    found = []
+    patterns = (
+        r'"display_url"\s*:\s*"([^"]+)"',
+        r'"image_url"\s*:\s*"([^"]+)"',
+    )
+    for pattern in patterns:
+        for value in re.findall(pattern, str(html or "")):
+            candidate = unescape(value).replace(r"\/", "/").replace(r"\u0026", "&")
+            if candidate.startswith("https://") and candidate not in found:
+                found.append(candidate)
+    return found
+
+
 def instagram_image_post_info_from_metadata(url, metadata):
     """Convierte metadatos sin formatos de video en una imagen descargable."""
     if not is_instagram_post_url(url) or not isinstance(metadata, dict):
         return None
 
     selected = metadata
-    entries = metadata.get("entries") or []
+    entries = [entry for entry in (metadata.get("entries") or []) if isinstance(entry, dict)]
     entry_index = 0
     if metadata.get("_type") in {"playlist", "multi_video"} and entries:
         requested_index = parse_qs(urlparse(str(url)).query).get("img_index", ["1"])[0]
@@ -74,9 +119,16 @@ def instagram_image_post_info_from_metadata(url, metadata):
         entry_index = min(entry_index, len(entries) - 1)
         selected = entries[entry_index] or {}
 
-    # Los elementos con formatos reales pertenecen al flujo normal de video.
-    if selected.get("formats") or not selected.get("thumbnail"):
-        return None
+    image_urls = []
+    for entry in entries or [selected]:
+        candidate = _instagram_entry_image_url(entry)
+        if candidate and candidate not in image_urls:
+            image_urls.append(candidate)
+    if not image_urls:
+        candidate = _instagram_entry_image_url(selected)
+        if not candidate:
+            return None
+        image_urls = [candidate]
 
     shortcode = urlparse(str(url).strip()).path.strip("/").split("/")[-1]
     raw_title = str(selected.get("title") or "").strip()
@@ -91,12 +143,14 @@ def instagram_image_post_info_from_metadata(url, metadata):
         "id": selected.get("id") or shortcode,
         "title": title,
         "description": selected.get("description") or metadata.get("description") or "",
-        "thumbnail": selected["thumbnail"],
+        "thumbnail": selected.get("thumbnail") or image_urls[0],
         "webpage_url": str(url).strip(),
         "original_url": str(url).strip(),
         "extractor": "instagram:image",
         "extractor_key": "InstagramImage",
         "xomacito_media_type": "image",
+        "xomacito_images": image_urls,
+        "image_count": len(image_urls),
         "formats": [],
         "subtitles": {},
         "automatic_captions": {},
@@ -132,14 +186,25 @@ def extract_instagram_image_post_info(url, timeout=30, session=None, ydl_options
             pass
 
     client = session or requests
-    response = client.get(str(url).strip(), timeout=timeout, allow_redirects=True)
+    response = client.get(
+        str(url).strip(), timeout=timeout, allow_redirects=True,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36",
+            "Accept-Language": "es-ES,es;q=0.9,en;q=0.7",
+        },
+    )
     response.raise_for_status()
 
     parser = _OpenGraphParser()
     parser.feed(response.text)
+    image_urls = _instagram_images_from_html(response.text)
     image_url = parser.values.get("og:image")
-    if not image_url or urlparse(image_url).scheme != "https":
+    if image_url and image_url not in image_urls:
+        image_urls.insert(0, image_url)
+    image_urls = [item for item in image_urls if urlparse(item).scheme == "https"]
+    if not image_urls:
         return None
+    image_url = image_urls[0]
 
     shortcode = urlparse(str(url).strip()).path.strip("/").split("/")[-1]
     return instagram_image_post_info_from_metadata(url, {
@@ -147,6 +212,12 @@ def extract_instagram_image_post_info(url, timeout=30, session=None, ydl_options
         "title": _instagram_image_title(parser.values.get("og:title"), shortcode),
         "description": parser.values.get("og:description", ""),
         "thumbnail": image_url,
+        "url": image_url,
+        "entries": [
+            {"id": f"{shortcode}-{index}", "thumbnail": item, "url": item, "ext": "jpg"}
+            for index, item in enumerate(image_urls, 1)
+        ],
+        "_type": "playlist" if len(image_urls) > 1 else "video",
         "formats": [],
     })
 
