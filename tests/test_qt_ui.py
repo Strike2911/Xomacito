@@ -329,6 +329,70 @@ controller.shutdown()
             )
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
+    def test_black_bull_reward_is_readable_when_claimed_from_download_page(self):
+        script = r'''
+from pathlib import Path
+from PySide6.QtCore import QObject, QUrl
+from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
+from src.ui.application import AppController
+
+app = QApplication([])
+root = Path.cwd()
+controller = AppController(app, root, "3.2")
+engine = QQmlApplicationEngine()
+context = engine.rootContext()
+for name, value in (
+    ("appController", controller), ("theme", controller.theme),
+    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("imageController", controller.image_studio), ("settingsController", controller.config),
+    ("catController", controller.cats),
+    ("presetStore", controller.presets), ("dialogBroker", controller.dialogs),
+):
+    context.setContextProperty(name, value)
+engine.load(QUrl.fromLocalFile(str(root / "src/ui/qml/Main.qml")))
+window = engine.rootObjects()[0]
+window.setProperty("width", 1280)
+window.setProperty("height", 720)
+QTest.qWait(180)
+assert controller.page == 0
+promo_avatar = window.findChild(QObject, "smoothMotionBlackBullAvatar")
+assert promo_avatar is not None
+assert float(promo_avatar.property("width")) >= 68
+assert "cat-cf837ae651c8-avatar.webp" in str(promo_avatar.property("source"))
+result = controller.claimSmoothMotionBlackBull()
+assert result["name"] == "BLACK BULL" and result["themeUnlocked"] is True
+QTest.qWait(3300)
+popup = window.findChild(QObject, "catRevealPopup")
+card = window.findChild(QObject, "catRevealCard")
+badge = window.findChild(QObject, "catThemeRewardBadge")
+reward_text = window.findChild(QObject, "catThemeRewardText")
+equip = window.findChild(QObject, "catRevealEquipButton")
+cont = window.findChild(QObject, "catRevealContinueButton")
+assert popup is not None and popup.property("opened") is True
+assert float(popup.property("width")) >= 600
+assert float(popup.property("height")) >= 500
+assert card is not None and float(card.property("width")) >= 340
+assert badge is not None and badge.property("visible") is True
+assert float(badge.property("width")) >= 290
+assert float(badge.property("height")) >= 40
+assert reward_text is not None and "BLACK BULL" in reward_text.property("text")
+assert float(reward_text.property("width")) > 260
+assert equip is not None and equip.property("visible") is True
+assert cont is not None and cont.property("visible") is True
+assert controller.page == 0
+controller.shutdown()
+'''
+        with tempfile.TemporaryDirectory() as appdata:
+            environment = dict(os.environ)
+            environment.update({"QT_QPA_PLATFORM": "offscreen", "APPDATA": appdata})
+            result = subprocess.run(
+                [sys.executable, "-c", script], cwd=ROOT, env=environment,
+                capture_output=True, text=True, timeout=25, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_real_qml_controls_reach_python_controllers(self):
         script = r'''
 from pathlib import Path

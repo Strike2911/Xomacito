@@ -247,8 +247,13 @@ Item {
         objectName: "catRevealPopup"
         parent: Overlay.overlay
         anchors.centerIn: parent
-        width: Math.min(720, root.width - 32)
-        height: Math.min(590, root.height - 24)
+        // El premio puede abrirse desde cualquier pestaña. La pestaña de
+        // Personalización mide 0x0 mientras está inactiva, pero el overlay global no.
+        readonly property real overlayWidth: parent && parent.width > 0 ? parent.width : 760
+        readonly property real overlayHeight: parent && parent.height > 0 ? parent.height : 640
+        readonly property bool compactLayout: height <= 500
+        width: Math.max(320, Math.min(720, overlayWidth - 32))
+        height: Math.max(390, Math.min(590, overlayHeight - 24))
         modal: true
         focus: true
         padding: 0
@@ -498,7 +503,7 @@ Item {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: root.dense ? 14 : 20
+            anchors.margins: revealPopup.compactLayout ? 14 : 20
             spacing: 6
             Text {
                 Layout.alignment: Qt.AlignHCenter
@@ -527,8 +532,8 @@ Item {
                     id: revealCard
                     objectName: "catRevealCard"
                     anchors.centerIn: parent
-                    width: Math.min(350, parent.width - 18)
-                    height: Math.min(350, parent.height - 4)
+                    width: Math.min(380, parent.width - 18)
+                    height: Math.min(380, parent.height - 4)
                     radius: 24
                     color: theme.colors.surfaceRaised
                     border.width: revealPopup.resultRarity >= 6 ? 6 : revealPopup.resultRarity >= 5 ? 4 : revealPopup.resultRarity >= 4 ? 3 : 2
@@ -548,8 +553,8 @@ Item {
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: root.dense ? 12 : 16
-                        spacing: root.dense ? 3 : 6
+                        anchors.margins: revealPopup.compactLayout ? 12 : 16
+                        spacing: revealPopup.compactLayout ? 3 : 6
                         Text {
                             Layout.alignment: Qt.AlignHCenter
                             text: revealPopup.rarityTitle
@@ -563,7 +568,7 @@ Item {
                             Layout.fillHeight: true
                             CatAvatar {
                                 anchors.centerIn: parent
-                                width: Math.min(root.dense ? 142 : 176, parent.height - 2)
+                                width: Math.min(revealPopup.compactLayout ? 132 : 176, parent.height - 2)
                                 height: width
                                 source: revealPopup.result.source || ""
                                 rarity: revealPopup.resultRarity
@@ -576,7 +581,7 @@ Item {
                             Layout.fillWidth: true
                             text: revealPopup.result.name || ""
                             color: theme.colors.text
-                            font.pixelSize: root.dense ? 20 : 25
+                            font.pixelSize: revealPopup.compactLayout ? 20 : 25
                             font.weight: Font.Bold
                             horizontalAlignment: Text.AlignHCenter
                             elide: Text.ElideRight
@@ -585,25 +590,31 @@ Item {
                             Layout.alignment: Qt.AlignHCenter
                             text: revealPopup.result.stars || ""
                             color: revealPopup.revealColor
-                            font.pixelSize: root.dense ? 17 : 21
+                            font.pixelSize: revealPopup.compactLayout ? 17 : 21
                             font.letterSpacing: 5
                         }
                         Rectangle {
+                            objectName: "catThemeRewardBadge"
                             Layout.alignment: Qt.AlignHCenter
-                            Layout.preferredWidth: Math.min(300, revealCard.width - 34)
-                            Layout.preferredHeight: revealPopup.result.themeUnlocked === true ? 30 : 0
+                            Layout.preferredWidth: Math.min(330, revealCard.width - 30)
+                            Layout.preferredHeight: revealPopup.result.themeUnlocked === true ? 44 : 0
                             visible: revealPopup.result.themeUnlocked === true
-                            radius: 10
+                            radius: 12
                             color: Qt.rgba(revealPopup.revealColor.r, revealPopup.revealColor.g, revealPopup.revealColor.b, 0.14)
-                            border.width: 1
+                            border.width: 2
                             border.color: revealPopup.revealColor
                             Text {
-                                anchors.centerIn: parent
-                                text: "✦ NUEVO TEMA DE XOMACITO DESBLOQUEADO"
+                                objectName: "catThemeRewardText"
+                                anchors.fill: parent
+                                anchors.margins: 6
+                                text: "✦ NUEVO TEMA DE XOMACITO\nDESBLOQUEADO CON BLACK BULL"
                                 color: revealPopup.revealColor
-                                font.pixelSize: 9
+                                font.pixelSize: 10
                                 font.weight: Font.Bold
-                                font.letterSpacing: 0.7
+                                font.letterSpacing: 0.5
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                wrapMode: Text.Wrap
                             }
                         }
                     }
@@ -616,12 +627,13 @@ Item {
                 enabled: revealPopup.revealProgress >= 0.98
                 Item { Layout.fillWidth: true }
                 XButton {
+                    objectName: "catRevealEquipButton"
                     visible: revealPopup.result.isNew === true
                     text: "Equipar ahora"
                     kind: "secondary"
                     onClicked: { revealPopup.close(); catController.equip(revealPopup.result.catId) }
                 }
-                XButton { text: "Continuar"; onClicked: revealPopup.close() }
+                XButton { objectName: "catRevealContinueButton"; text: "Continuar"; onClicked: revealPopup.close() }
                 Item { Layout.fillWidth: true }
             }
         }
