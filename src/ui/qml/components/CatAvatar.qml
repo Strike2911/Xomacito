@@ -64,7 +64,9 @@ Item {
     Rectangle {
         id: avatarFrame
         anchors.centerIn: parent
-        width: Math.max(18, parent.width - 8)
+        // BLACK BULL ya tiene un avatar circular preparado. Reducirlo otra vez
+        // con el margen general hacía que su rostro se viera diminuto.
+        width: Math.max(18, parent.width - (root.blackbullNoir ? 0 : 8))
         height: width
         radius: width / 2
         color: "#071824"
@@ -73,7 +75,7 @@ Item {
 
         Image {
             anchors.fill: parent
-            anchors.margins: 3
+            anchors.margins: root.blackbullNoir ? 1 : 3
             source: root.source
             fillMode: Image.PreserveAspectFit
             mipmap: true

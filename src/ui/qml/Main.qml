@@ -849,21 +849,15 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 14
-                Rectangle {
-                    Layout.preferredWidth: 66
-                    Layout.preferredHeight: 66
-                    radius: 33
-                    color: "#110C06"
-                    border.width: 3
-                    border.color: "#FFC857"
-                    clip: true
-                    Image {
-                        anchors.fill: parent
-                        anchors.margins: 4
-                        source: "../../../assets/release/black-bull.png"
-                        fillMode: Image.PreserveAspectCrop
-                        smooth: true
-                    }
+                CatAvatar {
+                    objectName: "smoothMotionBlackBullAvatar"
+                    Layout.preferredWidth: 72
+                    Layout.preferredHeight: 72
+                    source: "../../../assets/cat-collection/cat-cf837ae651c8-avatar.webp"
+                    rarity: 6
+                    rarityColor: "#FFC857"
+                    animationStyle: "blackbull-noir"
+                    animatedEffects: smoothMotionPopup.opened && settingsController.state.animationsEnabled
                 }
                 ColumnLayout {
                     Layout.fillWidth: true

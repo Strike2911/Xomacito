@@ -1,6 +1,6 @@
 # Xomacito
 
-Versión actual: **Xomacito 3.2**.
+Versión actual: **Xomacito 3.3**.
 
 Aplicación independiente para Windows que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike**.
 
@@ -54,7 +54,7 @@ Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión 
 
 Los runtimes de compilación, herramientas externas, modelos, builds y preferencias personales están excluidos del repositorio. Los binarios distribuidos a usuarios se publican únicamente en [GitHub Releases](https://github.com/Strike2911/Xomacito/releases).
 
-La versión 3.2 presenta **¡BLACK BULL EDITION!!!**: BLACK BULL llega como personaje de 6 estrellas, cada mítico adopta un fondo animado propio y visitar la alianza oficial de Smooth Motion desbloquea la recompensa automáticamente.
+La versión 3.3 presenta **¡SMOOTH MOTION UPDATE!!**: la recompensa de BLACK BULL se muestra con una tarjeta legible y compacta, su avatar aprovecha mejor el marco mítico y el anuncio de Smooth Motion usa el retrato circular preparado para la interfaz.
 
 Para volver a importar o ampliar la colección sin cambiar las rarezas ya asignadas:
 

@@ -25,6 +25,28 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "3.3": {
+        "eyebrow": "ACTUALIZACIÓN INSTALADA",
+        "title": "Xomacito 3.3",
+        "subtitle": "¡SMOOTH MOTION UPDATE!!",
+        "message": (
+            "La alianza creativa recibe un acabado visual más claro para que la recompensa "
+            "de BLACK BULL se sienta mítica, legible y bien integrada en Xomacito."
+        ),
+        "highlights": [
+            "La recompensa de BLACK BULL ahora aparece completa, centrada y legible en cualquier pestaña.",
+            "El retrato de BLACK BULL ocupa mejor su marco mítico sin verse pequeño.",
+            "La tarjeta de Smooth Motion utiliza el avatar circular preparado para Xomacito.",
+            "Se conserva el desbloqueo automático de BLACK BULL 6★ al visitar Smooth Motion.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako",
+        ],
+        "closing": "Gracias a BlackBull y Smooth Motion por seguir impulsando esta alianza para creadores.",
+        "platinumCelebration": True,
+        "smoothMotionPromotion": True,
+    },
     "3.2": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
         "title": "Xomacito 3.2",
