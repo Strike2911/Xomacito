@@ -264,6 +264,8 @@ Item {
                                                   ? "MÍTICO PRISMÁTICO"
                                                   : animationStyle === "zarking-cyber"
                                                     ? "MÍTICO CIBERNÉTICO"
+                                                    : animationStyle === "blackbull-noir"
+                                                      ? "MÍTICO BLACK BULL"
                                                     : "MÍTICO ARCANO"
         readonly property bool arcaneMage: result.animationStyle === "arcane-mage"
         readonly property bool mythicCat: resultRarity >= 6
@@ -505,9 +507,11 @@ Item {
                          ? "EL FIRMAMENTO RESPONDE AL GATO MAGO…"
                          : revealPopup.animationStyle === "playera-prismatic"
                            ? "¡EL CAOS PRISMÁTICO ESTÁ DESPERTANDO!"
-                           : revealPopup.animationStyle === "zarking-cyber"
-                             ? "SINCRONIZANDO EL NÚCLEO ZARKING…"
-                             : revealPopup.resultRarity >= 4 ? "UNA PRESENCIA EXTRAORDINARIA…" : "DESCUBRIENDO TU GATO…")
+                            : revealPopup.animationStyle === "zarking-cyber"
+                              ? "SINCRONIZANDO EL NÚCLEO ZARKING…"
+                              : revealPopup.animationStyle === "blackbull-noir"
+                                ? "LAS LUCES DEL CLUB BLACK BULL SE ENCIENDEN…"
+                              : revealPopup.resultRarity >= 4 ? "UNA PRESENCIA EXTRAORDINARIA…" : "DESCUBRIENDO TU GATO…")
                       : revealPopup.result.isNew ? "¡NUEVO GATO DESBLOQUEADO!" : "GATO REPETIDO · BRILLO +1"
                 color: revealPopup.revealProgress < 0.58 ? theme.colors.text : revealPopup.revealColor
                 font.pixelSize: 11
@@ -584,6 +588,24 @@ Item {
                             font.pixelSize: root.dense ? 17 : 21
                             font.letterSpacing: 5
                         }
+                        Rectangle {
+                            Layout.alignment: Qt.AlignHCenter
+                            Layout.preferredWidth: Math.min(300, revealCard.width - 34)
+                            Layout.preferredHeight: revealPopup.result.themeUnlocked === true ? 30 : 0
+                            visible: revealPopup.result.themeUnlocked === true
+                            radius: 10
+                            color: Qt.rgba(revealPopup.revealColor.r, revealPopup.revealColor.g, revealPopup.revealColor.b, 0.14)
+                            border.width: 1
+                            border.color: revealPopup.revealColor
+                            Text {
+                                anchors.centerIn: parent
+                                text: "✦ NUEVO TEMA DE XOMACITO DESBLOQUEADO"
+                                color: revealPopup.revealColor
+                                font.pixelSize: 9
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.7
+                            }
+                        }
                     }
                 }
             }
@@ -617,6 +639,7 @@ Item {
         readonly property bool arcaneMage: result.animationStyle === "arcane-mage"
         readonly property bool playeraPrismatic: result.animationStyle === "playera-prismatic"
         readonly property bool zarkingCyber: result.animationStyle === "zarking-cyber"
+        readonly property bool blackbullNoir: result.animationStyle === "blackbull-noir"
         readonly property bool mythicCat: Number(result.rarity || 1) >= 6
         readonly property color effectColor: result.rarityColor || theme.colors.primary
         readonly property string equipTitle: arcaneMage
@@ -625,6 +648,8 @@ Item {
                                                   ? "¡FIESTA PRISMÁTICA ACTIVADA!"
                                                   : zarkingCyber
                                                     ? "NÚCLEO ZARKING SINCRONIZADO"
+                                                    : blackbullNoir
+                                                      ? "BLACK BULL ENTRA AL CLUB"
                                                     : "GATO EQUIPADO"
 
         function celebrate(value) {
@@ -642,7 +667,9 @@ Item {
                    ? "#D90A001A"
                    : equipCelebration.playeraPrismatic
                      ? "#D91D0A2D"
-                     : equipCelebration.zarkingCyber ? "#E0000718" : "#A8000710"
+                     : equipCelebration.zarkingCyber
+                       ? "#E0000718"
+                       : equipCelebration.blackbullNoir ? "#EB100900" : "#A8000710"
         }
 
         MythicEffectField {
@@ -656,7 +683,7 @@ Item {
 
         Item {
             anchors.centerIn: parent
-            width: Math.min(parent.width, parent.height) * (equipCelebration.mythicCat ? 0.72 : 0.5)
+            width: Math.min(parent.width, parent.height) * (equipCelebration.mythicCat ? 0.54 : 0.4)
             height: width
             scale: equipCelebration.pulseScale
 
@@ -699,7 +726,7 @@ Item {
 
             CatAvatar {
                 anchors.centerIn: parent
-                width: equipCelebration.mythicCat ? 178 : 118
+                width: equipCelebration.mythicCat ? 150 : 104
                 height: width
                 source: equipCelebration.result.source || ""
                 rarity: Number(equipCelebration.result.rarity || 1)
@@ -746,12 +773,14 @@ Item {
                     property: "pulseScale"
                     from: 0.5
                     to: 1
-                    duration: equipCelebration.playeraPrismatic ? 760 : equipCelebration.zarkingCyber ? 620 : equipCelebration.arcaneMage ? 980 : 420
+                    duration: equipCelebration.playeraPrismatic ? 760 : equipCelebration.zarkingCyber ? 620 : equipCelebration.blackbullNoir ? 1120 : equipCelebration.arcaneMage ? 980 : 420
                     easing.type: equipCelebration.playeraPrismatic
                                  ? Easing.OutBounce
                                  : equipCelebration.zarkingCyber
                                    ? Easing.OutExpo
-                                   : equipCelebration.arcaneMage ? Easing.OutElastic : Easing.OutBack
+                                   : equipCelebration.blackbullNoir
+                                     ? Easing.OutQuint
+                                     : equipCelebration.arcaneMage ? Easing.OutElastic : Easing.OutBack
                 }
             }
             PauseAnimation { duration: equipCelebration.mythicCat ? 1250 : 500 }

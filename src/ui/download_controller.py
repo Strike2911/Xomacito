@@ -175,7 +175,8 @@ class DownloadController(QObject):
             "operationMode": "Rápido", "preset": settings.get("quick_preset_saved", "Archivo - H.265 Normal"),
             "selectedVideo": "", "selectedAudio": "", "selectedSubtitleLanguage": "",
             "selectedSubtitleFormat": "", "hasVideo": False, "hasAudio": False,
-            "imagePost": False, "imageCount": 0, "sourceHasAlpha": False, "duration": 0.0,
+            "imagePost": False, "imageCount": 0, "imageFormat": "Original",
+            "sourceHasAlpha": False, "duration": 0.0,
             "originalWidth": 0, "originalHeight": 0, "estimatedSize": "",
             "selectedTag": "Sin etiqueta", "selectedTagColor": "#6F7F8F",
             "effectiveOutputPath": output,
@@ -538,8 +539,18 @@ class DownloadController(QObject):
             else:
                 raise RuntimeError(friendly_ytdlp_error(exc, logs)) from exc
         if not info:
+            if instagram_post and not using_cookies:
+                raise RuntimeError(
+                    "Instagram sólo mostró la portada. Para leer todas las imágenes del carrusel, "
+                    "elige tu navegador en Configuración > Cookies e inicia sesión en Instagram."
+                )
             raise RuntimeError(friendly_ytdlp_error("No se recibió información.", logs))
-        if info.get("_type") in {"playlist", "multi_video"}:
+        # An Instagram carousel deliberately uses playlist-shaped metadata,
+        # but it must remain one image publication so every slide is kept.
+        if (
+            info.get("_type") in {"playlist", "multi_video"}
+            and info.get("xomacito_media_type") != "image"
+        ):
             entries = [entry for entry in info.get("entries", []) if entry]
             if not entries:
                 raise RuntimeError("La lista está vacía o no es válida.")
@@ -723,6 +734,7 @@ class DownloadController(QObject):
             "audio_label": self._state["selectedAudio"], "subtitle": self._selected_subtitle(),
             "duration": self._state["duration"], "operation_mode": self._state["operationMode"],
             "thumbnail_url": (self._analysis_info or {}).get("thumbnail", ""),
+            "image_format": self._state.get("imageFormat", "Original"),
             **self._options,
         }
         if self._state["operationMode"] == "Rápido" and self._options["applyPreset"]:
@@ -1088,12 +1100,27 @@ class DownloadController(QObject):
             content_type = response.headers.get("Content-Type", "").lower()
             if content_type and not content_type.startswith("image/"):
                 raise RuntimeError(f"La imagen {index} no pudo descargarse: el servidor no entregó una imagen.")
-            suffix = Path(urlparse(response.url).path).suffix.lower()
+            image_format = str(options.get("image_format") or "Original").upper()
+            suffix_map = {"JPEG": ".jpeg", "JPG": ".jpg", "PNG": ".png", "WEBP": ".webp"}
+            suffix = suffix_map.get(image_format, Path(urlparse(response.url).path).suffix.lower())
             if suffix not in {".jpg", ".jpeg", ".png", ".webp", ".avif"}:
                 suffix = ".jpg"
             name = options["title"] + (f"_{index}" if len(entries) > 1 else "")
             output = self._resolve_output(Path(options["output_path"]), name, suffix, ask=False)
-            output.write_bytes(response.content)
+            if image_format in suffix_map:
+                try:
+                    from PIL import Image
+                    with Image.open(io.BytesIO(response.content)) as image:
+                        if image_format in {"JPEG", "JPG"}:
+                            image.convert("RGB").save(output, "JPEG", quality=95, optimize=True)
+                        elif image_format == "PNG":
+                            image.save(output, "PNG", optimize=True)
+                        else:
+                            image.save(output, "WEBP", quality=95, method=6)
+                except (OSError, ValueError) as exc:
+                    raise RuntimeError(f"La imagen {index} no pudo convertirse a {image_format}.") from exc
+            else:
+                output.write_bytes(response.content)
             outputs.append(str(output))
             self.progressReported.emit(index / len(entries), f"Guardando imagen {index}/{len(entries)}…")
         return outputs[0] if len(outputs) == 1 else str(Path(outputs[0]).parent)

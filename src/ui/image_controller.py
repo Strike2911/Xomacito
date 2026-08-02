@@ -357,8 +357,18 @@ class ImageController(QObject):
             "Referer": referer,
         }
         image_urls = []
+        cookie_mode = self.settings.get("cookies_mode", "No usar")
         if is_instagram_post_url(url):
-            info = extract_instagram_image_post_info(url, ydl_options={"quiet": True})
+            cookie_options = {"quiet": True}
+            if cookie_mode == "Archivo Manual..." and self.settings.get("cookies_path"):
+                cookie_options["cookiefile"] = self.settings.get("cookies_path")
+            elif cookie_mode != "No usar":
+                browser = self.settings.get("selected_browser", "chrome")
+                profile = self.settings.get("browser_profile", "")
+                cookie_options["cookiesfrombrowser"] = (
+                    (browser, profile) if profile else (browser,)
+                )
+            info = extract_instagram_image_post_info(url, ydl_options=cookie_options)
             if info:
                 image_urls = info.get("xomacito_images") or [info.get("url") or info.get("thumbnail")]
         if not image_urls:
@@ -374,6 +384,11 @@ class ImageController(QObject):
             image_urls = (info or {}).get("xomacito_images") or [(info or {}).get("thumbnail")]
         image_urls = [value for value in image_urls if value]
         if not image_urls:
+            if is_instagram_post_url(url) and cookie_mode == "No usar":
+                raise RuntimeError(
+                    "Instagram sólo mostró la portada. Selecciona tu navegador en "
+                    "Configuración > Cookies para importar todas las imágenes del carrusel."
+                )
             raise RuntimeError("El enlace no contiene una imagen accesible.")
         targets = []
         for image_url in image_urls:
@@ -395,7 +410,7 @@ class ImageController(QObject):
             if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".avif"}:
                 suffix = {
                     "PNG": ".png", "WEBP": ".webp", "AVIF": ".avif",
-                    "JPEG": ".jpg", "JPG": ".jpg",
+                    "JPEG": ".jpeg", "JPG": ".jpg",
                 }.get(detected_format, ".jpg")
             target = Path(tempfile.gettempdir()) / f"xomacito_url_{uuid.uuid4().hex}{suffix}"
             target.write_bytes(response.content)
@@ -655,7 +670,8 @@ class ImageController(QObject):
 
     def _output_path(self, folder, item, output_format):
         if output_format == "No Convertir": extension = Path(item["path"]).suffix
-        elif output_format in {"JPG", "JPEG"}: extension = ".jpg"
+        elif output_format == "JPEG": extension = ".jpeg"
+        elif output_format == "JPG": extension = ".jpg"
         else: extension = "." + str(output_format).lower()
         page = f"_pagina_{item['page']}" if item["pages"] > 1 else ""
         return folder / f"{safe_filename(item['title'])}{page}{extension}"

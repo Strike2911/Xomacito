@@ -22,11 +22,13 @@ GACHA_STYLE_SOUND_FILENAMES = {
     "arcane-mage": "gacha-reveal-6-arcane.wav",
     "playera-prismatic": "gacha-reveal-6-playera.wav",
     "zarking-cyber": "gacha-reveal-6-zarking.wav",
+    "blackbull-noir": "gacha-reveal-6-blackbull.wav",
 }
 GACHA_EQUIP_SOUND_FILENAMES = {
     "arcane-mage": "gacha-equip-6-arcane.wav",
     "playera-prismatic": "gacha-equip-6-playera.wav",
     "zarking-cyber": "gacha-equip-6-zarking.wav",
+    "blackbull-noir": "gacha-equip-6-blackbull.wav",
 }
 
 

@@ -176,6 +176,15 @@
       "animationStyle": "standard"
     },
     {
+      "id": "cat-cf837ae651c8",
+      "name": "BLACK BULL",
+      "rarity": 6,
+      "image": "cat-cf837ae651c8.png",
+      "avatar": "cat-cf837ae651c8-avatar.webp",
+      "originalFile": "GATO BLACK BULL.png",
+      "animationStyle": "blackbull-noir"
+    },
+    {
       "id": "cat-03ffd51c1f63",
       "name": "GATO BUHO MANGO",
       "rarity": 2,

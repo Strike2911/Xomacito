@@ -24,14 +24,14 @@ class CatGachaTests(unittest.TestCase):
         payload = json.loads(catalog_path.read_text(encoding="utf-8"))
         catalog = load_cat_catalog(ROOT)
 
-        self.assertEqual(len(catalog), 144)
-        self.assertEqual(len(payload["cats"]), 144)
+        self.assertEqual(len(catalog), 145)
+        self.assertEqual(len(payload["cats"]), 145)
         self.assertIn("GATITO PENSATIVO", {cat.name for cat in catalog})
         self.assertIn("GATO DIOS", {cat.name for cat in catalog})
         self.assertIn("GATO XOMACITO", {cat.name for cat in catalog})
         self.assertEqual(
             Counter(cat.rarity for cat in catalog),
-            {1: 61, 2: 36, 3: 28, 4: 9, 5: 7, 6: 3},
+            {1: 61, 2: 36, 3: 28, 4: 9, 5: 7, 6: 4},
         )
         expected_rarities = {
             "GATO DIOS": 5,
@@ -44,6 +44,7 @@ class CatGachaTests(unittest.TestCase):
             "GATO MAGO": 6,
             "GATO PLAYERA": 6,
             "GATO ZARKING": 6,
+            "BLACK BULL": 6,
         }
         by_name = {cat.name.casefold(): cat for cat in catalog}
         for name, rarity in expected_rarities.items():
@@ -51,6 +52,7 @@ class CatGachaTests(unittest.TestCase):
         self.assertEqual(by_name["gato mago"].animation_style, "arcane-mage")
         self.assertEqual(by_name["gato playera"].animation_style, "playera-prismatic")
         self.assertEqual(by_name["gato zarking"].animation_style, "zarking-cyber")
+        self.assertEqual(by_name["black bull"].animation_style, "blackbull-noir")
         self.assertTrue(all(cat.name == cat.name.upper() for cat in catalog))
         for cat in catalog:
             self.assertTrue(cat.image_path.is_file())
@@ -123,14 +125,14 @@ class CatGachaTests(unittest.TestCase):
             controller.equippedRequested.connect(lambda result: equipped.append(dict(result)))
             result = controller.roll()
 
-            self.assertEqual(result["name"], "GATO MAGO")
+            self.assertEqual(result["name"], "BLACK BULL")
             self.assertEqual(result["rarity"], 6)
             self.assertEqual(result["stars"], "★★★★★★")
-            self.assertEqual(result["animationStyle"], "arcane-mage")
+            self.assertEqual(result["animationStyle"], "blackbull-noir")
             self.assertAlmostEqual(rng.weights[6], 0.2)
 
             controller.equip(result["catId"])
-            self.assertEqual(equipped[0]["animationStyle"], "arcane-mage")
+            self.assertEqual(equipped[0]["animationStyle"], "blackbull-noir")
             self.assertEqual(controller.state["equippedRarity"], 6)
 
     def test_only_unique_media_sources_advance_download_progress(self):
@@ -154,6 +156,30 @@ class CatGachaTests(unittest.TestCase):
             self.assertEqual(restored.state["downloadProgress"], 2)
             restored.recordSuccessfulSource("youtube:video-c")
             self.assertEqual(restored.state["downloadProgress"], 3)
+
+    def test_smooth_motion_reward_unlocks_black_bull_once_and_persists(self):
+        today = date(2026, 8, 1)
+        with tempfile.TemporaryDirectory() as appdata, patch.dict(os.environ, {"APPDATA": appdata}):
+            store = SettingsStore("XomacitoBlackBullRewardTest")
+            controller = CatGachaController(ROOT, store, today_provider=lambda: today)
+
+            first = controller.unlockPromotionalCat("BLACK BULL")
+            self.assertEqual(first["name"], "BLACK BULL")
+            self.assertEqual(first["rarity"], 6)
+            self.assertEqual(first["animationStyle"], "blackbull-noir")
+            self.assertTrue(first["isNew"])
+            self.assertTrue(first["themeUnlocked"])
+
+            repeated = controller.unlockPromotionalCat("BLACK BULL")
+            self.assertFalse(repeated["isNew"])
+            self.assertEqual(controller.state["unlockedCount"], 2)
+
+            restored = CatGachaController(
+                ROOT,
+                SettingsStore("XomacitoBlackBullRewardTest"),
+                today_provider=lambda: today,
+            )
+            self.assertEqual(restored.state["unlockedCount"], 2)
 
 
 if __name__ == "__main__":

@@ -67,22 +67,36 @@ Item {
                 LabeledControl {
                     Layout.fillWidth: true
                     label: "Paleta"
-                    XComboBox {
-                        id: themeCombo
-                        objectName: "themeCombo"
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        model: theme.availableThemes
-                        currentIndex: -1
-                        function syncSelection() {
-                            var wanted = find(viewState.theme)
-                            if (wanted >= 0 && currentIndex !== wanted)
-                                currentIndex = wanted
+                        spacing: 5
+                        XComboBox {
+                            id: themeCombo
+                            objectName: "themeCombo"
+                            Layout.fillWidth: true
+                            model: theme.availableThemes
+                            currentIndex: -1
+                            function syncSelection() {
+                                var wanted = find(viewState.theme)
+                                if (wanted >= 0 && currentIndex !== wanted)
+                                    currentIndex = wanted
+                            }
+                            Component.onCompleted: Qt.callLater(syncSelection)
+                            onValueSelected: function(value) { settingsController.setValue("theme", value) }
+                            Connections {
+                                target: settingsController
+                                function onStateChanged() { themeCombo.syncSelection() }
+                            }
+                            Connections {
+                                target: theme
+                                function onAvailableThemesChanged() { Qt.callLater(themeCombo.syncSelection) }
+                            }
                         }
-                        Component.onCompleted: Qt.callLater(syncSelection)
-                        onValueSelected: function(value) { settingsController.setValue("theme", value) }
-                        Connections {
-                            target: settingsController
-                            function onStateChanged() { themeCombo.syncSelection() }
+                        Text {
+                            visible: theme.lockedThemeCount > 0
+                            text: theme.lockedThemeCount + " paleta" + (theme.lockedThemeCount === 1 ? "" : "s") + " por descubrir · desbloquea gatos de 5★ o 6★"
+                            color: theme.colors.textMuted
+                            font.pixelSize: 10
                         }
                     }
                 }

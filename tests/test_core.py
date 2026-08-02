@@ -266,6 +266,19 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("instagram", highlights)
         self.assertTrue(notice["platinumCelebration"])
 
+    def test_release_32_is_the_black_bull_smooth_motion_edition(self):
+        notice = release_notice_for_version("v3.2")
+
+        self.assertIsNotNone(notice)
+        self.assertEqual(notice["title"], "Xomacito 3.2")
+        self.assertEqual(notice["subtitle"], "¡BLACK BULL EDITION!!!")
+        highlights = " ".join(notice["highlights"]).upper()
+        self.assertIn("BLACK BULL", highlights)
+        self.assertNotIn("GATO BLACK BULL", highlights)
+        self.assertIn("SMOOTH MOTION", highlights)
+        self.assertTrue(notice["platinumCelebration"])
+        self.assertTrue(notice["smoothMotionPromotion"])
+
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
         digest = "sha256:" + hashlib.sha256(payload).hexdigest()
@@ -462,6 +475,77 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertTrue(downloader.is_instagram_post_url("https://instagram.com/p/ABC123/"))
         self.assertFalse(downloader.is_instagram_post_url("https://evilinstagram.com/p/ABC123/"))
 
+    def test_instagram_carousel_uses_public_embed_images(self):
+        class FakeResponse:
+            def __init__(self, text):
+                self.text = text
+
+            @staticmethod
+            def raise_for_status():
+                return None
+
+        class FakeSession:
+            @staticmethod
+            def get(url, timeout, allow_redirects, headers=None):
+                if url.endswith("/embed/captioned/"):
+                    return FakeResponse(
+                        '<img width="1080" height="1080" src="https://scontent.cdninstagram.com/one.jpg">'
+                        '<img width="1080" height="1080" src="https://scontent.cdninstagram.com/two.jpg">'
+                        '<img width="1080" height="1080" src="https://scontent.cdninstagram.com/three.jpg">'
+                        '<img width="1080" height="1080" src="https://scontent.cdninstagram.com/four.jpg">'
+                    )
+                return FakeResponse('<meta property="og:image" content="https://scontent.cdninstagram.com/one.jpg">')
+
+        info = downloader.extract_instagram_image_post_info(
+            "https://www.instagram.com/p/CAROUSEL/?utm_source=test",
+            timeout=5,
+            session=FakeSession(),
+        )
+        self.assertEqual(info["image_count"], 4)
+        self.assertEqual(len(info["xomacito_images"]), 4)
+
+    def test_instagram_carousel_uses_authenticated_media_info(self):
+        class FakeResponse:
+            def __init__(self, *, text="", payload=None):
+                self.text = text
+                self._payload = payload
+
+            @staticmethod
+            def raise_for_status():
+                return None
+
+            def json(self):
+                return self._payload
+
+        slides = [
+            {
+                "image_versions2": {
+                    "candidates": [
+                        {"url": f"https://instagram.example/{number}-small.jpg", "width": 320, "height": 320},
+                        {"url": f"https://instagram.example/{number}.jpg", "width": 1080, "height": 1080},
+                    ]
+                }
+            }
+            for number in range(1, 5)
+        ]
+
+        class FakeSession:
+            @staticmethod
+            def get(url, **kwargs):
+                if url.endswith("/oembed/"):
+                    return FakeResponse(payload={"media_id": "123_456", "title": "Carrusel"})
+                if "/api/v1/media/" in url:
+                    return FakeResponse(payload={"items": [{"carousel_media": slides}]})
+                return FakeResponse(text='<meta property="og:image" content="https://instagram.example/1.jpg">')
+
+        info = downloader.extract_instagram_image_post_info(
+            "https://www.instagram.com/p/PRIVATECAROUSEL/",
+            timeout=5,
+            session=FakeSession(),
+        )
+        self.assertEqual(info["image_count"], 4)
+        self.assertEqual(info["xomacito_images"][-1], "https://instagram.example/4.jpg")
+
     def test_instagram_metadata_without_video_formats_becomes_an_image(self):
         metadata = {
             "id": "ABC123",
@@ -500,8 +584,17 @@ class XomacitoWrapperTests(unittest.TestCase):
     def test_instagram_image_fallback_is_available_from_both_buttons(self):
         source = (ROOT / "src" / "ui" / "download_controller.py").read_text(encoding="utf-8")
         self.assertIn("extract_instagram_image_post_info(url, ydl_options=options)", source)
+        self.assertIn('info.get("xomacito_media_type") != "image"', source)
         self.assertIn("def saveThumbnail(self):", source)
         self.assertIn("def _download_image_post", source)
+
+    def test_image_posts_offer_explicit_export_extensions(self):
+        qml = (ROOT / "src" / "ui" / "qml" / "pages" / "DownloadPage.qml").read_text(encoding="utf-8")
+        controller = (ROOT / "src" / "ui" / "download_controller.py").read_text(encoding="utf-8")
+        image_controller = (ROOT / "src" / "ui" / "image_controller.py").read_text(encoding="utf-8")
+        self.assertIn('["Original", "JPEG", "JPG", "PNG", "WEBP"]', qml)
+        self.assertIn('{"JPEG": ".jpeg", "JPG": ".jpg", "PNG": ".png", "WEBP": ".webp"}', controller)
+        self.assertIn('output_format == "JPEG": extension = ".jpeg"', image_controller)
 
     def test_xomacito_launcher_and_standalone_runtime_are_present(self):
         launcher_exe = ROOT / "Xomacito.exe"
@@ -753,7 +846,7 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertEqual(sizes, sorted(sizes))
         self.assertEqual(
             set(GACHA_STYLE_SOUND_FILENAMES),
-            {"arcane-mage", "playera-prismatic", "zarking-cyber"},
+            {"arcane-mage", "playera-prismatic", "zarking-cyber", "blackbull-noir"},
         )
         self.assertEqual(set(GACHA_EQUIP_SOUND_FILENAMES), set(GACHA_STYLE_SOUND_FILENAMES))
         for style in GACHA_STYLE_SOUND_FILENAMES:
@@ -1144,7 +1237,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-3.1-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-3.2-Setup.exe", build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)

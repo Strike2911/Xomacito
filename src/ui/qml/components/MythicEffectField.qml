@@ -10,7 +10,8 @@ Item {
     readonly property bool arcane: animationStyle === "arcane-mage"
     readonly property bool playera: animationStyle === "playera-prismatic"
     readonly property bool zarking: animationStyle === "zarking-cyber"
-    visible: arcane || playera || zarking
+    readonly property bool blackbull: animationStyle === "blackbull-noir"
+    visible: arcane || playera || zarking || blackbull
 
     // GATO MAGO: astrolabio arcano, runas y órbitas en sentidos opuestos.
     Item {
@@ -173,6 +174,89 @@ Item {
                 NumberAnimation { from: -4; to: 4; duration: 90 }
                 NumberAnimation { to: 0; duration: 70 }
                 PauseAnimation { duration: 650 }
+            }
+        }
+    }
+
+    // BLACK BULL: club noir, focos dorados y destellos de gala.
+    Item {
+        anchors.fill: parent
+        visible: root.blackbull
+        clip: true
+
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: "#00000000" }
+                GradientStop { position: 0.5; color: "#331A1000" }
+                GradientStop { position: 1; color: "#00000000" }
+            }
+        }
+
+        Repeater {
+            model: 7
+            Rectangle {
+                required property int index
+                width: Math.max(90, root.width * 0.12)
+                height: root.height * 1.45
+                x: root.width / 2 - width / 2 + (index - 3) * root.width * 0.11
+                y: -root.height * 0.22
+                rotation: -28 + index * 9
+                color: index % 2 ? "#20FFC857" : "#16FFF2B0"
+                opacity: 0.06 + (index % 3) * 0.025
+                transformOrigin: Item.Bottom
+                SequentialAnimation on opacity {
+                    running: root.active
+                    loops: Animation.Infinite
+                    PauseAnimation { duration: index * 85 }
+                    NumberAnimation { to: 0.16; duration: 540; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 0.045; duration: 760; easing.type: Easing.InOutSine }
+                }
+            }
+        }
+
+        Repeater {
+            model: 4
+            Rectangle {
+                required property int index
+                anchors.centerIn: parent
+                width: Math.min(root.width, root.height) * (0.3 + index * 0.16)
+                height: width
+                radius: width / 2
+                color: "transparent"
+                border.width: index === 0 ? 5 : 2
+                border.color: index % 2 ? "#FFF3B5" : "#FFC857"
+                opacity: 0.5 - index * 0.08
+                scale: 0.72 + root.progress * 0.28
+                RotationAnimation on rotation {
+                    running: root.active
+                    from: index % 2 ? 360 : 0
+                    to: index % 2 ? 0 : 360
+                    duration: 3300 + index * 880
+                    loops: Animation.Infinite
+                }
+            }
+        }
+
+        Repeater {
+            model: 30
+            Rectangle {
+                required property int index
+                width: index % 5 === 0 ? 11 : 4 + index % 3 * 2
+                height: width
+                rotation: 45 + root.progress * 180
+                color: index % 4 === 0 ? "#FFFFFF" : index % 2 ? "#FFC857" : "#D99A21"
+                x: (index * 89) % Math.max(1, root.width - width)
+                y: (index * 53) % Math.max(1, root.height - height)
+                opacity: 0.14 + (index % 5) * 0.12
+                SequentialAnimation on scale {
+                    running: root.active
+                    loops: Animation.Infinite
+                    PauseAnimation { duration: index * 34 }
+                    NumberAnimation { from: 0.25; to: 1.45; duration: 300; easing.type: Easing.OutBack }
+                    NumberAnimation { to: 0.25; duration: 610 }
+                }
             }
         }
     }

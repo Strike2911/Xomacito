@@ -37,6 +37,29 @@ class _OpenGraphParser(HTMLParser):
             self.values.setdefault(property_name, unescape(str(content)).strip())
 
 
+class _InstagramImageParser(HTMLParser):
+    """Collects the actual publication images exposed by Instagram embeds."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.images = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() != "img":
+            return
+        attributes = {str(key).lower(): value for key, value in attrs if key}
+        candidate = str(attributes.get("src") or "").strip()
+        try:
+            width = int(str(attributes.get("width") or "0").split(".", 1)[0])
+            height = int(str(attributes.get("height") or "0").split(".", 1)[0])
+        except ValueError:
+            width = height = 0
+        # Instagram profile avatars are small and are not part of a carousel.
+        if candidate.startswith("https://") and not (width and height and max(width, height) < 240):
+            if candidate not in self.images:
+                self.images.append(unescape(candidate))
+
+
 def is_instagram_post_url(url):
     """Devuelve True solo para publicaciones /p/ alojadas realmente en Instagram."""
     try:
@@ -99,7 +122,106 @@ def _instagram_images_from_html(html):
             candidate = unescape(value).replace(r"\/", "/").replace(r"\u0026", "&")
             if candidate.startswith("https://") and candidate not in found:
                 found.append(candidate)
+    parser = _InstagramImageParser()
+    try:
+        parser.feed(str(html or ""))
+    except (TypeError, ValueError):
+        pass
+    for candidate in parser.images:
+        if candidate not in found:
+            found.append(candidate)
     return found
+
+
+def _instagram_public_pages(url):
+    """Yield the canonical page and public embed pages used for photo carousels."""
+    parsed = urlparse(str(url).strip())
+    shortcode = parsed.path.strip("/").split("/")[-1]
+    canonical = f"https://www.instagram.com/p/{shortcode}/"
+    return canonical, (
+        canonical,
+        f"{canonical}embed/captioned/",
+        f"{canonical}embed/",
+    )
+
+
+def _instagram_requests_client(ydl_options=None, session=None):
+    """Build a requests client that reuses the cookies selected in Settings."""
+    if session is not None:
+        return session
+    client = requests.Session()
+    if not ydl_options:
+        return client
+    cookie_options = {
+        key: ydl_options[key]
+        for key in ("cookiefile", "cookiesfrombrowser")
+        if ydl_options.get(key)
+    }
+    if not cookie_options:
+        return client
+    try:
+        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, **cookie_options}) as ydl:
+            for cookie in ydl.cookiejar:
+                client.cookies.set(
+                    cookie.name, cookie.value, domain=cookie.domain, path=cookie.path,
+                )
+    except Exception:
+        pass
+    return client
+
+
+def _instagram_api_images(payload):
+    """Return the best image of every slide from Instagram's media-info JSON."""
+    try:
+        item = (payload.get("items") or [])[0]
+    except (AttributeError, IndexError, TypeError):
+        return []
+    slides = item.get("carousel_media") or [item]
+    images = []
+    for slide in slides:
+        candidates = ((slide.get("image_versions2") or {}).get("candidates") or [])
+        candidates = [candidate for candidate in candidates if candidate.get("url")]
+        if not candidates:
+            continue
+        best = max(
+            candidates,
+            key=lambda candidate: int(candidate.get("width") or 0) * int(candidate.get("height") or 0),
+        )
+        image_url = str(best["url"])
+        if image_url not in images:
+            images.append(image_url)
+    return images
+
+
+def _instagram_authenticated_carousel(client, canonical, timeout, headers):
+    """Resolve carousel slides through Instagram's authenticated media API."""
+    try:
+        oembed = client.get(
+            "https://www.instagram.com/api/v1/oembed/",
+            params={"url": canonical}, timeout=timeout, headers=headers,
+        )
+        oembed.raise_for_status()
+        oembed_data = oembed.json()
+    except Exception:
+        return [], {}
+    media_id = str(oembed_data.get("media_id") or "").strip()
+    if not media_id:
+        return [], oembed_data
+    api_headers = {
+        **headers,
+        "Referer": canonical,
+        "X-IG-App-ID": "936619743392459",
+        "X-ASBD-ID": "129477",
+    }
+    try:
+        response = client.get(
+            f"https://i.instagram.com/api/v1/media/{media_id}/info/",
+            timeout=timeout, headers=api_headers,
+        )
+        response.raise_for_status()
+        return _instagram_api_images(response.json()), oembed_data
+    except Exception:
+        return [], oembed_data
 
 
 def instagram_image_post_info_from_metadata(url, metadata):
@@ -185,31 +307,52 @@ def extract_instagram_image_post_info(url, timeout=30, session=None, ydl_options
             # Respaldo para cambios frecuentes de la API pública de Instagram.
             pass
 
-    client = session or requests
-    response = client.get(
-        str(url).strip(), timeout=timeout, allow_redirects=True,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36",
-            "Accept-Language": "es-ES,es;q=0.9,en;q=0.7",
-        },
-    )
-    response.raise_for_status()
-
+    client = _instagram_requests_client(ydl_options, session)
+    canonical, public_pages = _instagram_public_pages(url)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36",
+        "Accept-Language": "es-ES,es;q=0.9,en;q=0.7",
+    }
     parser = _OpenGraphParser()
-    parser.feed(response.text)
-    image_urls = _instagram_images_from_html(response.text)
-    image_url = parser.values.get("og:image")
-    if image_url and image_url not in image_urls:
-        image_urls.insert(0, image_url)
+    image_urls = []
+    api_images, oembed_data = _instagram_authenticated_carousel(
+        client, canonical, timeout, headers,
+    )
+    image_urls.extend(api_images)
+    # The regular page often exposes only the first slide. Public embed pages
+    # include the carousel payload without requiring an authenticated session.
+    for page_url in public_pages:
+        try:
+            response = client.get(
+                page_url, timeout=timeout, allow_redirects=True, headers=headers,
+            )
+            response.raise_for_status()
+        except Exception:
+            continue
+        page_parser = _OpenGraphParser()
+        page_parser.feed(response.text)
+        if not parser.values:
+            parser = page_parser
+        page_images = _instagram_images_from_html(response.text)
+        image_url = page_parser.values.get("og:image")
+        if image_url and image_url not in page_images:
+            page_images.insert(0, image_url)
+        for item in page_images:
+            if item not in image_urls:
+                image_urls.append(item)
+        if len(image_urls) > 1:
+            break
     image_urls = [item for item in image_urls if urlparse(item).scheme == "https"]
     if not image_urls:
         return None
     image_url = image_urls[0]
 
-    shortcode = urlparse(str(url).strip()).path.strip("/").split("/")[-1]
+    shortcode = urlparse(canonical).path.strip("/").split("/")[-1]
     return instagram_image_post_info_from_metadata(url, {
         "id": shortcode,
-        "title": _instagram_image_title(parser.values.get("og:title"), shortcode),
+        "title": _instagram_image_title(
+            parser.values.get("og:title") or oembed_data.get("title"), shortcode,
+        ),
         "description": parser.values.get("og:description", ""),
         "thumbnail": image_url,
         "url": image_url,
