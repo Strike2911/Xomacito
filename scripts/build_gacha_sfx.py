@@ -28,7 +28,18 @@ def _oscillator(phase: float, waveform: str) -> float:
     if waveform == "triangle":
         return 2.0 / math.pi * math.asin(math.sin(phase))
     if waveform == "soft-square":
-        return math.tanh(math.sin(phase) * 2.4) * 0.72
+        # A warm, rounded pulse keeps the impact without the buzzy old square tone.
+        return (
+            math.sin(phase) * 0.76
+            + math.sin(phase * 2.0) * 0.18
+            + math.sin(phase * 3.0) * 0.06
+        )
+    if waveform == "chime":
+        return (
+            math.sin(phase) * 0.72
+            + math.sin(phase * 2.01) * 0.20
+            + math.sin(phase * 3.97) * 0.08
+        )
     return math.sin(phase)
 
 
@@ -55,7 +66,7 @@ def render(filename: str, duration: float, tones: list[Tone], *, sparkle: float 
         if sparkle and 0.12 < current < duration - 0.08:
             burst = max(0.0, math.sin(current * math.pi * (15 + int(current * 7))))
             mixed += (rng.random() * 2.0 - 1.0) * sparkle * burst**9
-        mixed = math.tanh(mixed * 1.18) * 0.82
+        mixed = math.tanh(mixed * 1.06) * 0.76
         samples.append(int(max(-1.0, min(1.0, mixed)) * 32767))
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -68,7 +79,10 @@ def render(filename: str, duration: float, tones: list[Tone], *, sparkle: float 
 
 def chord(start: float, duration: float, notes: list[float], volume: float) -> list[Tone]:
     return [
-        Tone(start, duration, note, volume / max(1, len(notes)), release=duration * 0.56)
+        Tone(
+            start, duration, note, volume / max(1, len(notes)),
+            waveform="chime", attack=0.012, release=duration * 0.62,
+        )
         for note in notes
     ]
 
@@ -122,6 +136,13 @@ def main() -> None:
         Tone(0.78, 0.56, 440.00, 0.30, sweep=1320, waveform="triangle"),
         *chord(1.16, 1.02, [740.00, 1108.73, 1480.00, 2217.46], 1.12),
     ], sparkle=0.066)
+    render("gacha-reveal-6-blackbull.wav", 2.48, [
+        Tone(0.00, 1.18, 73.42, 0.30, sweep=210, waveform="soft-square"),
+        Tone(0.18, 0.88, 146.83, 0.27, sweep=440, waveform="triangle"),
+        Tone(0.58, 0.72, 369.99, 0.24, sweep=380, waveform="chime"),
+        *chord(1.02, 1.30, [293.66, 440.00, 739.99, 1174.66], 1.12),
+        Tone(1.42, 0.86, 1760.00, 0.20, sweep=520, waveform="chime"),
+    ], sparkle=0.052)
     render("gacha-equip-6-arcane.wav", 1.82, [
         Tone(0.00, 1.18, 130.81, 0.26, sweep=720, waveform="soft-square"),
         *chord(0.48, 1.20, [523.25, 783.99, 1046.50], 0.88),
@@ -137,6 +158,11 @@ def main() -> None:
         Tone(0.36, 0.50, 1108.73, 0.25, sweep=840, waveform="soft-square"),
         *chord(0.76, 0.92, [554.37, 830.61, 1244.51, 1661.22], 0.98),
     ], sparkle=0.058)
+    render("gacha-equip-6-blackbull.wav", 1.94, [
+        Tone(0.00, 0.92, 82.41, 0.30, sweep=240, waveform="soft-square"),
+        Tone(0.32, 0.72, 220.00, 0.28, sweep=330, waveform="triangle"),
+        *chord(0.74, 1.08, [293.66, 440.00, 587.33, 880.00], 1.02),
+    ], sparkle=0.046)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,30 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "3.2": {
+        "eyebrow": "ACTUALIZACIÓN INSTALADA",
+        "title": "Xomacito 3.2",
+        "subtitle": "¡BLACK BULL EDITION!!!",
+        "message": (
+            "La colección mítica estrena una nueva leyenda, fondos con identidad propia "
+            "y una alianza especial para creadores que trabajan en After Effects."
+        ),
+        "highlights": [
+            "BLACK BULL llega al gacha como personaje mítico de 6★ con nombre, sonido y estilo propios.",
+            "BLACK BULL, GATO MAGO, GATO PLAYERA y GATO ZARKING tienen fondos animados diferentes.",
+            "Cada personaje de 6★ conserva una animación exclusiva al desbloquearlo y equiparlo.",
+            "Desbloquear un personaje de 5★ o 6★ ahora confirma también un nuevo tema de Xomacito.",
+            "Visita Smooth Motion desde el anuncio especial y BLACK BULL 6★ se añadirá a tu colección.",
+            "Smooth Motion reúne curvas, texto, composición, FX, color, guías y exportación para After Effects.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako",
+        ],
+        "closing": "Gracias a BlackBull y Smooth Motion por esta alianza especial para la comunidad creativa.",
+        "platinumCelebration": True,
+        "smoothMotionPromotion": True,
+    },
     "3.1": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
         "title": "Xomacito 3.1",

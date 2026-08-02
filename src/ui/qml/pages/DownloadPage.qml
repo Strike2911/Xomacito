@@ -191,6 +191,26 @@ Item {
                             Layout.fillWidth: true; compact: page.denseLayout; label: "Preset de conversión"
                             XComboBox { Layout.fillWidth: true; compact: page.denseLayout; model: viewState.mode === "Solo Audio" ? presetStore.audioPresets : presetStore.videoPresets; currentIndex: Math.max(0, find(viewState.preset)); onActivated: downloadController.setValue("preset", currentText) }
                         }
+                        LabeledControl {
+                            visible: viewState.imagePost
+                            Layout.fillWidth: true
+                            compact: page.denseLayout
+                            label: "Formato de imagen"
+                            XComboBox {
+                                id: imageFormatCombo
+                                Layout.fillWidth: true
+                                compact: page.denseLayout
+                                model: ["Original", "JPEG", "JPG", "PNG", "WEBP"]
+                                currentIndex: Math.max(0, find(viewState.imageFormat || "Original"))
+                                onActivated: downloadController.setValue("imageFormat", currentText)
+                                Connections {
+                                    target: downloadController
+                                    function onStateChanged() {
+                                        imageFormatCombo.currentIndex = Math.max(0, imageFormatCombo.find(viewState.imageFormat || "Original"))
+                                    }
+                                }
+                            }
+                        }
                         RowLayout {
                             visible: !viewState.imagePost
                             Layout.fillWidth: true

@@ -18,12 +18,16 @@ ApplicationWindow {
     property var updateInfo: ({})
     property string dialogRequestId: ""
     property var dialogOptions: []
+    property bool pendingSmoothMotionPromo: false
 
     function finishReleaseNotice() {
         var celebrate = Boolean(noticePopup.noticeInfo.platinumCelebration)
+        pendingSmoothMotionPromo = Boolean(noticePopup.noticeInfo.smoothMotionPromotion)
         noticePopup.close()
         if (celebrate)
             platinumDelay.restart()
+        else if (pendingSmoothMotionPromo)
+            smoothMotionDelay.restart()
     }
 
     background: Item {
@@ -41,6 +45,7 @@ ApplicationWindow {
             y: -260 + Math.cos(motion.phase) * 22
             color: theme.colors.primary
             opacity: 0.07
+            visible: appController.catRarity < 6
         }
         Rectangle {
             width: 360; height: 360; radius: 180
@@ -48,6 +53,19 @@ ApplicationWindow {
             y: parent.height - 220 + Math.sin(motion.phase * 0.8) * 25
             color: theme.colors.accent
             opacity: 0.045
+            visible: appController.catRarity < 6
+        }
+        MythicEffectField {
+            anchors.fill: parent
+            animationStyle: appController.catAnimationStyle
+            effectColor: appController.catRarityColor
+            active: appController.catRarity >= 6 && settingsController.state.animationsEnabled
+            progress: 0.72
+            mode: "background"
+            visible: appController.catRarity >= 6
+            opacity: appController.catAnimationStyle === "zarking-cyber"
+                     ? 0.19
+                     : appController.catAnimationStyle === "blackbull-noir" ? 0.2 : 0.14
         }
         QtObject { id: motion; property real phase: 0 }
         NumberAnimation {
@@ -545,6 +563,10 @@ ApplicationWindow {
             platinumCardAnimation.restart()
             appController.playPlatinumCelebration()
         }
+        onClosed: {
+            if (window.pendingSmoothMotionPromo)
+                smoothMotionDelay.restart()
+        }
 
         background: Rectangle {
             color: "#E6000712"
@@ -771,6 +793,171 @@ ApplicationWindow {
                     to: 1
                     duration: settingsController.state.animationsEnabled ? 190 : 0
                     easing.type: Easing.OutCubic
+                }
+            }
+        }
+    }
+
+    Timer {
+        id: smoothMotionDelay
+        interval: 220
+        repeat: false
+        onTriggered: smoothMotionPopup.open()
+    }
+
+    Popup {
+        id: smoothMotionPopup
+        objectName: "smoothMotionPromotionPopup"
+        anchors.centerIn: parent
+        width: Math.min(820, window.width - 36)
+        height: Math.min(620, window.height - 30)
+        modal: true
+        focus: true
+        padding: 0
+        closePolicy: Popup.NoAutoClose
+        onOpened: window.pendingSmoothMotionPromo = false
+
+        enter: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 260 }
+                NumberAnimation { property: "scale"; from: 0.93; to: 1; duration: 420; easing.type: Easing.OutBack }
+            }
+        }
+        exit: Transition { NumberAnimation { property: "opacity"; to: 0; duration: 180 } }
+
+        Overlay.modal: Rectangle { color: "#E900050E" }
+        background: Rectangle {
+            radius: 28
+            color: "#07111F"
+            border.width: 2
+            border.color: "#168CFF"
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: 7
+                radius: 22
+                color: "transparent"
+                border.width: 1
+                border.color: "#3349B9FF"
+            }
+        }
+
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: window.denseWindow ? 18 : 24
+            spacing: window.denseWindow ? 9 : 13
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 14
+                Rectangle {
+                    Layout.preferredWidth: 66
+                    Layout.preferredHeight: 66
+                    radius: 33
+                    color: "#110C06"
+                    border.width: 3
+                    border.color: "#FFC857"
+                    clip: true
+                    Image {
+                        anchors.fill: parent
+                        anchors.margins: 4
+                        source: "../../../assets/release/black-bull.png"
+                        fillMode: Image.PreserveAspectCrop
+                        smooth: true
+                    }
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 3
+                    Text {
+                        text: "BLACK BULL × XOMACITO"
+                        color: "#FFC857"
+                        font.pixelSize: 11
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.7
+                    }
+                    Text {
+                        objectName: "smoothMotionPromotionTitle"
+                        Layout.fillWidth: true
+                        text: "Smooth Motion acelera tu After Effects"
+                        color: "white"
+                        font.pixelSize: window.denseWindow ? 22 : 28
+                        font.weight: Font.Black
+                        wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        text: "ALIANZA ESPECIAL · BLACK BULL EDITION!!!"
+                        color: "#52C8FF"
+                        font.pixelSize: 10
+                        font.weight: Font.DemiBold
+                        font.letterSpacing: 1.2
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.minimumHeight: 190
+                radius: 17
+                color: "#030813"
+                border.width: 1
+                border.color: "#274B92"
+                clip: true
+                Image {
+                    anchors.fill: parent
+                    anchors.margins: 2
+                    source: "../../../assets/release/smooth-motion.png"
+                    fillMode: Image.PreserveAspectFit
+                    asynchronous: true
+                    cache: true
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: "15 paneles en una sola suite para After Effects: curvas, texto, composición, FX, color, guías y exportación. Live Sync y herramientas en español para editar sin romper tu flujo."
+                color: "#C7D6EC"
+                font.pixelSize: window.denseWindow ? 10 : 11
+                lineHeight: 1.15
+                wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: window.denseWindow ? 48 : 54
+                radius: 14
+                color: "#1C1507"
+                border.width: 1
+                border.color: "#FFC857"
+                Text {
+                    anchors.centerIn: parent
+                    width: parent.width - 28
+                    text: "✦ Visita Smooth Motion y BLACK BULL 6★ se desbloqueará automáticamente en tu colección."
+                    color: "#FFF0B5"
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: window.denseWindow ? 10 : 12
+                    font.weight: Font.Bold
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                XButton {
+                    objectName: "smoothMotionLaterButton"
+                    text: "Quizás luego"
+                    kind: "secondary"
+                    onClicked: smoothMotionPopup.close()
+                }
+                XButton {
+                    objectName: "smoothMotionVisitButton"
+                    text: "Visitar web"
+                    onClicked: {
+                        appController.claimSmoothMotionBlackBull()
+                        appController.openUrl("https://getsmoothmotion.com/")
+                        smoothMotionPopup.close()
+                    }
                 }
             }
         }

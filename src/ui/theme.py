@@ -59,6 +59,11 @@ LEGACY_THEME_ALIASES = {
     "green": "forest_moss",
 }
 
+THEME_UNLOCK_ORDER = [
+    "sunset_lavender", "forest_moss", "pink_diamond", "coffee_noir",
+    "tokyo", "dorado", "green", "red", "shrek",
+]
+
 
 def _pick(value, dark: bool, fallback: str) -> str:
     if isinstance(value, (list, tuple)) and value:
@@ -84,6 +89,7 @@ class ThemeController(QObject):
     appearanceChanged = Signal()
     themeNameChanged = Signal()
     availableThemesChanged = Signal()
+    lockedThemeCountChanged = Signal()
 
     def __init__(self, project_root: str | Path, settings: SettingsStore, parent=None):
         super().__init__(parent)
@@ -96,6 +102,7 @@ class ThemeController(QObject):
         if self._theme_name != requested_theme:
             self.settings.set("selected_theme_accent", self._theme_name)
         self._colors: dict[str, str] = {}
+        self._cat_theme_unlocks = 0
         self.reload()
 
     def _normalized_theme_name(self, name: str) -> str:
@@ -118,9 +125,30 @@ class ThemeController(QObject):
 
     @Property("QStringList", notify=availableThemesChanged)
     def availableThemes(self):
-        names = {path.stem for path in self.builtin_dir.glob("*.json")}
+        builtin = {path.stem for path in self.builtin_dir.glob("*.json")}
+        names = {"midnight_ocean"}
+        names.update(name for name in THEME_UNLOCK_ORDER[:self._cat_theme_unlocks] if name in builtin)
+        # Imported themes belong to the user and are never gated by the gacha.
         names.update(path.stem for path in self.settings.themes_dir.glob("*.json"))
         return sorted(names, key=str.casefold)
+
+    @Property(int, notify=lockedThemeCountChanged)
+    def lockedThemeCount(self):
+        return max(0, len(THEME_UNLOCK_ORDER) - self._cat_theme_unlocks)
+
+    def setCatThemeUnlocks(self, amount: int):
+        amount = max(0, min(len(THEME_UNLOCK_ORDER), int(amount or 0)))
+        if amount == self._cat_theme_unlocks:
+            return
+        self._cat_theme_unlocks = amount
+        allowed = set(self.availableThemes)
+        if self._theme_name not in allowed:
+            self._theme_name = "midnight_ocean"
+            self.settings.set("selected_theme_accent", self._theme_name)
+            self.themeNameChanged.emit()
+            self.reload()
+        self.availableThemesChanged.emit()
+        self.lockedThemeCountChanged.emit()
 
     def _is_dark(self) -> bool:
         if self._appearance == "System":
@@ -190,6 +218,8 @@ class ThemeController(QObject):
     @Slot(str)
     def setTheme(self, name: str):
         name = self._normalized_theme_name(name)
+        if name not in set(self.availableThemes):
+            return
         if name == self._theme_name:
             self.settings.update({"selected_theme_accent": name, "theme_selection_explicit": True})
             return

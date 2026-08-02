@@ -23,11 +23,16 @@ RARITY_OVERRIDES = {
     "gato mago": 6,
     "gato playera": 6,
     "gato zarking": 6,
+    "gato black bull": 6,
 }
 ANIMATION_OVERRIDES = {
     "gato mago": "arcane-mage",
     "gato playera": "playera-prismatic",
     "gato zarking": "zarking-cyber",
+    "gato black bull": "blackbull-noir",
+}
+NAME_OVERRIDES = {
+    "gato black bull": "BLACK BULL",
 }
 CATALOG_SCHEMA = 2
 AVATAR_SIZE = 384
@@ -139,7 +144,7 @@ def import_collection(source: Path, destination: Path, *, append: bool = False) 
         cats.append(
             {
                 "id": cat_id,
-                "name": source_path.stem.strip().upper(),
+                "name": NAME_OVERRIDES.get(normalized_name, source_path.stem.strip().upper()),
                 "rarity": max(1, min(6, rarity)),
                 "image": output_name,
                 "avatar": avatar_name,
@@ -150,10 +155,13 @@ def import_collection(source: Path, destination: Path, *, append: bool = False) 
 
     for item in cats:
         normalized_name = _normalized_name(str(item.get("name") or item.get("originalFile") or ""))
-        item["name"] = str(
-            item.get("name")
-            or Path(str(item.get("originalFile") or "")).stem
-        ).strip().upper()
+        item["name"] = NAME_OVERRIDES.get(
+            normalized_name,
+            str(
+                item.get("name")
+                or Path(str(item.get("originalFile") or "")).stem
+            ).strip().upper(),
+        )
         if normalized_name in RARITY_OVERRIDES:
             item["rarity"] = RARITY_OVERRIDES[normalized_name]
         item["rarity"] = max(1, min(6, int(item.get("rarity", 1))))

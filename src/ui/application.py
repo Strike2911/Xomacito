@@ -80,6 +80,8 @@ class AppController(QObject):
         self.image_studio = ImageController(self.project_root, self.settings, self.pool, app_version, self)
         self.config = SettingsController(self.project_root, self.settings, self.theme, self.pool, self)
         self.cats = CatGachaController(self.project_root, self.settings, self)
+        self.theme.setCatThemeUnlocks(self.cats.state.get("themeUnlockCount", 0))
+        self.config.setValue("theme", self.theme.themeName)
         self._page = 0
         self._update_state = {
             "checking": False, "downloading": False, "progress": 0.0,
@@ -95,6 +97,9 @@ class AppController(QObject):
         self._clipboard.dataChanged.connect(self._schedule_clipboard_check)
         self.app.applicationStateChanged.connect(self._on_application_state_changed)
         self.cats.stateChanged.connect(self.catChanged)
+        self.cats.stateChanged.connect(
+            lambda: self.theme.setCatThemeUnlocks(self.cats.state.get("themeUnlockCount", 0))
+        )
         self.updateProgressReported.connect(lambda value, status: self._set_update(progress=value, status=status))
         self._connect_routes()
 
@@ -256,6 +261,11 @@ class AppController(QObject):
     @Slot(str)
     def openUrl(self, url):
         QDesktopServices.openUrl(QUrl(url))
+
+    @Slot(result="QVariantMap")
+    def claimSmoothMotionBlackBull(self):
+        """Entrega la recompensa local al visitar la alianza oficial."""
+        return self.cats.unlockPromotionalCat("BLACK BULL")
 
     @Slot()
     def openReleases(self):

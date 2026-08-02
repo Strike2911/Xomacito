@@ -10,6 +10,7 @@ Item {
     readonly property bool arcaneMage: animationStyle === "arcane-mage"
     readonly property bool playeraPrismatic: animationStyle === "playera-prismatic"
     readonly property bool zarkingCyber: animationStyle === "zarking-cyber"
+    readonly property bool blackbullNoir: animationStyle === "blackbull-noir"
     implicitWidth: 64
     implicitHeight: 64
 
@@ -198,6 +199,34 @@ Item {
                 x: parent.width / 2 + Math.cos(index * Math.PI / 3) * (parent.width / 2 - 5) - width / 2
                 y: parent.height / 2 + Math.sin(index * Math.PI / 3) * (parent.height / 2 - 5) - height / 2
             }
+        }
+    }
+
+    Item {
+        anchors.centerIn: parent
+        width: parent.width + 28
+        height: width
+        visible: root.blackbullNoir
+
+        Repeater {
+            model: 12
+            Rectangle {
+                required property int index
+                width: index % 3 === 0 ? 9 : 4
+                height: index % 3 === 0 ? 3 : width
+                radius: 2
+                rotation: index * 30 + 45
+                color: index % 2 ? "#FFC857" : "#FFF3B5"
+                x: parent.width / 2 + Math.cos(index * Math.PI / 6) * (parent.width / 2 - 5) - width / 2
+                y: parent.height / 2 + Math.sin(index * Math.PI / 6) * (parent.height / 2 - 5) - height / 2
+            }
+        }
+        RotationAnimation on rotation {
+            running: root.animatedEffects
+            from: 0
+            to: 360
+            duration: 4800
+            loops: Animation.Infinite
         }
     }
 }

@@ -140,6 +140,10 @@ class CatGachaController(QObject):
             "dailyAvailable": daily_available,
             "canRoll": daily_available or self._earned_rolls > 0,
             "unlockedCount": len(self._unlocked),
+            "themeUnlockCount": sum(
+                1 for cat_id in self._unlocked
+                if self._by_id[cat_id].rarity >= 5
+            ),
             "totalCount": len(self.catalog),
             "equippedId": equipped.id,
             "equippedName": equipped.name,
@@ -259,10 +263,46 @@ class CatGachaController(QObject):
         else:
             self._duplicates[cat.id] = self._duplicates.get(cat.id, 0) + 1
         self._total_rolls += 1
-        result = self._result(cat, isNew=is_new)
+        result = self._result(
+            cat,
+            isNew=is_new,
+            themeUnlocked=bool(is_new and cat.rarity >= 5),
+        )
         self._refresh()
         self._persist()
         self.revealRequested.emit(result)
+        return result
+
+    @Slot(str, result="QVariantMap")
+    def unlockPromotionalCat(self, cat_name):
+        """Desbloquea una recompensa promocional local de forma persistente e idempotente."""
+        wanted = str(cat_name or "").strip().casefold()
+        cat = next((item for item in self.catalog if item.name.casefold() == wanted), None)
+        if cat is None:
+            self.notificationRequested.emit(
+                "error", "Recompensa no disponible", "No se encontró BLACK BULL en la colección.",
+            )
+            return {}
+
+        is_new = cat.id not in self._unlocked
+        if is_new:
+            self._unlocked.add(cat.id)
+            self._refresh()
+            self._persist()
+        result = self._result(
+            cat,
+            isNew=is_new,
+            themeUnlocked=bool(is_new and cat.rarity >= 5),
+        )
+        if is_new:
+            self.revealRequested.emit(result)
+            self.notificationRequested.emit(
+                "success", "BLACK BULL 6★ desbloqueado", "Ya está disponible en Personalización.",
+            )
+        else:
+            self.notificationRequested.emit(
+                "info", "BLACK BULL ya es tuyo", "Puedes equiparlo desde Personalización.",
+            )
         return result
 
     @Slot(str)

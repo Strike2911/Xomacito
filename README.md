@@ -1,6 +1,6 @@
 # Xomacito
 
-Versión actual: **Xomacito 3.1**.
+Versión actual: **Xomacito 3.2**.
 
 Aplicación independiente para Windows que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike**.
 
@@ -25,7 +25,7 @@ Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión 
 - Removedor de fondos renovado con modelos BiRefNet para retratos, bordes finos y escenas complejas.
 - Temas claros y oscuros, fondos adaptativos y colección gatuna equipable.
 - Gacha de gatos: una tirada diaria gratis y una tirada adicional por cada 10 descargas exitosas.
-- 144 gatos con nombres estandarizados en mayúsculas y rarezas estables de 1 a 6 estrellas.
+- 145 personajes con nombres estandarizados en mayúsculas y rarezas estables de 1 a 6 estrellas.
 - Gatos míticos de 6 estrellas con animaciones exclusivas de desbloqueo y equipamiento.
 - Sonido de confirmación al finalizar una descarga.
 - Instalación por usuario y desinstalador integrado en Windows.
@@ -54,7 +54,7 @@ Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión 
 
 Los runtimes de compilación, herramientas externas, modelos, builds y preferencias personales están excluidos del repositorio. Los binarios distribuidos a usuarios se publican únicamente en [GitHub Releases](https://github.com/Strike2911/Xomacito/releases).
 
-La versión 3.1 presenta **¡GAKO NOS COMENTÓ EN RECURSOS!!**: la cola conserva tu posición, las paletas se recuerdan, el reescalado de video usa reintentos seguros y las publicaciones de imágenes de Instagram o Pinterest tienen un flujo propio.
+La versión 3.2 presenta **¡BLACK BULL EDITION!!!**: BLACK BULL llega como personaje de 6 estrellas, cada mítico adopta un fondo animado propio y visitar la alianza oficial de Smooth Motion desbloquea la recompensa automáticamente.
 
 Para volver a importar o ampliar la colección sin cambiar las rarezas ya asignadas:
 

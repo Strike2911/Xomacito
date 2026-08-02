@@ -26,6 +26,7 @@ class QtMigrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as appdata, patch.dict(os.environ, {"APPDATA": appdata}):
             first_store = SettingsStore("XomacitoThemePersistenceTest")
             first_theme = ThemeController(ROOT, first_store)
+            first_theme.setCatThemeUnlocks(9)
             first_theme.setTheme("coffee_noir")
 
             second_store = SettingsStore("XomacitoThemePersistenceTest")
@@ -386,6 +387,7 @@ assert advanced_popup.property("opened") is False
 
 controller.setPage(4)
 QTest.qWait(120)
+controller.theme.setCatThemeUnlocks(9)
 theme_combo = window.findChild(QObject, "themeCombo")
 assert theme_combo is not None
 open_combo(theme_combo)
