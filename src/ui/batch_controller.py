@@ -104,7 +104,7 @@ class BatchController(QObject):
     ROLES = [
         "jobId", "title", "status", "detail", "progress", "thumbnail", "jobType",
         "mode", "quality", "recode", "preset", "keepOriginal", "downloadThumbnail",
-        "itemCount", "destinationTag",
+        "embedAudioCover", "itemCount", "destinationTag",
     ]
     PLAYLIST_ENTRY_ROLES = ["index", "title", "thumbnail", "selected"]
 
@@ -123,6 +123,7 @@ class BatchController(QObject):
             "autoSendImages": False, "conflictPolicy": "Renombrar", "createSubfolder": False,
             "subfolderName": "lote_xomacito", "speedLimit": "", "globalRecode": False,
             "globalPreset": "Archivo - H.265 Normal", "globalKeepOriginal": True,
+            "globalEmbedAudioCover": settings.get("batch_embed_audio_cover", False),
             "allAudioTracks": False, "status": "Cola lista.", "progress": 0.0,
             "running": False, "analyzing": False, "selectedJobId": "",
             "selectedTag": "Sin etiqueta", "selectedTagColor": "#6F7F8F",
@@ -195,6 +196,8 @@ class BatchController(QObject):
             self._refresh_tag_state()
         elif key == "playlistAnalysis": self.settings.set("batch_playlist_analysis", bool(value))
         elif key == "fastMode": self.settings.set("batch_fast_mode", bool(value))
+        elif key == "globalEmbedAudioCover":
+            self.settings.set("batch_embed_audio_cover", bool(value))
         elif key == "selectedTag":
             self.settings.set("selected_download_tag", str(value))
             self._refresh_tag_state()
@@ -324,10 +327,17 @@ class BatchController(QObject):
             playlist_enabled=playlist,
             fast_requested=bool(self._state["fastMode"]),
         )
-        cookies, using = self._cookie_options()
-        options.update(cookies)
-        if using: options = apply_yt_patch(options)
-        info = extract_info_resilient(url, options, download=False)
+        try:
+            info = extract_info_resilient(url, options, download=False)
+        except Exception:
+            cookies, using = self._cookie_options()
+            if not using:
+                raise
+            authenticated = dict(options)
+            authenticated.update(cookies)
+            info = extract_info_resilient(
+                url, apply_yt_patch(authenticated), download=False
+            )
         if not info: raise RuntimeError("El sitio no devolvió información.")
         return normalize_info(info)
 
@@ -346,6 +356,7 @@ class BatchController(QObject):
             job.config.update({
                 "title": info.get("title") or "Playlist", "selected_indices": list(range(len(entries))),
                 "playlist_mode": self._state["globalMode"], "playlist_quality": self._state["globalQuality"],
+                "embed_audio_cover": bool(self._state["globalEmbedAudioCover"]),
                 "recode_enabled": bool(self._state["globalRecode"]), "recode_preset_name": preset,
                 "recode_keep_original": bool(self._state["globalKeepOriginal"]),
                 "output_path": self._state["effectiveOutputPath"],
@@ -359,6 +370,8 @@ class BatchController(QObject):
             job.analysis_data = info
             job.config.update({
                 "title": info.get("title") or f"video_{job.job_id[:8]}", "mode": self._state["globalMode"],
+                "thumbnail": info.get("thumbnail") or "",
+                "embed_audio_cover": bool(self._state["globalEmbedAudioCover"]),
                 "video_format_label": video.get("label", "-"), "audio_format_label": audio.get("label", "-"),
                 "resolved_video_format_id": video.get("formatId"), "resolved_audio_format_id": audio.get("formatId"),
                 "recode_enabled": bool(self._state["globalRecode"]), "recode_preset_name": preset,
@@ -392,6 +405,7 @@ class BatchController(QObject):
             if not Path(path).is_file(): continue
             job = Job({
                 "local_file_path": path, "title": Path(path).stem, "mode": self._state["globalMode"],
+                "embed_audio_cover": bool(self._state["globalEmbedAudioCover"]),
                 "recode_enabled": True, "recode_preset_name": self._state["globalPreset"],
                 "recode_keep_original": self._state["globalKeepOriginal"], "recode_all_audio_tracks": self._state["allAudioTracks"],
                 "output_path": self._state["effectiveOutputPath"],
@@ -498,7 +512,8 @@ class BatchController(QObject):
             "quality": config.get("playlist_quality", self._state["globalQuality"]),
             "recode": bool(config.get("recode_enabled")), "preset": config.get("recode_preset_name", "-"),
             "keepOriginal": bool(config.get("recode_keep_original", True)),
-            "downloadThumbnail": bool(config.get("download_thumbnail", False)), "itemCount": job.total_items,
+            "downloadThumbnail": bool(config.get("download_thumbnail", False)),
+            "embedAudioCover": bool(config.get("embed_audio_cover", False)), "itemCount": job.total_items,
             "destinationTag": config.get("destination_tag", "Sin etiqueta"),
         }
 
@@ -550,6 +565,7 @@ class BatchController(QObject):
         mapping = {
             "title": "title", "mode": "mode", "preset": "recode_preset_name", "recode": "recode_enabled",
             "keepOriginal": "recode_keep_original", "downloadThumbnail": "download_thumbnail",
+            "embedAudioCover": "embed_audio_cover",
             "video": "video_format_label", "audio": "audio_format_label", "allAudioTracks": "recode_all_audio_tracks",
         }
         if job.job_type == "PLAYLIST" and key == "mode":

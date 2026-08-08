@@ -38,6 +38,37 @@ CATALOG_SCHEMA = 2
 AVATAR_SIZE = 384
 
 
+def prepare_avatar(image: Image.Image, normalized_name: str) -> Image.Image:
+    """Crea el retrato circular y permite encuadres especiales reproducibles."""
+    if normalized_name == "gato black bull":
+        # El sombrero es parte esencial de la silueta de BLACK BULL. Un recorte
+        # a sangre lo pegaba al borde superior y desplazaba visualmente el rostro.
+        inset = 22
+        portrait_size = AVATAR_SIZE - (inset * 2)
+        portrait = ImageOps.fit(
+            image,
+            (portrait_size, portrait_size),
+            method=Image.Resampling.LANCZOS,
+            centering=(0.5, 0.5),
+        )
+        framed = Image.new("RGBA", (AVATAR_SIZE, AVATAR_SIZE), (0, 0, 0, 0))
+        framed.alpha_composite(portrait, (inset, inset + 4))
+        image = framed
+    else:
+        image = ImageOps.fit(
+            image,
+            (AVATAR_SIZE, AVATAR_SIZE),
+            method=Image.Resampling.LANCZOS,
+            centering=(0.5, 0.5),
+        )
+
+    mask = Image.new("L", image.size, 0)
+    ImageDraw.Draw(mask).ellipse((0, 0, AVATAR_SIZE - 1, AVATAR_SIZE - 1), fill=255)
+    alpha = image.getchannel("A")
+    image.putalpha(Image.composite(alpha, mask, mask))
+    return image
+
+
 def stable_id(filename: str) -> str:
     digest = hashlib.sha1(filename.casefold().encode("utf-8")).hexdigest()[:12]
     return f"cat-{digest}"
@@ -131,15 +162,7 @@ def import_collection(source: Path, destination: Path, *, append: bool = False) 
         shutil.copy2(source_path, destination / output_name)
         with Image.open(source_path) as opened:
             image = ImageOps.exif_transpose(opened).convert("RGBA")
-            image = ImageOps.fit(
-                image,
-                (AVATAR_SIZE, AVATAR_SIZE),
-                method=Image.Resampling.LANCZOS,
-                centering=(0.5, 0.5),
-            )
-            mask = Image.new("L", image.size, 0)
-            ImageDraw.Draw(mask).ellipse((0, 0, AVATAR_SIZE - 1, AVATAR_SIZE - 1), fill=255)
-            image.putalpha(mask)
+            image = prepare_avatar(image, normalized_name)
             image.save(destination / avatar_name, "WEBP", quality=88, method=4)
         cats.append(
             {

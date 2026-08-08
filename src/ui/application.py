@@ -8,9 +8,9 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from PySide6.QtCore import QObject, Property, QTimer, QUrl, Signal, Slot, Qt
-from PySide6.QtGui import QDesktopServices, QIcon
+from PySide6.QtGui import QAction, QDesktopServices, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from src.core.app_updater import (
     RELEASES_URL,
@@ -35,6 +35,7 @@ from .image_controller import ImageController
 from .presets import PresetStore
 from .settings_controller import SettingsController
 from .settings_store import SettingsStore
+from .social_controller import SocialController
 from .theme import ThemeController
 from .workers import TaskPool
 
@@ -60,10 +61,12 @@ class AppController(QObject):
     toastRequested = Signal(str, str, str)
     updatePromptRequested = Signal("QVariantMap")
     releaseNoticeRequested = Signal("QVariantMap")
+    smoothMotionPromotionRequested = Signal()
+    showWindowRequested = Signal()
     closeRequested = Signal()
     updateProgressReported = Signal(float, str)
 
-    PAGES = ["Descargar", "Cola", "Estudio de Imagen", "Personalización", "Configuración"]
+    PAGES = ["Descargar", "Cola", "Estudio de Imagen", "Personalización", "Scoreboard", "Configuración"]
 
     def __init__(self, app: QApplication, project_root: str | Path, app_version: str, parent=None):
         super().__init__(parent)
@@ -80,6 +83,7 @@ class AppController(QObject):
         self.image_studio = ImageController(self.project_root, self.settings, self.pool, app_version, self)
         self.config = SettingsController(self.project_root, self.settings, self.theme, self.pool, self)
         self.cats = CatGachaController(self.project_root, self.settings, self)
+        self.social = SocialController(self.project_root, self.settings, self.pool, self)
         self.theme.setCatThemeUnlocks(self.cats.state.get("themeUnlockCount", 0))
         self.config.setValue("theme", self.theme.themeName)
         self._page = 0
@@ -89,6 +93,7 @@ class AppController(QObject):
         }
         self._pending_update: dict = {}
         self._closing = False
+        self._tray = None
         self._last_clipboard_check = ""
         self._clipboard_timer = QTimer(self)
         self._clipboard_timer.setSingleShot(True)
@@ -103,13 +108,40 @@ class AppController(QObject):
         self.updateProgressReported.connect(lambda value, status: self._set_update(progress=value, status=status))
         self._connect_routes()
 
+    def install_tray(self, icon: QIcon):
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        tray = QSystemTrayIcon(icon, self)
+        tray.setToolTip("Xomacito")
+        menu = QMenu()
+        show_action = QAction("Abrir Xomacito", menu)
+        quit_action = QAction("Salir", menu)
+        show_action.triggered.connect(self.showWindowRequested)
+        quit_action.triggered.connect(self.app.quit)
+        menu.addAction(show_action)
+        menu.addSeparator()
+        menu.addAction(quit_action)
+        tray.setContextMenu(menu)
+        tray.activated.connect(
+            lambda reason: self.showWindowRequested.emit()
+            if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick)
+            else None
+        )
+        tray.show()
+        self._tray = tray
+
     def _connect_routes(self):
-        for controller in (self.download, self.batch, self.image_studio, self.config, self.cats):
+        for controller in (self.download, self.batch, self.image_studio, self.config, self.cats, self.social):
             controller.notificationRequested.connect(self.toastRequested)
         self.download.gachaSourceCompleted.connect(self.cats.recordSuccessfulSource)
         self.batch.gachaSourceCompleted.connect(self.cats.recordSuccessfulSource)
         self.download.successfulDownload.connect(self._play_download_completion)
         self.batch.successfulDownload.connect(self._play_download_completion)
+        self.download.successfulDownload.connect(self.social.recordDownload)
+        self.batch.successfulDownload.connect(self.social.recordDownload)
+        self.cats.stateChanged.connect(
+            lambda: self.social.syncCatCount(int(self.cats.state.get("unlockedCount", 0)))
+        )
         self.cats.revealRequested.connect(self._play_cat_reveal)
         self.cats.equippedRequested.connect(self._play_cat_equip)
         self.download.navigateRequested.connect(self.navigate)
@@ -246,9 +278,11 @@ class AppController(QObject):
             "gatitos": 3,
             "personalizacion": 3,
             "personalización": 3,
-            "settings": 4,
-            "configuracion": 4,
-            "configuración": 4,
+            "scoreboard": 4,
+            "ranking": 4,
+            "settings": 5,
+            "configuracion": 5,
+            "configuración": 5,
         }
         index = aliases.get(str(name).lower())
         if index is None:
@@ -374,10 +408,25 @@ class AppController(QObject):
             self.releaseNoticeRequested.emit(notice)
         QTimer.singleShot(450, lambda: self.checkUpdates(False))
         QTimer.singleShot(900, lambda: self.config.refreshDependencies(False))
+        QTimer.singleShot(1150, self.smoothMotionPromotionRequested.emit)
+        QTimer.singleShot(1450, self.social.request_first_run)
+        # Registra como máximo una visita por día en el servidor. El RPC es
+        # idempotente y no expone la fecha exacta de actividad al scoreboard.
+        QTimer.singleShot(1750, self.social.refresh)
+
+    @Slot()
+    def notifyRunningInBackground(self):
+        if self._tray:
+            self._tray.showMessage(
+                "Xomacito sigue listo",
+                "Puedes volver a abrirlo desde el icono de la bandeja.",
+                QSystemTrayIcon.MessageIcon.Information,
+                2600,
+            )
 
     @Slot()
     def requestClose(self):
-        self.closeRequested.emit()
+        self.app.quit()
 
     def shutdown(self):
         if self._closing:
@@ -412,12 +461,13 @@ def run_qt_app(project_root: str | Path, app_version: str) -> int:
         except (AttributeError, OSError):
             pass
     app = QApplication.instance() or QApplication(sys.argv)
-    app.setQuitOnLastWindowClosed(True)
+    app.setQuitOnLastWindowClosed(False)
     cat = daily_cat_assets(resource_root)
     if cat.ico_path.is_file():
         app.setWindowIcon(QIcon(str(cat.ico_path)))
 
     controller = AppController(app, resource_root, app_version)
+    controller.install_tray(app.windowIcon())
     engine = QQmlApplicationEngine()
     context = engine.rootContext()
     context.setContextProperty("appController", controller)
@@ -427,6 +477,7 @@ def run_qt_app(project_root: str | Path, app_version: str) -> int:
     context.setContextProperty("imageController", controller.image_studio)
     context.setContextProperty("settingsController", controller.config)
     context.setContextProperty("catController", controller.cats)
+    context.setContextProperty("socialController", controller.social)
     context.setContextProperty("presetStore", controller.presets)
     context.setContextProperty("dialogBroker", controller.dialogs)
     qml = _qml_root(resource_root) / "Main.qml"

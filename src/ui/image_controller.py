@@ -21,7 +21,13 @@ from src.core.constants import (
     REMBG_MODEL_FAMILIES,
     UPSCAYL_MODELS_MAP,
 )
-from src.core.downloader import extract_info_resilient, extract_instagram_image_post_info, is_instagram_post_url
+from src.core.downloader import (
+    extract_info_resilient,
+    extract_instagram_image_post_info,
+    extract_x_media_post_info,
+    is_instagram_post_url,
+    is_x_status_url,
+)
 from src.core.processor import FFmpegProcessor
 
 from .list_model import ObjectListModel
@@ -358,6 +364,14 @@ class ImageController(QObject):
         }
         image_urls = []
         cookie_mode = self.settings.get("cookies_mode", "No usar")
+        if is_x_status_url(url):
+            info = extract_x_media_post_info(url)
+            if info and info.get("xomacito_media_type") == "image":
+                image_urls = info.get("xomacito_images") or []
+            elif info:
+                raise RuntimeError(
+                    "La publicación de X contiene un GIF o video. Descárgala desde la pestaña Descargar."
+                )
         if is_instagram_post_url(url):
             cookie_options = {"quiet": True}
             if cookie_mode == "Archivo Manual..." and self.settings.get("cookies_path"):
@@ -623,10 +637,20 @@ class ImageController(QObject):
         return outputs
 
     def _upscale_videos_worker(self, items, output_dir, options):
+        from src.core.setup import check_and_download_upscaling_tools
         from src.core.video_upscaler import VideoUpscaler
 
         if any(item.get("mediaType") != "video" for item in items):
             raise RuntimeError("Para mejorar video, importa únicamente archivos de video.")
+
+        def setup_progress(message, percent):
+            value = max(0.01, min(0.12, float(percent or 0) / 100.0 * 0.12))
+            self.progressReported.emit(value, message or "Preparando el motor de reescalado…")
+
+        if not check_and_download_upscaling_tools(setup_progress, target_tool="Upscayl"):
+            raise RuntimeError(
+                "No se pudo preparar Upscayl automáticamente. Revisa tu conexión e inténtalo otra vez."
+            )
         outputs = []
         for index, item in enumerate(items):
             if self.cancel_event.is_set():

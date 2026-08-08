@@ -25,6 +25,29 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "3.4": {
+        "eyebrow": "ACTUALIZACIÓN INSTALADA",
+        "title": "Xomacito 3.4",
+        "subtitle": "¡RACHAS DE COMUNIDAD UPDATE!!",
+        "message": (
+            "La Liga de Xomacito estrena una vista más clara, celebratoria y humana: "
+            "ahora puedes reconocer el progreso, la colección y la constancia de la comunidad."
+        ),
+        "highlights": [
+            "Nuevo podio visual para descubrir a las leyendas de la comunidad.",
+            "Rachas diarias con fueguito, mejor marca personal y actividad de hoy.",
+            "Tu puesto, descargas y gatos aparecen juntos sin perderse en la tabla.",
+            "Resumen de jugadores activos y progreso total de la comunidad.",
+            "La actividad se calcula de forma segura sin publicar fechas exactas ni contraseñas.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako",
+        ],
+        "closing": "Gracias a toda la comunidad por mantener encendida la racha de Xomacito.",
+        "platinumCelebration": True,
+        "smoothMotionPromotion": True,
+    },
     "3.3": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
         "title": "Xomacito 3.3",

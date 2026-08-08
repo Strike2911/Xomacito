@@ -279,15 +279,15 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertTrue(notice["platinumCelebration"])
         self.assertTrue(notice["smoothMotionPromotion"])
 
-    def test_release_33_is_the_smooth_motion_update(self):
-        notice = release_notice_for_version("v3.3")
+    def test_release_34_is_the_community_streaks_update(self):
+        notice = release_notice_for_version("v3.4")
 
         self.assertIsNotNone(notice)
-        self.assertEqual(notice["title"], "Xomacito 3.3")
-        self.assertEqual(notice["subtitle"], "¡SMOOTH MOTION UPDATE!!")
+        self.assertEqual(notice["title"], "Xomacito 3.4")
+        self.assertEqual(notice["subtitle"], "¡RACHAS DE COMUNIDAD UPDATE!!")
         highlights = " ".join(notice["highlights"]).upper()
-        self.assertIn("BLACK BULL", highlights)
-        self.assertIn("SMOOTH MOTION", highlights)
+        self.assertIn("RACHAS DIARIAS", highlights)
+        self.assertIn("PODIO", highlights)
         self.assertTrue(notice["smoothMotionPromotion"])
 
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
@@ -1248,7 +1248,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-3.3-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-3.4-Setup.exe", build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)

@@ -25,8 +25,10 @@ from src.core.downloader import (
     download_media,
     extract_info_resilient,
     extract_instagram_image_post_info,
+    extract_x_media_post_info,
     instagram_image_post_info_from_metadata,
     is_instagram_post_url,
+    is_x_status_url,
 )
 from src.core.exceptions import UserCancelledError
 from src.core.file_naming import next_available_media_stem, next_available_path
@@ -500,6 +502,7 @@ class DownloadController(QObject):
 
     def _analyze_url_worker(self, url: str):
         logs: list[str] = []
+        info = None
 
         class Logger:
             def debug(self, value):
@@ -509,6 +512,13 @@ class DownloadController(QObject):
             error = debug
 
         instagram_post = is_instagram_post_url(url)
+        if is_x_status_url(url):
+            try:
+                x_info = extract_x_media_post_info(url)
+                if x_info:
+                    return normalize_info(x_info)
+            except Exception as x_error:
+                logs.append(str(x_error))
         options = configure_ytdlp_options({
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "referer": url, "noplaylist": not instagram_post, "listsubtitles": True,
@@ -518,9 +528,6 @@ class DownloadController(QObject):
         if not instagram_post:
             options["playlist_items"] = "1"
         cookie, using_cookies = self._cookie_options()
-        options.update(cookie)
-        if using_cookies:
-            options = apply_yt_patch(options)
         captured = io.StringIO()
         try:
             with redirect_stdout(captured):
@@ -530,13 +537,33 @@ class DownloadController(QObject):
             if image_info:
                 info = image_info
         except Exception as exc:
+            if using_cookies:
+                try:
+                    authenticated = apply_yt_patch({**options, **cookie})
+                    with redirect_stdout(captured):
+                        info = extract_info_resilient(url, authenticated, download=False)
+                    info = normalize_info(info)
+                    image_info = instagram_image_post_info_from_metadata(url, info or {})
+                    if image_info:
+                        info = image_info
+                except Exception as cookie_error:
+                    logs.append(str(cookie_error))
+                    info = None
+                if info:
+                    exc = None
+            if exc is None:
+                pass
             if is_instagram_post_url(url):
                 try:
-                    info = extract_instagram_image_post_info(url, ydl_options=options)
+                    # Mantener el intento público barato; cargar cookies sólo si
+                    # Instagram exige una sesión para completar el carrusel.
+                    info = info or extract_instagram_image_post_info(url, ydl_options=options)
+                    if not info and using_cookies:
+                        info = extract_instagram_image_post_info(url, ydl_options={**options, **cookie})
                 except Exception as fallback_error:
                     logs.append(str(fallback_error))
                     raise RuntimeError(friendly_ytdlp_error(exc, logs)) from exc
-            else:
+            elif not info:
                 raise RuntimeError(friendly_ytdlp_error(exc, logs)) from exc
         if not info:
             if instagram_post and not using_cookies:
@@ -856,6 +883,29 @@ class DownloadController(QObject):
         )
         video = self._video_map.get(options["video_label"], {})
         audio = self._audio_map.get(options["audio_label"], {})
+        if str((self._analysis_info or {}).get("extractor") or "").startswith("x:media"):
+            direct_url = str((video or {}).get("raw", {}).get("url") or "")
+            if direct_url:
+                target = next_available_path(
+                    Path(options["output_path"]) / f"{options['title']}.mp4"
+                )
+                with requests.get(direct_url, stream=True, timeout=45) as response:
+                    response.raise_for_status()
+                    total = int(response.headers.get("Content-Length") or 0)
+                    written = 0
+                    with target.open("wb") as handle:
+                        for chunk in response.iter_content(1024 * 256):
+                            if self.cancellation.is_set():
+                                raise UserCancelledError("Descarga cancelada.")
+                            if not chunk:
+                                continue
+                            handle.write(chunk)
+                            written += len(chunk)
+                            self.progressReported.emit(
+                                min(0.95, written / total) if total else -1.0,
+                                "Descargando contenido de X…",
+                            )
+                return str(target)
         video_id, audio_id = video.get("formatId"), audio.get("formatId")
         if options["mode"] == "Solo Audio":
             selector = audio_id or "bestaudio/best"
@@ -886,9 +936,6 @@ class DownloadController(QObject):
             if options.get("cleanSubtitle"):
                 ydl_options["convertsubtitles"] = "srt"
         cookie, using_cookies = self._cookie_options()
-        ydl_options.update(cookie)
-        if using_cookies:
-            ydl_options = apply_yt_patch(ydl_options)
         partial = options.get("fragmentEnabled") and not options.get("forceFullDownload") and not options.get("keepOriginalOnClip")
         if partial and (options.get("startTime") or options.get("endTime")):
             try:
@@ -906,6 +953,13 @@ class DownloadController(QObject):
         except Exception as first_error:
             if self.cancellation.is_set():
                 raise UserCancelledError("Descarga cancelada.") from first_error
+            if using_cookies:
+                try:
+                    authenticated = apply_yt_patch({**ydl_options, **cookie})
+                    self.progressReported.emit(0.02, "Reintentando con las cookies configuradas…")
+                    return download_media(options["url"], authenticated, self._download_progress, self.cancellation)
+                except Exception:
+                    pass
             fallback = dict(ydl_options)
             fallback.pop("download_ranges", None)
             fallback.pop("force_keyframes_at_cuts", None)

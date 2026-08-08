@@ -753,6 +753,16 @@ Item {
                         checked: viewState.allAudioTracks
                         onToggled: batchController.setValue("allAudioTracks", checked)
                     }
+                    XSwitch {
+                        compact: true
+                        visible: (selected.jobId ? selected.mode : viewState.globalMode) === "Solo Audio"
+                        text: "Incluir portada en el archivo de audio"
+                        checked: selected.jobId
+                            ? !!selected.embedAudioCover : !!viewState.globalEmbedAudioCover
+                        onToggled: selected.jobId
+                            ? batchController.setSelectedOption("embedAudioCover", checked)
+                            : batchController.setValue("globalEmbedAudioCover", checked)
+                    }
 
                     Rectangle {
                         Layout.fillWidth: true

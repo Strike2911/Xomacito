@@ -19,6 +19,18 @@ ApplicationWindow {
     property string dialogRequestId: ""
     property var dialogOptions: []
     property bool pendingSmoothMotionPromo: false
+    property bool pendingSocialOnboarding: false
+
+    onClosing: function(close) {
+        if (settingsController.state.keepRunningInBackground) {
+            close.accepted = false
+            window.hide()
+            appController.notifyRunningInBackground()
+        } else {
+            close.accepted = false
+            appController.requestClose()
+        }
+    }
 
     function finishReleaseNotice() {
         var celebrate = Boolean(noticePopup.noticeInfo.platinumCelebration)
@@ -28,6 +40,23 @@ ApplicationWindow {
             platinumDelay.restart()
         else if (pendingSmoothMotionPromo)
             smoothMotionDelay.restart()
+        else
+            tryOpenSocialOnboarding()
+    }
+
+    function requestSocialOnboarding() {
+        pendingSocialOnboarding = true
+        tryOpenSocialOnboarding()
+    }
+
+    function tryOpenSocialOnboarding() {
+        if (!pendingSocialOnboarding || socialOnboardingPopup.opened)
+            return
+        if (updatePopup.opened || noticePopup.opened || platinumPopup.opened
+                || smoothMotionPopup.opened || pendingSmoothMotionPromo
+                || smoothMotionDelay.running)
+            return
+        socialOnboardingDelay.restart()
     }
 
     background: Item {
@@ -268,7 +297,21 @@ ApplicationWindow {
                 Item { QueuePage { anchors.fill: parent } }
                 Item { ImageStudioPage { anchors.fill: parent } }
                 Item { CatGachaPage { anchors.fill: parent } }
+                Item { ScoreboardPage { anchors.fill: parent; onConnectRequested: socialOnboardingPopup.open() } }
                 Item { SettingsPage { anchors.fill: parent } }
+
+                Connections {
+                    target: appController
+                    function onPageChanged() {
+                        if (settingsController.state.animationsEnabled)
+                            pageArrival.restart()
+                    }
+                }
+                ParallelAnimation {
+                    id: pageArrival
+                    NumberAnimation { target: pages; property: "opacity"; from: 0.62; to: 1; duration: 260; easing.type: Easing.OutCubic }
+                    NumberAnimation { target: pages; property: "scale"; from: 0.992; to: 1; duration: 340; easing.type: Easing.OutCubic }
+                }
             }
         }
     }
@@ -311,6 +354,7 @@ ApplicationWindow {
         implicitHeight: updatePopupContent.implicitHeight + 44
         modal: true; focus: true; padding: 0
         closePolicy: Popup.NoAutoClose
+        onClosed: window.tryOpenSocialOnboarding()
         background: Rectangle { radius: 20; color: theme.colors.surfaceRaised; border.color: theme.colors.primary; border.width: 1 }
         ColumnLayout {
             id: updatePopupContent
@@ -566,6 +610,8 @@ ApplicationWindow {
         onClosed: {
             if (window.pendingSmoothMotionPromo)
                 smoothMotionDelay.restart()
+            else
+                window.tryOpenSocialOnboarding()
         }
 
         background: Rectangle {
@@ -805,6 +851,20 @@ ApplicationWindow {
         onTriggered: smoothMotionPopup.open()
     }
 
+    Timer {
+        id: socialOnboardingDelay
+        interval: 240
+        repeat: false
+        onTriggered: {
+            if (updatePopup.opened || noticePopup.opened || platinumPopup.opened
+                    || smoothMotionPopup.opened || window.pendingSmoothMotionPromo
+                    || smoothMotionDelay.running)
+                return
+            window.pendingSocialOnboarding = false
+            socialOnboardingPopup.open()
+        }
+    }
+
     Popup {
         id: smoothMotionPopup
         objectName: "smoothMotionPromotionPopup"
@@ -816,6 +876,7 @@ ApplicationWindow {
         padding: 0
         closePolicy: Popup.NoAutoClose
         onOpened: window.pendingSmoothMotionPromo = false
+        onClosed: window.tryOpenSocialOnboarding()
 
         enter: Transition {
             ParallelAnimation {
@@ -851,8 +912,8 @@ ApplicationWindow {
                 spacing: 14
                 CatAvatar {
                     objectName: "smoothMotionBlackBullAvatar"
-                    Layout.preferredWidth: 72
-                    Layout.preferredHeight: 72
+                    Layout.preferredWidth: window.denseWindow ? 76 : 86
+                    Layout.preferredHeight: Layout.preferredWidth
                     source: "../../../assets/cat-collection/cat-cf837ae651c8-avatar.webp"
                     rarity: 6
                     rarityColor: "#FFC857"
@@ -958,6 +1019,80 @@ ApplicationWindow {
     }
 
     Popup {
+        id: socialOnboardingPopup
+        objectName: "socialOnboardingPopup"
+        anchors.centerIn: parent
+        width: Math.min(580, window.width - 48)
+        implicitHeight: socialOnboardingContent.implicitHeight + 52
+        modal: true; focus: true; padding: 0
+        closePolicy: Popup.NoAutoClose
+        property bool createMode: true
+        background: Rectangle {
+            radius: 24
+            color: theme.colors.surfaceRaised
+            border.width: 1
+            border.color: theme.colors.primary
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: 6
+                radius: 19
+                color: "transparent"
+                border.width: 1
+                border.color: theme.colors.border
+            }
+        }
+        contentItem: ColumnLayout {
+            id: socialOnboardingContent
+            x: 26; y: 26; width: socialOnboardingPopup.width - 52; spacing: 15
+            Text { text: "TU ID DE XOMACITO"; color: theme.colors.primary; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.2 }
+            Text { Layout.fillWidth: true; text: socialOnboardingPopup.createMode ? "Entra al scoreboard" : "Volver a tu cuenta"; color: theme.colors.text; font.pixelSize: 23; font.weight: Font.DemiBold; wrapMode: Text.WordWrap }
+            Text { Layout.fillWidth: true; text: "Tu contraseña viaja directamente a Supabase Auth y nunca se guarda en este equipo."; color: theme.colors.textMuted; font.pixelSize: 11; wrapMode: Text.WordWrap }
+            XTextField { id: socialUsername; Layout.fillWidth: true; placeholderText: "ID pública (ej. strike2911)"; enabled: !socialController.state.busy }
+            XTextField { id: socialPassword; Layout.fillWidth: true; placeholderText: "Contraseña (mínimo 8 caracteres)"; echoMode: TextInput.Password; enabled: !socialController.state.busy }
+            Text { Layout.fillWidth: true; visible: socialController.state.error.length > 0; text: socialController.state.error; color: theme.colors.error; font.pixelSize: 11; wrapMode: Text.WordWrap }
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.topMargin: 3
+                spacing: 10
+                XButton {
+                    Layout.preferredWidth: 132
+                    text: socialOnboardingPopup.createMode ? "Ya tengo ID" : "Crear una ID"
+                    kind: "ghost"
+                    onClicked: socialOnboardingPopup.createMode = !socialOnboardingPopup.createMode
+                }
+                Item { Layout.fillWidth: true }
+                XButton {
+                    Layout.preferredWidth: 112
+                    text: "Ahora no"
+                    kind: "secondary"
+                    enabled: !socialController.state.busy
+                    onClicked: { socialController.dismissOnboarding(); socialOnboardingPopup.close() }
+                }
+                XButton {
+                    Layout.preferredWidth: 122
+                    text: socialController.state.busy ? "Conectando…" : socialOnboardingPopup.createMode ? "Crear ID" : "Entrar"
+                    enabled: !socialController.state.busy && socialUsername.text.length >= 3 && socialPassword.text.length >= 8
+                    onClicked: {
+                        if (socialOnboardingPopup.createMode)
+                            socialController.signUp(socialUsername.text, socialPassword.text)
+                        else
+                            socialController.signIn(socialUsername.text, socialPassword.text)
+                    }
+                }
+            }
+        }
+        Connections {
+            target: socialController
+            function onStateChanged() {
+                if (socialController.state.authenticated && socialOnboardingPopup.opened) {
+                    socialPassword.text = ""
+                    socialOnboardingPopup.close()
+                }
+            }
+        }
+    }
+
+    Popup {
         id: dialogPopup
         anchors.centerIn: parent
         width: Math.min(560, window.width - 70)
@@ -995,6 +1130,20 @@ ApplicationWindow {
         function onToastRequested(kind, title, message) { toast.toastKind = kind; toast.toastTitle = title; toast.toastMessage = message; toast.open() }
         function onUpdatePromptRequested(info) { window.updateInfo = info; updatePopup.open() }
         function onReleaseNoticeRequested(info) { noticePopup.noticeInfo = info; noticePopup.open() }
+        function onSmoothMotionPromotionRequested() {
+            window.pendingSmoothMotionPromo = true
+            if (!noticePopup.opened && !platinumPopup.opened && !updatePopup.opened)
+                smoothMotionDelay.restart()
+        }
+        function onShowWindowRequested() {
+            window.show()
+            window.raise()
+            window.requestActivate()
+        }
+    }
+    Connections {
+        target: socialController
+        function onOnboardingRequested() { window.requestSocialOnboarding() }
     }
     Connections {
         target: dialogBroker
