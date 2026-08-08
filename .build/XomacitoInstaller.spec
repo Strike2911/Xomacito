@@ -17,6 +17,7 @@ datas = [
     (str(PROJECT_ROOT / "assets" / "download-complete.mp3"), "assets"),
     (str(PROJECT_ROOT / "assets" / "sfx"), "assets/sfx"),
     (str(PROJECT_ROOT / "assets" / "release"), "assets/release"),
+    (str(PROJECT_ROOT / "assets" / "config"), "assets/config"),
     (str(PROJECT_ROOT / "Xomacito-icon.ico"), "."),
 ]
 

@@ -109,6 +109,14 @@ Item {
                     checked: viewState.openExplorerAfterDownload
                     onToggled: settingsController.setValue("openExplorerAfterDownload", checked)
                 }
+                XSwitch {
+                    objectName: "keepRunningInBackgroundSwitch"
+                    text: "Mantener Xomacito en segundo plano"
+                    checked: viewState.keepRunningInBackground
+                    onToggled: settingsController.setValue("keepRunningInBackground", checked)
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Al cerrar la ventana, Xomacito queda listo en la bandeja para abrir más rápido."
+                }
                 XSwitch { text: "Mantener modelos I.A. en memoria"; checked: viewState.keepAiModels; onToggled: settingsController.setValue("keepAiModels", checked) }
             }
             RowLayout {

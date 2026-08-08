@@ -72,12 +72,13 @@ Item {
         color: "#071824"
         border.color: root.rarityColor
         border.width: root.rarity >= 6 ? 4 : root.rarity >= 4 ? 3 : 2
+        clip: true
 
         Image {
             anchors.fill: parent
             anchors.margins: root.blackbullNoir ? 1 : 3
             source: root.source
-            fillMode: Image.PreserveAspectFit
+            fillMode: root.blackbullNoir ? Image.PreserveAspectCrop : Image.PreserveAspectFit
             mipmap: true
             smooth: true
             sourceSize.width: Math.max(128, width * 2)

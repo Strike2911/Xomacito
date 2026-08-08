@@ -15,6 +15,7 @@ from src.ui.media_logic import build_media_choices, is_editor_mp4_selection, nor
 from src.ui.application import normalize_clipboard_url
 from src.ui.presets import ALPHA_PRESET, BUILT_IN_PRESETS, resolve_recode_parameters
 from src.ui.settings_store import SettingsStore
+from src.ui.social_controller import SocialController
 from src.ui.theme import ThemeController
 
 
@@ -22,6 +23,48 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class QtMigrationTests(unittest.TestCase):
+    def test_scoreboard_exposes_progress_podium_and_activity_streaks(self):
+        qml = (ROOT / "src/ui/qml/pages/ScoreboardPage.qml").read_text(encoding="utf-8")
+        self.assertIn("La Liga de Xomacito", qml)
+        self.assertIn("Tu progreso personal", qml)
+        self.assertIn("PODIO DE LA SEMANA", qml)
+        self.assertIn("racha diaria", qml)
+        self.assertIn("activeToday", qml)
+        self.assertIn("bestStreak", qml)
+
+    def test_streak_migration_is_server_driven_and_does_not_expose_activity_dates(self):
+        migration = (ROOT / "supabase/migrations/202608080002_add_activity_streaks.sql").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("security definer", migration.lower())
+        self.assertIn("actor uuid := (select auth.uid())", migration)
+        self.assertIn("last_active_on = current_date - 1", migration)
+        self.assertIn("revoke all on table public.profile_activity from anon, authenticated", migration)
+        leaderboard_signature = migration.split("returns table", 1)[1].split(")", 1)[0]
+        self.assertNotIn("last_active_on", leaderboard_signature)
+
+    def test_social_scoreboard_uses_public_supabase_config_and_safe_ids(self):
+        class MemorySettings:
+            def __init__(self):
+                self.values = {}
+
+            def get(self, key, default=None):
+                return self.values.get(key, default)
+
+            def set(self, key, value):
+                self.values[key] = value
+
+            def update(self, values):
+                self.values.update(values)
+
+        social = SocialController(ROOT, MemorySettings(), object())
+        email, username = social._email_for_username("  Mi..ID__Prueba  ")
+        self.assertEqual(username, "mi-id-prueba")
+        self.assertEqual(email, "mi-id-prueba@rvtoyahqxpduhrwemfyv.supabase.co")
+        self.assertTrue(social.state["configured"])
+        self.assertTrue(social._anon_key.startswith("sb_publishable_"))
+        self.assertNotIn("service_role", social._anon_key)
+
     def test_selected_theme_survives_a_full_settings_restart(self):
         with tempfile.TemporaryDirectory() as appdata, patch.dict(os.environ, {"APPDATA": appdata}):
             first_store = SettingsStore("XomacitoThemePersistenceTest")
@@ -280,7 +323,7 @@ window.setProperty("width", 1280)
 window.setProperty("height", 720)
 QTest.qWait(120)
 assert list(controller.pages) == [
-    "Descargar", "Cola", "Estudio de Imagen", "Personalización", "Configuración"
+    "Descargar", "Cola", "Estudio de Imagen", "Personalización", "Scoreboard", "Configuración"
 ]
 nav_row = window.findChild(QQuickItem, "navigationBar")
 assert nav_row is not None
@@ -288,7 +331,7 @@ nav_buttons = sorted(
     [item for item in nav_row.childItems() if item.property("text") in list(controller.pages)],
     key=lambda item: float(item.property("x")),
 )
-assert len(nav_buttons) == 5
+assert len(nav_buttons) == 6
 nav_widths = [float(button.property("width")) for button in nav_buttons]
 assert max(nav_widths) - min(nav_widths) < 1.5
 last_nav = nav_buttons[-1]
@@ -449,7 +492,7 @@ QTest.keyClick(window, Qt.Key_Escape)
 QTest.qWait(180)
 assert advanced_popup.property("opened") is False
 
-controller.setPage(4)
+controller.setPage(5)
 QTest.qWait(120)
 controller.theme.setCatThemeUnlocks(9)
 theme_combo = window.findChild(QObject, "themeCombo")
@@ -499,6 +542,21 @@ controller.shutdown()
             self.assertEqual(image.size, (768, 768))
             self.assertEqual(image.mode, "RGBA")
             self.assertEqual(image.getpixel((0, 0))[3], 0)
+
+    def test_black_bull_avatar_is_centered_inside_its_mythic_ring(self):
+        avatar = ROOT / "assets" / "cat-collection" / "cat-cf837ae651c8-avatar.webp"
+        self.assertTrue(avatar.is_file())
+        with Image.open(avatar) as image:
+            rgba = image.convert("RGBA")
+            self.assertEqual(rgba.size, (384, 384))
+            self.assertEqual(rgba.getpixel((0, 0))[3], 0)
+            bounds = rgba.getchannel("A").getbbox()
+            self.assertIsNotNone(bounds)
+            left, top, right, bottom = bounds
+            self.assertGreaterEqual(left, 18)
+            self.assertGreaterEqual(top, 22)
+            self.assertLessEqual(right, 366)
+            self.assertLessEqual(bottom, 370)
 
     def test_qml_mutation_slots_are_qvariant_compatible(self):
         for relative in (

@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 APP_NAME = "Xomacito"
-APP_VERSION = "3.3"
+APP_VERSION = "3.4"
 
 FROZEN = bool(getattr(sys, "frozen", False))
 PROJECT_ROOT = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
@@ -30,7 +30,7 @@ if os.name == "nt" and hasattr(os, "add_dll_directory"):
 
 BIN_PATH = INTERNAL_DIR / "bin" if FROZEN and (INTERNAL_DIR / "bin").is_dir() else PROJECT_ROOT / "bin"
 BIN_DIR = str(BIN_PATH)
-FFMPEG_BIN_DIR = str(BIN_PATH / "ffmpeg")
+FFMPEG_BIN_DIR = os.environ.get("XOMACITO_FFMPEG_BIN_DIR", str(BIN_PATH / "ffmpeg"))
 DENO_BIN_DIR = str(BIN_PATH / "deno")
 POPPLER_BIN_DIR = str(BIN_PATH / "poppler")
 MODELS_DIR = str(BIN_PATH / "models")

@@ -73,6 +73,114 @@ def is_instagram_post_url(url):
     )
 
 
+def is_x_status_url(url):
+    """Return True for canonical X/Twitter status links, including /photo/N."""
+    try:
+        parsed = urlparse(str(url).strip())
+    except (TypeError, ValueError):
+        return False
+    hostname = (parsed.hostname or "").lower()
+    if hostname not in {"x.com", "www.x.com", "twitter.com", "www.twitter.com"}:
+        return False
+    return bool(re.match(r"^/[^/]+/status/(\d+)(?:/(?:photo|video)/(\d+))?/?$", parsed.path))
+
+
+def extract_x_media_post_info(url, timeout=25, session=None):
+    """Resolve X photos, carousels and GIFs through public media metadata.
+
+    yt-dlp treats links ending in ``/photo/1`` as video selectors and can reject
+    animated GIF posts with "Media #1 is not a video". FxTwitter exposes the
+    same public post metadata without credentials, so it is a reliable fallback
+    for both still images and directly downloadable MP4 variants.
+    """
+    if not is_x_status_url(url):
+        return None
+    parsed = urlparse(str(url).strip())
+    match = re.search(r"/status/(\d+)", parsed.path)
+    if not match:
+        return None
+    status_id = match.group(1)
+    client = session or requests.Session()
+    response = client.get(
+        f"https://api.fxtwitter.com/status/{status_id}",
+        timeout=timeout,
+        headers={"User-Agent": "Xomacito/3 (+https://github.com/Strike2911/Xomacito)"},
+    )
+    response.raise_for_status()
+    tweet = (response.json() or {}).get("tweet") or {}
+    media = (tweet.get("media") or {}).get("all") or []
+    if not media:
+        return None
+    title = str(tweet.get("text") or f"X_{status_id}").strip()
+    author = (tweet.get("author") or {}).get("screen_name") or "X"
+    images = [
+        str(item.get("url") or "") for item in media
+        if str(item.get("type") or "").lower() in {"photo", "image"} and item.get("url")
+    ]
+    if images:
+        return {
+            "id": status_id,
+            "title": title,
+            "description": title,
+            "uploader": author,
+            "thumbnail": images[0],
+            "url": images[0],
+            "webpage_url": str(url).strip(),
+            "original_url": str(url).strip(),
+            "extractor": "x:image",
+            "extractor_key": "XImage",
+            "xomacito_media_type": "image",
+            "xomacito_images": images,
+            "image_count": len(images),
+            "formats": [],
+            "subtitles": {},
+            "automatic_captions": {},
+        }
+    selected = media[0]
+    formats = []
+    variants = selected.get("variants") or selected.get("formats") or []
+    for index, variant in enumerate(variants):
+        direct_url = variant.get("url")
+        content_type = str(variant.get("content_type") or "video/mp4")
+        if not direct_url or "mpegurl" in content_type:
+            continue
+        formats.append({
+            "format_id": f"x-{index}",
+            "url": direct_url,
+            "ext": "mp4",
+            "protocol": "https",
+            "vcodec": variant.get("codec") or "h264",
+            "acodec": "none" if selected.get("type") == "gif" else "aac",
+            "tbr": (float(variant.get("bitrate") or 0) / 1000.0) or None,
+            "width": selected.get("width"),
+            "height": selected.get("height"),
+        })
+    direct_url = selected.get("url")
+    if direct_url and not formats:
+        formats.append({
+            "format_id": "x-direct", "url": direct_url, "ext": "mp4",
+            "protocol": "https", "vcodec": "h264", "acodec": "none",
+            "width": selected.get("width"), "height": selected.get("height"),
+        })
+    if not formats:
+        return None
+    return {
+        "id": status_id,
+        "title": title,
+        "description": title,
+        "uploader": author,
+        "thumbnail": selected.get("thumbnail_url") or "",
+        "webpage_url": str(url).strip(),
+        "original_url": str(url).strip(),
+        "extractor": "x:media",
+        "extractor_key": "XMedia",
+        "formats": formats,
+        "duration": selected.get("duration") or 0,
+        "width": selected.get("width"),
+        "height": selected.get("height"),
+    }
+
+
 def _instagram_image_title(raw_title, shortcode):
     title = unescape(str(raw_title or "")).strip()
     match = re.match(r"^.+?\s+on\s+Instagram:\s*[\"“]?(.*?)[\"”]?\s*$", title, re.IGNORECASE)

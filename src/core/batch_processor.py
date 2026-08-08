@@ -7,6 +7,7 @@ from .ytdlp_runtime import lazy_ytdlp
 
 yt_dlp = lazy_ytdlp()
 import shutil
+import subprocess
 
 import requests
 from PIL import Image
@@ -62,6 +63,75 @@ def playlist_audio_postprocessors() -> list[dict]:
         "preferredcodec": "mp3",
         "preferredquality": "192",
     }]
+
+
+def _configured_cookie_options(main_app) -> dict:
+    """Devuelve las cookies configuradas sin cargarlas para contenido publico."""
+    mode = getattr(main_app, "cookies_mode_saved", "No usar")
+    if mode == "Archivo Manual..." and getattr(main_app, "cookies_path", ""):
+        return {"cookiefile": main_app.cookies_path}
+    if mode != "No usar":
+        browser = getattr(main_app, "selected_browser_saved", "")
+        profile = getattr(main_app, "browser_profile_saved", "")
+        if browser:
+            return {"cookiesfrombrowser": ((browser, profile) if profile else (browser,))}
+    return {}
+
+
+def _extract_public_then_authenticated(main_app, url: str, options: dict, *, download: bool,
+                                       progress_callback=None):
+    """Evita el coste de abrir/copiar cookies salvo que el sitio las necesite."""
+    try:
+        return extract_info_resilient(
+            url, dict(options), download=download, progress_callback=progress_callback
+        )
+    except Exception:
+        cookie_options = _configured_cookie_options(main_app)
+        if not cookie_options:
+            raise
+        authenticated = dict(options)
+        authenticated.update(cookie_options)
+        authenticated = apply_yt_patch(authenticated)
+        return extract_info_resilient(
+            url, authenticated, download=download, progress_callback=progress_callback
+        )
+
+
+def _embed_audio_cover(ffmpeg_path: str, audio_path: str, thumbnail_url: str) -> None:
+    """Inserta una portada cuadrada compatible con reproductores comunes."""
+    if not thumbnail_url or not audio_path or not os.path.isfile(audio_path):
+        return
+    ext = Path(audio_path).suffix.lower()
+    if ext not in {".mp3", ".m4a", ".mp4"}:
+        return
+    response = requests.get(thumbnail_url, timeout=25)
+    response.raise_for_status()
+    image = Image.open(BytesIO(response.content)).convert("RGB")
+    image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+    cover_path = f"{audio_path}.{uuid4().hex}.cover.jpg"
+    temp_path = f"{audio_path}.{uuid4().hex}.tagged{Path(audio_path).suffix}"
+    try:
+        image.save(cover_path, "JPEG", quality=92, optimize=True)
+        command = [ffmpeg_path, "-y", "-i", audio_path, "-i", cover_path,
+                   "-map", "0:a", "-map", "1:v", "-c:a", "copy", "-c:v", "mjpeg"]
+        if ext == ".mp3":
+            command += ["-id3v2_version", "3", "-metadata:s:v", "title=Album cover",
+                        "-metadata:s:v", "comment=Cover (front)"]
+        elif ext in {".m4a", ".mp4"}:
+            command += ["-disposition:v", "attached_pic"]
+        command.append(temp_path)
+        result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
+                                errors="replace", timeout=120)
+        if result.returncode != 0 or not os.path.isfile(temp_path):
+            raise RuntimeError(result.stderr[-800:] or "FFmpeg no pudo insertar la portada.")
+        os.replace(temp_path, audio_path)
+    finally:
+        for candidate in (cover_path, temp_path):
+            try:
+                if os.path.exists(candidate):
+                    os.remove(candidate)
+            except OSError:
+                pass
 
 
 def resolve_playlist_entry_url(entry: dict, playlist_info: dict | None = None) -> str:
@@ -468,6 +538,8 @@ class QueueManager:
                 'output_path': playlist_dir,
                 'mode': mode,
                 'cookie_mode': self.main_app.cookies_mode_saved,
+                'thumbnail': entry.get('thumbnail') or '',
+                'embed_audio_cover': bool(job.config.get('embed_audio_cover', False)),
             }
             
             self._apply_playlist_quality(child_options, mode, quality_setting)
@@ -490,7 +562,7 @@ class QueueManager:
                             break
 
                 final_path_for_import = downloaded_path # Por defecto, es el descargado
-                
+
                 # ✅ LÓGICA DE HERENCIA DE RECODIFICACIÓN
                 if job.config.get('recode_enabled', False) and downloaded_path and os.path.exists(downloaded_path):
                     
@@ -586,6 +658,15 @@ class QueueManager:
                             if not job.config.get('recode_keep_original', True):
                                 try: os.remove(downloaded_path)
                                 except: pass
+
+                if (mode == "Solo Audio" and child_options.get('embed_audio_cover')
+                        and final_path_for_import and os.path.isfile(final_path_for_import)):
+                    self.ui_callback(job.job_id, "RUNNING", f"[{i+1}/{total_videos}] Insertando portada...")
+                    _embed_audio_cover(
+                        self.main_app.ffmpeg_processor.ffmpeg_path,
+                        final_path_for_import,
+                        child_options.get('thumbnail') or entry.get('thumbnail') or '',
+                    )
                 
                 # 3. Descargar Miniatura (Si el modo es "con video/audio" o "manual" activado)
                 if thumbnail_mode == "with_thumbnail":
@@ -699,27 +780,6 @@ class QueueManager:
             ydl_opts["postprocessors"] = playlist_audio_postprocessors()
             ydl_opts["keepvideo"] = False
         
-        # Cookies (Importante heredar esto)
-        cookie_mode = self.main_app.cookies_mode_saved
-        using_cookies = False
-
-        if cookie_mode == "Archivo Manual..." and self.main_app.cookies_path:
-            ydl_opts['cookiefile'] = self.main_app.cookies_path
-            using_cookies = True
-        elif cookie_mode != "No usar":
-            browser = self.main_app.selected_browser_saved
-            profile = self.main_app.browser_profile_saved
-            if profile:
-                ydl_opts['cookiesfrombrowser'] = (f"{browser}:{profile}",)
-                using_cookies = True
-            else:
-                ydl_opts['cookiesfrombrowser'] = (browser,)
-                using_cookies = True
-
-        # Aplicar parche SOLO con cookies
-        if using_cookies:
-            ydl_opts = apply_yt_patch(ydl_opts)
-
         # Hook de progreso
         def hook(d):
             if self.pause_event.is_set():
@@ -739,10 +799,8 @@ class QueueManager:
         
         # Ejecutar descarga
         try:
-            info = extract_info_resilient(
-                options['url'],
-                ydl_opts,
-                download=True,
+            info = _extract_public_then_authenticated(
+                self.main_app, options['url'], ydl_opts, download=True,
                 progress_callback=progress_callback,
             )
             candidates = [info.get('filepath'), info.get('_filename')]
@@ -817,25 +875,9 @@ class QueueManager:
                     'noprogress': True,
                 }
 
-                using_cookies = False               
-                cookie_mode = self.main_app.cookies_mode_saved
-
-                if cookie_mode == "Archivo Manual..." and self.main_app.cookies_path:
-                    ydl_opts['cookiefile'] = self.main_app.cookies_path
-                    using_cookies = True
-                elif cookie_mode != "No usar":
-                    browser_arg = self.main_app.selected_browser_saved
-                    profile = self.main_app.browser_profile_saved
-                    if profile:
-                        browser_arg += f":{profile}"
-                    ydl_opts['cookiesfrombrowser'] = (browser_arg,)
-                    using_cookies = True
-                
-                job.analysis_data = extract_info_resilient(url, ydl_opts, download=False)
-
-                # Aplicar parche SOLO con cookies
-                if using_cookies:
-                    ydl_opts = apply_yt_patch(ydl_opts)
+                job.analysis_data = _extract_public_then_authenticated(
+                    self.main_app, url, ydl_opts, download=False
+                )
                 
                 # ✅ INYECCIÓN DEL PARCHE
                 if job.analysis_data:
@@ -1033,25 +1075,7 @@ class QueueManager:
             except ValueError: 
                 pass
 
-        using_cookies = False
-        cookie_mode = self.main_app.cookies_mode_saved
-        cookie_flag = "" # Para el log de CLI
-        if cookie_mode == "Archivo Manual..." and self.main_app.cookies_path:
-            ydl_opts['cookiefile'] = self.main_app.cookies_path
-            cookie_flag = f' --cookies "{self.main_app.cookies_path}"'
-            using_cookies = True
-        elif cookie_mode != "No usar":
-            browser_arg = self.main_app.selected_browser_saved
-            profile = self.main_app.browser_profile_saved
-            if profile: 
-                browser_arg += f":{profile}"
-            ydl_opts['cookiesfrombrowser'] = (browser_arg,)
-            cookie_flag = f' --cookies-from-browser {browser_arg}'
-            using_cookies = True
-
-        # Aplicar parche SOLO con cookies
-        if using_cookies:
-            ydl_opts = apply_yt_patch(ydl_opts)
+        cookie_flag = ""
 
         # 🔧 GENERACIÓN DE COMANDO CLI EQUIVALENTE
         cli_command = f'yt-dlp -f "{precise_selector}"{cookie_flag} "{url}" -o "{output_template}"'
@@ -1098,10 +1122,8 @@ class QueueManager:
         
         # Iniciar la descarga
         try:
-            extract_info_resilient(
-                url,
-                ydl_opts,
-                download=True,
+            _extract_public_then_authenticated(
+                self.main_app, url, ydl_opts, download=True,
                 progress_callback=lambda _percentage, status: self.ui_callback(
                     job.job_id,
                     "RUNNING",
@@ -1267,6 +1289,22 @@ class QueueManager:
                 final_filepath = recoded_filepath
             
             # --- FIN DE LA LÓGICA DE RECODIFICACIÓN ---
+
+            if (mode == "Solo Audio" and job.config.get('embed_audio_cover', False)
+                    and os.path.isfile(final_filepath)):
+                self.ui_callback(job.job_id, "RUNNING", "Insertando portada en el audio...")
+                thumbnails = (job.analysis_data or {}).get('thumbnails') or []
+                thumbnail_url = job.config.get('thumbnail') or (job.analysis_data or {}).get('thumbnail') or ''
+                if not thumbnail_url:
+                    thumbnail_url = next(
+                        (item.get('url', '') for item in thumbnails if isinstance(item, dict) and item.get('url')),
+                        '',
+                    )
+                _embed_audio_cover(
+                    self.main_app.ffmpeg_processor.ffmpeg_path,
+                    final_filepath,
+                    thumbnail_url,
+                )
 
             job.status = "COMPLETED"
             job.final_filepath = final_filepath # ✅ Ahora apunta al archivo real (.m4a/.mp3)
