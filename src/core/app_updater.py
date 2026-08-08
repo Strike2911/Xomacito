@@ -25,6 +25,29 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "3.5": {
+        "eyebrow": "ACTUALIZACIÓN INSTALADA",
+        "title": "Xomacito 3.5",
+        "subtitle": "¡THE PAPU UPDATE!!",
+        "message": (
+            "El acceso a la comunidad ahora llega en el momento correcto y Xomacito vuelve "
+            "a primer plano correctamente cuando permanecía abierto en la bandeja."
+        ),
+        "highlights": [
+            "El formulario de ID mantiene textos, campos y botones dentro de su tarjeta.",
+            "La creación de ID aparece después del anuncio y la recompensa de BLACK BULL.",
+            "Abrir Xomacito desde Inicio recupera la ventana que quedó en segundo plano.",
+            "BLACK BULL conserva el sombrero y queda centrado dentro de su marco mítico.",
+            "El flujo del scoreboard conserva su conexión segura mediante Supabase Auth.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako",
+        ],
+        "closing": "Gracias a la comunidad por seguir puliendo cada rincón de Xomacito.",
+        "platinumCelebration": True,
+        "smoothMotionPromotion": True,
+    },
     "3.4": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
         "title": "Xomacito 3.4",

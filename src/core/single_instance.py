@@ -101,7 +101,7 @@ class SingleInstanceGuard:
 
 
 def focus_existing_window(title_prefix: str) -> bool:
-    """Restaura y enfoca la ventana visible cuyo título corresponde a la aplicación."""
+    """Muestra y enfoca la ventana existente, aunque esté oculta en la bandeja."""
     if os.name != "nt":
         return False
 
@@ -115,8 +115,6 @@ def focus_existing_window(title_prefix: str) -> bool:
 
     @enum_callback
     def visit_window(hwnd, _lparam):
-        if not user32.IsWindowVisible(hwnd):
-            return True
         length = user32.GetWindowTextLengthW(hwnd)
         if length <= 0:
             return True
@@ -132,7 +130,12 @@ def focus_existing_window(title_prefix: str) -> bool:
         return False
 
     hwnd = matches[0]
+    SW_SHOW = 5
     SW_RESTORE = 9
+    # Una ventana enviada a la bandeja está oculta, no minimizada. Hay que
+    # mostrarla antes de restaurarla para que un segundo inicio la recupere.
+    user32.ShowWindow(hwnd, SW_SHOW)
     user32.ShowWindow(hwnd, SW_RESTORE)
+    user32.BringWindowToTop(hwnd)
     user32.SetForegroundWindow(hwnd)
     return True

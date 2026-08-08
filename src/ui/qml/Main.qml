@@ -54,7 +54,7 @@ ApplicationWindow {
             return
         if (updatePopup.opened || noticePopup.opened || platinumPopup.opened
                 || smoothMotionPopup.opened || pendingSmoothMotionPromo
-                || smoothMotionDelay.running)
+                || smoothMotionDelay.running || catGachaPage.revealOpen)
             return
         socialOnboardingDelay.restart()
     }
@@ -296,7 +296,13 @@ ApplicationWindow {
                 Item { DownloadPage { anchors.fill: parent } }
                 Item { QueuePage { anchors.fill: parent } }
                 Item { ImageStudioPage { anchors.fill: parent } }
-                Item { CatGachaPage { anchors.fill: parent } }
+                Item {
+                    CatGachaPage {
+                        id: catGachaPage
+                        anchors.fill: parent
+                        onRevealFinished: window.tryOpenSocialOnboarding()
+                    }
+                }
                 Item { ScoreboardPage { anchors.fill: parent; onConnectRequested: socialOnboardingPopup.open() } }
                 Item { SettingsPage { anchors.fill: parent } }
 
@@ -858,7 +864,7 @@ ApplicationWindow {
         onTriggered: {
             if (updatePopup.opened || noticePopup.opened || platinumPopup.opened
                     || smoothMotionPopup.opened || window.pendingSmoothMotionPromo
-                    || smoothMotionDelay.running)
+                    || smoothMotionDelay.running || catGachaPage.revealOpen)
                 return
             window.pendingSocialOnboarding = false
             socialOnboardingPopup.open()
@@ -1022,9 +1028,10 @@ ApplicationWindow {
         id: socialOnboardingPopup
         objectName: "socialOnboardingPopup"
         anchors.centerIn: parent
-        width: Math.min(580, window.width - 48)
-        implicitHeight: socialOnboardingContent.implicitHeight + 52
+        width: Math.min(560, window.width - 40)
+        height: Math.min(window.denseWindow ? 400 : 420, window.height - 36)
         modal: true; focus: true; padding: 0
+        clip: true
         closePolicy: Popup.NoAutoClose
         property bool createMode: true
         background: Rectangle {
@@ -1043,33 +1050,96 @@ ApplicationWindow {
         }
         contentItem: ColumnLayout {
             id: socialOnboardingContent
-            x: 26; y: 26; width: socialOnboardingPopup.width - 52; spacing: 15
-            Text { text: "TU ID DE XOMACITO"; color: theme.colors.primary; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.2 }
-            Text { Layout.fillWidth: true; text: socialOnboardingPopup.createMode ? "Entra al scoreboard" : "Volver a tu cuenta"; color: theme.colors.text; font.pixelSize: 23; font.weight: Font.DemiBold; wrapMode: Text.WordWrap }
-            Text { Layout.fillWidth: true; text: "Tu contraseña viaja directamente a Supabase Auth y nunca se guarda en este equipo."; color: theme.colors.textMuted; font.pixelSize: 11; wrapMode: Text.WordWrap }
-            XTextField { id: socialUsername; Layout.fillWidth: true; placeholderText: "ID pública (ej. strike2911)"; enabled: !socialController.state.busy }
-            XTextField { id: socialPassword; Layout.fillWidth: true; placeholderText: "Contraseña (mínimo 8 caracteres)"; echoMode: TextInput.Password; enabled: !socialController.state.busy }
-            Text { Layout.fillWidth: true; visible: socialController.state.error.length > 0; text: socialController.state.error; color: theme.colors.error; font.pixelSize: 11; wrapMode: Text.WordWrap }
-            RowLayout {
+            objectName: "socialOnboardingContent"
+            anchors.fill: parent
+            anchors.margins: window.denseWindow ? 20 : 26
+            spacing: window.denseWindow ? 10 : 12
+
+            Text {
+                text: "TU ID DE XOMACITO"
+                color: theme.colors.primary
+                font.pixelSize: 10
+                font.weight: Font.Bold
+                font.letterSpacing: 1.2
+            }
+            Text {
+                objectName: "socialOnboardingTitle"
                 Layout.fillWidth: true
-                Layout.topMargin: 3
-                spacing: 10
+                text: socialOnboardingPopup.createMode ? "Entra al scoreboard" : "Volver a tu cuenta"
+                color: theme.colors.text
+                font.pixelSize: window.denseWindow ? 21 : 23
+                font.weight: Font.DemiBold
+                wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: window.denseWindow ? 50 : 54
+                radius: 12
+                color: theme.colors.surfaceSoft
+                border.width: 1
+                border.color: theme.colors.border
+                Text {
+                    objectName: "socialOnboardingPrivacy"
+                    anchors.fill: parent
+                    anchors.margins: 11
+                    text: "CUENTA SEGURA  ·  Tu contraseña se envía a Supabase Auth y no se guarda en este equipo."
+                    color: theme.colors.textMuted
+                    font.pixelSize: 10
+                    font.weight: Font.Medium
+                    wrapMode: Text.WordWrap
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
+
+            XTextField {
+                id: socialUsername
+                objectName: "socialUsernameField"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 46
+                placeholderText: "ID pública (ej. strike2911)"
+                enabled: !socialController.state.busy
+            }
+            XTextField {
+                id: socialPassword
+                objectName: "socialPasswordField"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 46
+                placeholderText: "Contraseña (mínimo 8 caracteres)"
+                echoMode: TextInput.Password
+                enabled: !socialController.state.busy
+            }
+            Text {
+                Layout.fillWidth: true
+                Layout.preferredHeight: visible ? implicitHeight : 0
+                visible: socialController.state.error.length > 0
+                text: socialController.state.error
+                color: theme.colors.error
+                font.pixelSize: 10
+                wrapMode: Text.WordWrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+            }
+            Item { Layout.fillHeight: true }
+            RowLayout {
+                objectName: "socialOnboardingActions"
+                Layout.fillWidth: true
+                spacing: 8
                 XButton {
-                    Layout.preferredWidth: 132
+                    Layout.fillWidth: true
                     text: socialOnboardingPopup.createMode ? "Ya tengo ID" : "Crear una ID"
                     kind: "ghost"
                     onClicked: socialOnboardingPopup.createMode = !socialOnboardingPopup.createMode
                 }
-                Item { Layout.fillWidth: true }
                 XButton {
-                    Layout.preferredWidth: 112
+                    Layout.fillWidth: true
                     text: "Ahora no"
                     kind: "secondary"
                     enabled: !socialController.state.busy
                     onClicked: { socialController.dismissOnboarding(); socialOnboardingPopup.close() }
                 }
                 XButton {
-                    Layout.preferredWidth: 122
+                    Layout.fillWidth: true
                     text: socialController.state.busy ? "Conectando…" : socialOnboardingPopup.createMode ? "Crear ID" : "Entrar"
                     enabled: !socialController.state.busy && socialUsername.text.length >= 3 && socialPassword.text.length >= 8
                     onClicked: {
