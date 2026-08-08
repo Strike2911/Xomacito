@@ -6,6 +6,8 @@ import "../components"
 Item {
     id: root
     property bool dense: height <= 520
+    readonly property bool revealOpen: revealPopup.opened
+    signal revealFinished()
 
     ColumnLayout {
         anchors.fill: parent
@@ -258,6 +260,7 @@ Item {
         focus: true
         padding: 0
         closePolicy: Popup.NoAutoClose
+        onClosed: root.revealFinished()
         property var result: ({})
         property real revealProgress: 1
         readonly property int resultRarity: Math.max(1, Math.min(6, Number(result.rarity || 1)))

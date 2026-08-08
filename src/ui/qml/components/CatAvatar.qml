@@ -78,7 +78,7 @@ Item {
             anchors.fill: parent
             anchors.margins: root.blackbullNoir ? 1 : 3
             source: root.source
-            fillMode: root.blackbullNoir ? Image.PreserveAspectCrop : Image.PreserveAspectFit
+            fillMode: Image.PreserveAspectFit
             mipmap: true
             smooth: true
             sourceSize.width: Math.max(128, width * 2)

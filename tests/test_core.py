@@ -290,6 +290,17 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("PODIO", highlights)
         self.assertTrue(notice["smoothMotionPromotion"])
 
+    def test_release_35_is_the_papu_update(self):
+        notice = release_notice_for_version("v3.5")
+
+        self.assertIsNotNone(notice)
+        self.assertEqual(notice["title"], "Xomacito 3.5")
+        self.assertEqual(notice["subtitle"], "¡THE PAPU UPDATE!!")
+        highlights = " ".join(notice["highlights"]).upper()
+        self.assertIn("FORMULARIO DE ID", highlights)
+        self.assertIn("BLACK BULL", highlights)
+        self.assertTrue(notice["smoothMotionPromotion"])
+
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
         digest = "sha256:" + hashlib.sha256(payload).hexdigest()
@@ -447,9 +458,13 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         main_source = (ROOT / "main.py").read_text(encoding="utf-8")
         application_source = (ROOT / "src" / "ui" / "application.py").read_text(encoding="utf-8")
+        instance_source = (ROOT / "src" / "core" / "single_instance.py").read_text(encoding="utf-8")
         self.assertIn("SingleInstanceGuard(APP_NAME)", main_source)
         self.assertIn("focus_existing_window(APP_NAME)", main_source)
         self.assertNotIn("xomacito.lock", application_source)
+        self.assertNotIn("IsWindowVisible", instance_source)
+        self.assertIn("user32.ShowWindow(hwnd, SW_SHOW)", instance_source)
+        self.assertIn("user32.BringWindowToTop(hwnd)", instance_source)
 
     def test_instagram_photo_posts_have_an_image_fallback(self):
         class FakeResponse:
@@ -1248,7 +1263,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-3.4-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-3.5-Setup.exe", build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)

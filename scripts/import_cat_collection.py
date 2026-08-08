@@ -43,16 +43,15 @@ def prepare_avatar(image: Image.Image, normalized_name: str) -> Image.Image:
     if normalized_name == "gato black bull":
         # El sombrero es parte esencial de la silueta de BLACK BULL. Un recorte
         # a sangre lo pegaba al borde superior y desplazaba visualmente el rostro.
-        inset = 22
-        portrait_size = AVATAR_SIZE - (inset * 2)
-        portrait = ImageOps.fit(
+        portrait = ImageOps.contain(
             image,
-            (portrait_size, portrait_size),
+            (346, 326),
             method=Image.Resampling.LANCZOS,
-            centering=(0.5, 0.5),
         )
         framed = Image.new("RGBA", (AVATAR_SIZE, AVATAR_SIZE), (0, 0, 0, 0))
-        framed.alpha_composite(portrait, (inset, inset + 4))
+        x = (AVATAR_SIZE - portrait.width) // 2
+        y = (AVATAR_SIZE - portrait.height) // 2 + 5
+        framed.alpha_composite(portrait, (x, y))
         image = framed
     else:
         image = ImageOps.fit(
