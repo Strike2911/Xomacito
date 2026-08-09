@@ -21,6 +21,8 @@ begin
 end;
 $$;
 
+drop function if exists public.get_xomacito_leaderboard();
+
 create or replace function public.get_xomacito_leaderboard()
 returns table (
     username text,
