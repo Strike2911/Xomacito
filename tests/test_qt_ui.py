@@ -1,8 +1,10 @@
+import base64
 import json
 import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -64,6 +66,34 @@ class QtMigrationTests(unittest.TestCase):
         self.assertTrue(social.state["configured"])
         self.assertTrue(social._anon_key.startswith("sb_publishable_"))
         self.assertNotIn("service_role", social._anon_key)
+
+    def test_social_keeps_local_cat_count_until_an_authenticated_sync(self):
+        class MemorySettings:
+            def __init__(self):
+                self.values = {}
+
+            def get(self, key, default=None):
+                return self.values.get(key, default)
+
+            def set(self, key, value):
+                self.values[key] = value
+
+            def update(self, values):
+                self.values.update(values)
+
+        social = SocialController(ROOT, MemorySettings(), object())
+        social.syncCatCount(14)
+        self.assertEqual(social._local_cat_count, 14)
+
+    def test_social_detects_a_token_that_needs_refreshing(self):
+        def token_with_expiry(expiry):
+            payload = base64.urlsafe_b64encode(
+                json.dumps({"exp": expiry}).encode("utf-8")
+            ).decode("ascii").rstrip("=")
+            return f"header.{payload}.signature"
+
+        self.assertTrue(SocialController._token_expiring(token_with_expiry(int(time.time()) - 1)))
+        self.assertFalse(SocialController._token_expiring(token_with_expiry(int(time.time()) + 3600)))
 
     def test_selected_theme_survives_a_full_settings_restart(self):
         with tempfile.TemporaryDirectory() as appdata, patch.dict(os.environ, {"APPDATA": appdata}):
@@ -571,8 +601,8 @@ controller.shutdown()
         main = (ROOT / "src" / "ui" / "qml" / "Main.qml").read_text(encoding="utf-8")
         self.assertIn("StackLayout", main)
         self.assertIn('objectName: "platinumCelebrationPopup"', main)
-        self.assertIn("¡GAKO NOS COMENTÓ", main)
-        self.assertIn("gako-recursos.png", main)
+        self.assertIn("¡PLATINASTE XOMACITO!", main)
+        self.assertIn("platinum_duality", main)
         self.assertIn("platinumCelebration", main)
         for page in ("DownloadPage", "QueuePage", "ImageStudioPage", "SettingsPage", "CatGachaPage"):
             self.assertEqual(main.count(page), 1)
