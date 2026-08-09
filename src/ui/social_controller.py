@@ -32,6 +32,7 @@ class SocialController(QObject):
         # con 401.  Este candado mantiene una única renovación en vuelo.
         self._session_lock = threading.RLock()
         self._local_cat_count: int | None = None
+        self._local_equipped_cat_id = ""
         self._state = {
             "configured": bool(self._url and self._anon_key),
             "authenticated": bool(settings.get("social_access_token", "")),
@@ -47,6 +48,7 @@ class SocialController(QObject):
             "communityDownloads": 0,
             "communityCats": 0,
             "activePlayers": 0,
+            "currentEquippedCatId": "",
         }
 
     def _load_config(self):
@@ -258,7 +260,7 @@ class SocialController(QObject):
             authenticated=False, username="", leaderboard=[], error="",
             currentRank=0, currentDownloads=0, currentCats=0,
             currentStreak=0, bestStreak=0, communityDownloads=0,
-            communityCats=0, activePlayers=0,
+            communityCats=0, activePlayers=0, currentEquippedCatId="",
         )
 
     @Slot()
@@ -283,6 +285,7 @@ class SocialController(QObject):
             # vea su colección correcta desde la primera visita.
             if self._local_cat_count is not None:
                 self._rpc("set_cat_count", {"value": self._local_cat_count})
+                self._rpc("set_equipped_cat", {"value": self._local_equipped_cat_id})
             self._rpc("record_daily_activity", {})
         response = requests.post(
             f"{self._url}/rest/v1/rpc/get_xomacito_leaderboard",
@@ -311,6 +314,7 @@ class SocialController(QObject):
                 "streak": int(row.get("streak_days") or 0),
                 "bestStreak": int(row.get("best_streak") or 0),
                 "activeToday": bool(row.get("active_today", False)),
+                "equippedCatId": str(row.get("equipped_cat_id") or ""),
             }
             for index, row in enumerate(payload if isinstance(payload, list) else [])
         ]
@@ -326,6 +330,7 @@ class SocialController(QObject):
             "communityDownloads": sum(row["downloads"] for row in rows),
             "communityCats": sum(row["cats"] for row in rows),
             "activePlayers": sum(1 for row in rows if row["activeToday"]),
+            "currentEquippedCatId": str(current.get("equippedCatId") or self._local_equipped_cat_id),
         }
 
     def _rpc(self, name, payload):
@@ -361,3 +366,15 @@ class SocialController(QObject):
         self._local_cat_count = max(0, int(count or 0))
         if self._state["authenticated"]:
             self.pool.submit(self._rpc, "set_cat_count", {"value": self._local_cat_count})
+
+    @Slot(int, str)
+    def syncProfile(self, count, equipped_cat_id):
+        normalized_count = max(0, int(count or 0))
+        normalized_cat_id = str(equipped_cat_id or "")[:80]
+        if normalized_count == self._local_cat_count and normalized_cat_id == self._local_equipped_cat_id:
+            return
+        self._local_cat_count = normalized_count
+        self._local_equipped_cat_id = normalized_cat_id
+        if self._state["authenticated"]:
+            self.pool.submit(self._rpc, "set_cat_count", {"value": normalized_count})
+            self.pool.submit(self._rpc, "set_equipped_cat", {"value": normalized_cat_id})

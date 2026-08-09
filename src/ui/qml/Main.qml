@@ -917,7 +917,7 @@ ApplicationWindow {
                     objectName: "smoothMotionBlackBullAvatar"
                     Layout.preferredWidth: window.denseWindow ? 76 : 86
                     Layout.preferredHeight: Layout.preferredWidth
-                    source: "../../../assets/cat-collection/cat-cf837ae651c8-avatar.webp"
+                    source: appController.catSourceForId("cat-cf837ae651c8")
                     rarity: 6
                     rarityColor: "#FFC857"
                     animationStyle: "blackbull-noir"

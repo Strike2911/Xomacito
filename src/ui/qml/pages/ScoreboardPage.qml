@@ -50,6 +50,15 @@ Item {
                         border.width: 2; border.color: viewState.authenticated ? theme.colors.primary : theme.colors.border
                         Text { anchors.centerIn: parent; text: viewState.currentRank > 0 ? "#" + viewState.currentRank : "ID"; color: theme.colors.text; font.pixelSize: 19; font.weight: Font.Bold }
                     }
+                    CatAvatar {
+                        visible: viewState.currentEquippedCatId !== ""
+                        Layout.preferredWidth: 54; Layout.preferredHeight: 54
+                        source: appController.catSourceForId(viewState.currentEquippedCatId || "")
+                        rarity: appController.catRarityForId(viewState.currentEquippedCatId || "")
+                        rarityColor: appController.catRarityColorForId(viewState.currentEquippedCatId || "")
+                        animationStyle: appController.catAnimationStyleForId(viewState.currentEquippedCatId || "")
+                        animatedEffects: false
+                    }
                     ColumnLayout {
                         Layout.fillWidth: true; spacing: 3
                         Text { text: viewState.authenticated ? viewState.username : "Tu lugar en la liga"; color: theme.colors.text; font.pixelSize: 15; font.weight: Font.DemiBold }
@@ -115,6 +124,15 @@ Item {
                                     color: index === 0 ? theme.colors.accent : theme.colors.surfaceSoft
                                     Text { anchors.centerIn: parent; text: index === 0 ? "👑" : "#" + (index + 1); color: index === 0 ? "#111111" : theme.colors.text; font.pixelSize: 13; font.weight: Font.Bold }
                                 }
+                                CatAvatar {
+                                    visible: player && player.equippedCatId !== ""
+                                    Layout.preferredWidth: 38; Layout.preferredHeight: 38
+                                    source: appController.catSourceForId(player ? player.equippedCatId : "")
+                                    rarity: appController.catRarityForId(player ? player.equippedCatId : "")
+                                    rarityColor: appController.catRarityColorForId(player ? player.equippedCatId : "")
+                                    animationStyle: appController.catAnimationStyleForId(player ? player.equippedCatId : "")
+                                    animatedEffects: false
+                                }
                                 ColumnLayout {
                                     Layout.fillWidth: true; spacing: 1
                                     RowLayout {
@@ -156,6 +174,15 @@ Item {
                             RowLayout {
                                 anchors.fill: parent; anchors.leftMargin: 11; anchors.rightMargin: 11; spacing: 8
                                 Text { Layout.preferredWidth: 34; text: "#" + modelData.rank; color: modelData.rank <= 3 ? theme.colors.accent : theme.colors.textMuted; font.pixelSize: 12; font.weight: Font.Bold }
+                                CatAvatar {
+                                    visible: modelData.equippedCatId !== ""
+                                    Layout.preferredWidth: 34; Layout.preferredHeight: 34
+                                    source: appController.catSourceForId(modelData.equippedCatId || "")
+                                    rarity: appController.catRarityForId(modelData.equippedCatId || "")
+                                    rarityColor: appController.catRarityColorForId(modelData.equippedCatId || "")
+                                    animationStyle: appController.catAnimationStyleForId(modelData.equippedCatId || "")
+                                    animatedEffects: false
+                                }
                                 ColumnLayout {
                                     Layout.fillWidth: true; spacing: 0
                                     RowLayout {

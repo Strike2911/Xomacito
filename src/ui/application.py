@@ -158,7 +158,10 @@ class AppController(QObject):
 
     @Slot()
     def _sync_social_cat_count(self):
-        self.social.syncCatCount(int(self.cats.state.get("unlockedCount", 0)))
+        self.social.syncProfile(
+            int(self.cats.state.get("unlockedCount", 0)),
+            str(self.cats.state.get("equippedId", "")),
+        )
 
     @Slot()
     def _check_collection_completion(self):
@@ -285,6 +288,26 @@ class AppController(QObject):
     @Property(str, notify=catChanged)
     def catAnimationStyle(self):
         return str(self.cats.state.get("equippedAnimationStyle", "standard"))
+
+    @Slot(str, result=str)
+    def catSourceForId(self, cat_id):
+        cat = self.cats._by_id.get(str(cat_id or ""))
+        return QUrl.fromLocalFile(str(cat.avatar_path)).toString() if cat else ""
+
+    @Slot(str, result=int)
+    def catRarityForId(self, cat_id):
+        cat = self.cats._by_id.get(str(cat_id or ""))
+        return int(cat.rarity) if cat else 1
+
+    @Slot(str, result=str)
+    def catRarityColorForId(self, cat_id):
+        cat = self.cats._by_id.get(str(cat_id or ""))
+        return str(cat.rarity_color) if cat else "#A8B0BC"
+
+    @Slot(str, result=str)
+    def catAnimationStyleForId(self, cat_id):
+        cat = self.cats._by_id.get(str(cat_id or ""))
+        return str(cat.animation_style) if cat else "standard"
 
     @Property("QVariantMap", notify=updateStateChanged)
     def updateState(self):
