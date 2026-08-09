@@ -36,7 +36,7 @@ from .presets import PresetStore
 from .settings_controller import SettingsController
 from .settings_store import SettingsStore
 from .social_controller import SocialController
-from .theme import ThemeController
+from .theme import THEME_UNLOCK_ORDER, ThemeController
 from .workers import TaskPool
 
 
@@ -62,6 +62,7 @@ class AppController(QObject):
     updatePromptRequested = Signal("QVariantMap")
     releaseNoticeRequested = Signal("QVariantMap")
     smoothMotionPromotionRequested = Signal()
+    collectionCompletedRequested = Signal()
     showWindowRequested = Signal()
     closeRequested = Signal()
     updateProgressReported = Signal(float, str)
@@ -105,8 +106,10 @@ class AppController(QObject):
         self.cats.stateChanged.connect(
             lambda: self.theme.setCatThemeUnlocks(self.cats.state.get("themeUnlockCount", 0))
         )
+        self.cats.stateChanged.connect(self._check_collection_completion)
         self.updateProgressReported.connect(lambda value, status: self._set_update(progress=value, status=status))
         self._connect_routes()
+        QTimer.singleShot(0, self._check_collection_completion)
 
     def install_tray(self, icon: QIcon):
         if not QSystemTrayIcon.isSystemTrayAvailable():
@@ -140,13 +143,40 @@ class AppController(QObject):
         self.download.successfulDownload.connect(self.social.recordDownload)
         self.batch.successfulDownload.connect(self.social.recordDownload)
         self.cats.stateChanged.connect(
-            lambda: self.social.syncCatCount(int(self.cats.state.get("unlockedCount", 0)))
+            self._sync_social_cat_count
         )
+        # El callback anterior sólo cubría gatos obtenidos durante la sesión.
+        # Sincronizamos también la colección que ya existía antes de iniciar la
+        # aplicación, incluido el primer acceso de una ID recién conectada.
+        self.social.stateChanged.connect(self._sync_social_cat_count)
+        QTimer.singleShot(0, self._sync_social_cat_count)
         self.cats.revealRequested.connect(self._play_cat_reveal)
         self.cats.equippedRequested.connect(self._play_cat_equip)
         self.download.navigateRequested.connect(self.navigate)
         self.download.queueRequested.connect(self._send_url_to_queue)
         self.batch.imageFilesRequested.connect(self._send_files_to_image)
+
+    @Slot()
+    def _sync_social_cat_count(self):
+        self.social.syncCatCount(int(self.cats.state.get("unlockedCount", 0)))
+
+    @Slot()
+    def _check_collection_completion(self):
+        state = dict(self.cats.state or {})
+        total = int(state.get("totalCount", 0) or 0)
+        unlocked = int(state.get("unlockedCount", 0) or 0)
+        if total <= 0 or unlocked < total:
+            return
+        self.theme.setCatThemeUnlocks(len(THEME_UNLOCK_ORDER))
+        key = "platinum_collection_reward_seen_total"
+        try:
+            seen_total = int(self.settings.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            seen_total = 0
+        if seen_total >= total:
+            return
+        self.settings.set(key, total)
+        self.collectionCompletedRequested.emit()
 
     @Slot(int)
     def _play_download_completion(self, _completed_items=1):
@@ -409,7 +439,6 @@ class AppController(QObject):
         QTimer.singleShot(450, lambda: self.checkUpdates(False))
         QTimer.singleShot(900, lambda: self.config.refreshDependencies(False))
         QTimer.singleShot(1150, self.smoothMotionPromotionRequested.emit)
-        QTimer.singleShot(1450, self.social.request_first_run)
         # Registra como máximo una visita por día en el servidor. El RPC es
         # idempotente y no expone la fecha exacta de actividad al scoreboard.
         QTimer.singleShot(1750, self.social.refresh)

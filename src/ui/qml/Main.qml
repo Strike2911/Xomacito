@@ -22,26 +22,18 @@ ApplicationWindow {
     property bool pendingSocialOnboarding: false
 
     onClosing: function(close) {
-        if (settingsController.state.keepRunningInBackground) {
-            close.accepted = false
-            window.hide()
-            appController.notifyRunningInBackground()
-        } else {
-            close.accepted = false
-            appController.requestClose()
-        }
+        close.accepted = false
+        appController.requestClose()
     }
 
     function finishReleaseNotice() {
-        var celebrate = Boolean(noticePopup.noticeInfo.platinumCelebration)
         pendingSmoothMotionPromo = Boolean(noticePopup.noticeInfo.smoothMotionPromotion)
+        var celebratePlatinum = Boolean(noticePopup.noticeInfo.platinumCelebration)
         noticePopup.close()
-        if (celebrate)
+        if (celebratePlatinum)
             platinumDelay.restart()
         else if (pendingSmoothMotionPromo)
             smoothMotionDelay.restart()
-        else
-            tryOpenSocialOnboarding()
     }
 
     function requestSocialOnboarding() {
@@ -616,8 +608,6 @@ ApplicationWindow {
         onClosed: {
             if (window.pendingSmoothMotionPromo)
                 smoothMotionDelay.restart()
-            else
-                window.tryOpenSocialOnboarding()
         }
 
         background: Rectangle {
@@ -735,7 +725,7 @@ ApplicationWindow {
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: "✦  MENSAJE DE LA COMUNIDAD  ✦"
+                        text: "✦  COLECCIÓN COMPLETA  ✦"
                         color: "#9CFF57"
                         font.pixelSize: 11
                         font.weight: Font.Bold
@@ -744,7 +734,7 @@ ApplicationWindow {
                     Text {
                         objectName: "platinumCelebrationTitle"
                         Layout.fillWidth: true
-                        text: "¡GAKO NOS COMENTÓ\nEN RECURSOS!!"
+                        text: "¡PLATINASTE XOMACITO!"
                         color: "white"
                         horizontalAlignment: Text.AlignHCenter
                         font.pixelSize: platinumPopup.width < 700 ? 25 : 31
@@ -779,23 +769,27 @@ ApplicationWindow {
                         Rectangle {
                             anchors.fill: parent
                             radius: 11
-                            color: "#10121B"
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: "#C92857" }
+                                GradientStop { position: 0.48; color: "#761C69" }
+                                GradientStop { position: 1; color: "#2763D7" }
+                            }
                             border.width: 2
                             border.color: "#FFE35A"
                             clip: true
-                            Image {
-                                anchors.fill: parent
-                                anchors.margins: 7
-                                source: "../../../assets/release/gako-recursos.png"
-                                fillMode: Image.PreserveAspectFit
-                                asynchronous: true
-                                cache: true
+                            Text {
+                                anchors.centerIn: parent
+                                text: "★  XOMACITO  ★"
+                                color: "white"
+                                font.pixelSize: 30
+                                font.weight: Font.Black
                             }
                         }
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "“Me asusto el maullido pero goty”"
+                        text: "Todos los gatos forman parte de tu colección."
                         color: "#FFE35A"
                         horizontalAlignment: Text.AlignHCenter
                         font.pixelSize: 14
@@ -804,7 +798,7 @@ ApplicationWindow {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "Un comentario que ya es parte de la historia de Xomacito."
+                        text: "Desbloqueaste el tema exclusivo PLATINUM DUALITY."
                         color: theme.colors.textMuted
                         horizontalAlignment: Text.AlignHCenter
                         font.pixelSize: 11
@@ -814,8 +808,11 @@ ApplicationWindow {
                     XButton {
                         Layout.alignment: Qt.AlignHCenter
                         implicitWidth: 190
-                        text: "¡Viva Recursos!"
-                        onClicked: platinumPopup.close()
+                        text: "Equipar tema exclusivo"
+                        onClicked: {
+                            theme.setTheme("platinum_duality")
+                            platinumPopup.close()
+                        }
                     }
                 }
             }
@@ -1200,6 +1197,7 @@ ApplicationWindow {
         function onToastRequested(kind, title, message) { toast.toastKind = kind; toast.toastTitle = title; toast.toastMessage = message; toast.open() }
         function onUpdatePromptRequested(info) { window.updateInfo = info; updatePopup.open() }
         function onReleaseNoticeRequested(info) { noticePopup.noticeInfo = info; noticePopup.open() }
+        function onCollectionCompletedRequested() { platinumDelay.restart() }
         function onSmoothMotionPromotionRequested() {
             window.pendingSmoothMotionPromo = true
             if (!noticePopup.opened && !platinumPopup.opened && !updatePopup.opened)

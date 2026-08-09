@@ -62,6 +62,7 @@ LEGACY_THEME_ALIASES = {
 THEME_UNLOCK_ORDER = [
     "sunset_lavender", "forest_moss", "pink_diamond", "coffee_noir",
     "tokyo", "dorado", "green", "red", "shrek",
+    "platinum_duality",
 ]
 
 

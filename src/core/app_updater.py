@@ -25,6 +25,29 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "3.6": {
+        "eyebrow": "ACTUALIZACIÓN INSTALADA",
+        "title": "Xomacito 3.6",
+        "subtitle": "¡COLECCIÓN PLATINO UPDATE!!",
+        "message": (
+            "Xomacito cierra y abre de forma predecible, conserva el progreso de la "
+            "comunidad y celebra completar la colección."
+        ),
+        "highlights": [
+            "BLACK BULL queda centrado dentro de sus marcos y del anuncio de Smooth Motion.",
+            "La X vuelve a cerrar Xomacito correctamente, incluso si el modo en segundo plano estaba activo.",
+            "El scoreboard sincroniza el total exacto de gatos después de renovar la sesión de Supabase.",
+            "El inicio ya no interrumpe con una ventana de acceso: el scoreboard se conecta sólo cuando tú lo decides.",
+            "Completar la colección desbloquea una celebración y el tema exclusivo Platinum Duality.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako",
+        ],
+        "closing": "Gracias a la comunidad por ayudarnos a pulir esta versión.",
+        "platinumCelebration": False,
+        "smoothMotionPromotion": True,
+    },
     "3.5": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
         "title": "Xomacito 3.5",

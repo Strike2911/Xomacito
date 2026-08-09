@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import os
 import re
+import threading
+import time
 from pathlib import Path
 
 import requests
@@ -22,6 +26,12 @@ class SocialController(QObject):
         self.settings = settings
         self.pool = pool
         self._url, self._anon_key, self._username_domain = self._load_config()
+        # Las operaciones del marcador se ejecutan desde el pool compartido.  Un
+        # refresh-token de Supabase rota en cada uso, por lo que dos renovaciones
+        # simultáneas podían invalidarse mutuamente y dejar una llamada aislada
+        # con 401.  Este candado mantiene una única renovación en vuelo.
+        self._session_lock = threading.RLock()
+        self._local_cat_count: int | None = None
         self._state = {
             "configured": bool(self._url and self._anon_key),
             "authenticated": bool(settings.get("social_access_token", "")),
@@ -83,9 +93,15 @@ class SocialController(QObject):
         if changed:
             self.stateChanged.emit()
 
-    def _headers(self, *, authenticated=False):
+    def _access_token(self) -> str:
+        with self._session_lock:
+            return str(self.settings.get("social_access_token", "")).strip()
+
+    def _headers(self, *, authenticated=False, access_token: str | None = None):
         headers = {"apikey": self._anon_key, "Content-Type": "application/json"}
-        token = str(self.settings.get("social_access_token", "")) if authenticated else self._anon_key
+        token = access_token if authenticated and access_token is not None else (
+            self._access_token() if authenticated else self._anon_key
+        )
         headers["Authorization"] = f"Bearer {token}"
         return headers
 
@@ -110,23 +126,50 @@ class SocialController(QObject):
             values["social_user_id"] = str(user["id"])
         self.settings.update(values)
 
-    def _refresh_session(self):
-        refresh_token = str(self.settings.get("social_refresh_token", "")).strip()
-        if not refresh_token:
-            return False
+    @staticmethod
+    def _token_expiring(access_token: str, *, leeway_seconds: int = 60) -> bool:
+        """Indica si un JWT vence pronto sin validar ni exponer su contenido."""
         try:
-            response = requests.post(
-                f"{self._url}/auth/v1/token?grant_type=refresh_token",
-                headers=self._headers(),
-                json={"refresh_token": refresh_token},
-                timeout=20,
-            )
-        except requests.RequestException:
+            encoded_payload = access_token.split(".", 2)[1]
+            encoded_payload += "=" * (-len(encoded_payload) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(encoded_payload).decode("utf-8"))
+            return int(payload.get("exp", 0)) <= int(time.time()) + leeway_seconds
+        except (IndexError, ValueError, TypeError, UnicodeDecodeError, binascii.Error):
+            # Si cambia el formato del token dejamos que Supabase lo valide y
+            # conservamos el reintento 401 como respaldo.
             return False
-        data = response.json() if response.content else {}
-        if response.status_code >= 400 or not data.get("access_token"):
+
+    def _refresh_session(self, *, failed_access_token: str = ""):
+        """Renueva una sola vez y reutiliza una renovación ya hecha por otro hilo."""
+        with self._session_lock:
+            current_access_token = str(self.settings.get("social_access_token", "")).strip()
+            if failed_access_token and current_access_token and current_access_token != failed_access_token:
+                return True
+
+            refresh_token = str(self.settings.get("social_refresh_token", "")).strip()
+            if not refresh_token:
+                return False
+            try:
+                response = requests.post(
+                    f"{self._url}/auth/v1/token?grant_type=refresh_token",
+                    headers=self._headers(),
+                    json={"refresh_token": refresh_token},
+                    timeout=20,
+                )
+            except requests.RequestException:
+                return False
+            data = response.json() if response.content else {}
+            if response.status_code >= 400 or not data.get("access_token"):
+                return False
+            self._store_session(data)
+            return True
+
+    def _ensure_fresh_session(self) -> bool:
+        access_token = self._access_token()
+        if not access_token:
             return False
-        self._store_session(data)
+        if self._token_expiring(access_token):
+            return self._refresh_session(failed_access_token=access_token)
         return True
 
     def request_first_run(self):
@@ -235,6 +278,11 @@ class SocialController(QObject):
 
     def _leaderboard_worker(self):
         if self._state["authenticated"]:
+            # El perfil remoto puede haber sido creado después de desbloquear
+            # gatos. Se sincroniza antes de leer el ranking para que el usuario
+            # vea su colección correcta desde la primera visita.
+            if self._local_cat_count is not None:
+                self._rpc("set_cat_count", {"value": self._local_cat_count})
             self._rpc("record_daily_activity", {})
         response = requests.post(
             f"{self._url}/rest/v1/rpc/get_xomacito_leaderboard",
@@ -284,11 +332,16 @@ class SocialController(QObject):
         if not self._state["configured"] or not self._state["authenticated"]:
             return
         try:
+            if not self._ensure_fresh_session():
+                return
+            access_token = self._access_token()
             response = requests.post(
                 f"{self._url}/rest/v1/rpc/{name}",
-                headers=self._headers(authenticated=True), json=payload, timeout=12,
+                headers=self._headers(authenticated=True, access_token=access_token),
+                json=payload,
+                timeout=12,
             )
-            if response.status_code == 401 and self._refresh_session():
+            if response.status_code == 401 and self._refresh_session(failed_access_token=access_token):
                 response = requests.post(
                     f"{self._url}/rest/v1/rpc/{name}",
                     headers=self._headers(authenticated=True), json=payload, timeout=12,
@@ -305,5 +358,6 @@ class SocialController(QObject):
 
     @Slot(int)
     def syncCatCount(self, count):
+        self._local_cat_count = max(0, int(count or 0))
         if self._state["authenticated"]:
-            self.pool.submit(self._rpc, "set_cat_count", {"value": max(0, int(count or 0))})
+            self.pool.submit(self._rpc, "set_cat_count", {"value": self._local_cat_count})

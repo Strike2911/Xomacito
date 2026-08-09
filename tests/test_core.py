@@ -1109,7 +1109,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         allowed_fonts = {"Segoe UI Variable Text", "Candara", "Bahnschrift"}
         themes = sorted((ROOT / "src" / "ui" / "themes").glob("*.json"))
-        self.assertEqual(len(themes), 10)
+        self.assertEqual(len(themes), 11)
         for path in themes:
             data = json.loads(path.read_text(encoding="utf-8-sig"))
             self.assertEqual(data["_INSTRUCCIONES_XOMACITO"]["VERSION"], "5.2", path.name)
@@ -1263,7 +1263,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-3.5-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-3.6-Setup.exe", build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)
