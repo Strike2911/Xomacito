@@ -2,7 +2,7 @@
 
 Versión actual: **Xomacito 3.3**.
 
-Aplicación independiente para Windows que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike**.
+Aplicación independiente para Windows que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike** pero principalmente inspirado en Dowp hecho por Marck.
 
 ## Descargar para Windows
 
