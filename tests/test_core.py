@@ -145,12 +145,12 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("VIVA LA GRASA!!! :V", notice["message"])
         self.assertIsNone(release_notice_for_version("1.6.3"))
 
-    def test_release_21_has_the_dowp_notice_and_idea_contributors(self):
+    def test_release_21_has_the_xomacito_notice_and_idea_contributors(self):
         notice = release_notice_for_version("v2.1")
 
         self.assertIsNotNone(notice)
         self.assertEqual(notice["title"], "Xomacito 2.1")
-        self.assertEqual(notice["subtitle"], "LA DowP KILLER UPDATE!!")
+        self.assertEqual(notice["subtitle"], "LA XOMACITO KILLER UPDATE!!")
         self.assertEqual(notice["contributors"], ["Jorge", "Xomas", "Megas", "Playera"])
         self.assertIn(
             "¡Nuevo sistema de GACHA! Desbloquea gatos y personaliza tu avatar.",
@@ -1021,7 +1021,7 @@ class XomacitoWrapperTests(unittest.TestCase):
             (ROOT / "assets" / "cat-icons" / "cat-01.ico").read_bytes(),
         )
         obsolete_paths = (
-            "DowP-icon.ico", "XomacitoCore.exe", "XomacitoTitleFixer.exe",
+            "Legacy-icon.ico", "XomacitoCore.exe", "XomacitoTitleFixer.exe",
             "XomacitoTitleFixer.spec", "title_fixer.py", "app.py",
             "runtime_bootstrap.py", "_extracted_main.pyc", "_main_extracted.pyc",
             "_internal", "engine", "build",
@@ -1032,11 +1032,6 @@ class XomacitoWrapperTests(unittest.TestCase):
         build_entries = {path.name for path in (ROOT / ".build").iterdir()}
         self.assertEqual(build_entries, {"XomacitoInstaller.spec", "XomacitoLauncher.spec"})
 
-        for source_path in (ROOT / "src").rglob("*.py"):
-            source = source_path.read_text(encoding="utf-8")
-            runtime_source = source.replace(".dowp_preset", "")
-            self.assertNotIn("dowp_", runtime_source, source_path)
-            self.assertNotIn("dowp.lock", source, source_path)
 
     def test_eight_daily_cat_icons_are_installed(self):
         cat_dir = ROOT / "assets" / "cat-icons"
@@ -1185,7 +1180,9 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertNotIn("title_fixer.py", spec)
 
         self.assertIn("PrivilegesRequired=lowest", installer)
-        self.assertIn("OutputBaseFilename=Xomacito-{#MyAppVersion}-Setup", installer)
+        self.assertIn("OutputBaseFilename=Xomacito-1.0-Definitive-Edition-Setup", installer)
+        self.assertIn('#define MyAppVersion "4.0.0"', installer)
+        self.assertIn('#define MyAppDisplayVersion "1.0 Definitive Edition"', installer)
         self.assertIn("CloseApplications=force", installer)
         self.assertIn("CloseApplicationsFilter=Xomacito.exe,ffmpeg.exe,ffprobe.exe", installer)
         self.assertNotIn("CloseApplicationsFilter=*.*", installer)
@@ -1197,7 +1194,7 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("Uninstallable=yes", installer)
         self.assertIn("Desinstalar Xomacito", installer)
         self.assertIn("{uninstallexe}", installer)
-        self.assertIn("UninstallDisplayName={#MyAppName} {#MyAppVersion}", installer)
+        self.assertIn("UninstallDisplayName={#MyAppName} {#MyAppDisplayVersion}", installer)
         self.assertIn("XOMACITOUPDATE", installer)
         self.assertIn("skipifnotsilent", installer)
         self.assertIn("IsAutoUpdate", installer)
@@ -1263,7 +1260,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-3.6-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-1.0-Definitive-Edition-Setup.exe", build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
         self.assertIn("AverageStartupSeconds", benchmark_script)

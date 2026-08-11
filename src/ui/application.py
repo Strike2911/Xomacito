@@ -64,24 +64,32 @@ class AppController(QObject):
     smoothMotionPromotionRequested = Signal()
     collectionCompletedRequested = Signal()
     showWindowRequested = Signal()
-    closeRequested = Signal()
+    trayAvailableChanged = Signal()
     updateProgressReported = Signal(float, str)
 
     PAGES = ["Descargar", "Cola", "Estudio de Imagen", "Personalización", "Scoreboard", "Configuración"]
 
-    def __init__(self, app: QApplication, project_root: str | Path, app_version: str, parent=None):
+    def __init__(
+        self,
+        app: QApplication,
+        project_root: str | Path,
+        app_version: str,
+        update_version: str | None = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.app = app
         self.project_root = Path(project_root)
         self.app_version = app_version
+        self.update_version = str(update_version or app_version)
         self.settings = SettingsStore(parent=self)
         self.pool = TaskPool(self, max_threads=max(4, min(12, os.cpu_count() or 4)))
         self.dialogs = DialogBroker(self)
         self.theme = ThemeController(self.project_root, self.settings, self)
         self.presets = PresetStore(self.settings, self)
-        self.download = DownloadController(self.project_root, self.settings, self.pool, self.dialogs, self.presets, app_version, self)
-        self.batch = BatchController(self.project_root, self.settings, self.pool, self.presets, app_version, self)
-        self.image_studio = ImageController(self.project_root, self.settings, self.pool, app_version, self)
+        self.download = DownloadController(self.project_root, self.settings, self.pool, self.dialogs, self.presets, self.update_version, self)
+        self.batch = BatchController(self.project_root, self.settings, self.pool, self.presets, self.update_version, self)
+        self.image_studio = ImageController(self.project_root, self.settings, self.pool, self.update_version, self)
         self.config = SettingsController(self.project_root, self.settings, self.theme, self.pool, self)
         self.cats = CatGachaController(self.project_root, self.settings, self)
         self.social = SocialController(self.project_root, self.settings, self.pool, self)
@@ -120,7 +128,7 @@ class AppController(QObject):
         show_action = QAction("Abrir Xomacito", menu)
         quit_action = QAction("Salir", menu)
         show_action.triggered.connect(self.showWindowRequested)
-        quit_action.triggered.connect(self.app.quit)
+        quit_action.triggered.connect(self.quitApplication)
         menu.addAction(show_action)
         menu.addSeparator()
         menu.addAction(quit_action)
@@ -132,6 +140,11 @@ class AppController(QObject):
         )
         tray.show()
         self._tray = tray
+        self.trayAvailableChanged.emit()
+
+    @Property(bool, notify=trayAvailableChanged)
+    def trayAvailable(self) -> bool:
+        return bool(self._tray and self._tray.isVisible())
 
     def _connect_routes(self):
         for controller in (self.download, self.batch, self.image_studio, self.config, self.cats, self.social):
@@ -365,7 +378,7 @@ class AppController(QObject):
         self._set_update(checking=True, status="Buscando una versión nueva…", progress=-1.0)
         self.pool.submit(
             check_for_app_update,
-            self.app_version,
+            self.update_version,
             on_result=lambda info: self._update_checked(info, bool(userInitiated)),
             on_error=lambda message, detail: self._update_failed(message, detail, bool(userInitiated)),
         )
@@ -454,10 +467,10 @@ class AppController(QObject):
     @Slot()
     def showStartupMessages(self):
         self._schedule_clipboard_check()
-        notice = release_notice_for_version(self.app_version)
+        notice = release_notice_for_version(self.update_version)
         seen = str(self.settings.get("release_notice_seen_version", ""))
-        if notice and seen != self.app_version:
-            self.settings.set("release_notice_seen_version", self.app_version)
+        if notice and seen != self.update_version:
+            self.settings.set("release_notice_seen_version", self.update_version)
             self.releaseNoticeRequested.emit(notice)
         QTimer.singleShot(450, lambda: self.checkUpdates(False))
         QTimer.singleShot(900, lambda: self.config.refreshDependencies(False))
@@ -477,7 +490,7 @@ class AppController(QObject):
             )
 
     @Slot()
-    def requestClose(self):
+    def quitApplication(self):
         self.app.quit()
 
     def shutdown(self):
@@ -502,7 +515,11 @@ def _qml_root(project_root: Path) -> Path:
     return next((path for path in candidates if (path / "Main.qml").is_file()), candidates[-1])
 
 
-def run_qt_app(project_root: str | Path, app_version: str) -> int:
+def run_qt_app(
+    project_root: str | Path,
+    app_version: str,
+    update_version: str | None = None,
+) -> int:
     root = Path(project_root)
     resource_root = Path(getattr(sys, "_MEIPASS", root))
     QApplication.setApplicationName("Xomacito")
@@ -518,7 +535,7 @@ def run_qt_app(project_root: str | Path, app_version: str) -> int:
     if cat.ico_path.is_file():
         app.setWindowIcon(QIcon(str(cat.ico_path)))
 
-    controller = AppController(app, resource_root, app_version)
+    controller = AppController(app, resource_root, app_version, update_version)
     controller.install_tray(app.windowIcon())
     engine = QQmlApplicationEngine()
     context = engine.rootContext()

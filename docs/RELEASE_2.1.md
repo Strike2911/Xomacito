@@ -1,4 +1,4 @@
-# Xomacito 2.1 - LA DowP KILLER UPDATE!!
+# Xomacito 2.1 - LA XOMACITO KILLER UPDATE!!
 
 Xomacito 2.1 publica el nuevo sistema de GACHA como una versión superior para que las instalaciones 2.0 detecten la actualización automáticamente.
 

@@ -191,11 +191,11 @@ window.setProperty("height", 720)
 controller.releaseNoticeRequested.emit(release_notice_for_version("2.1"))
 QTest.qWait(650)
 popup = window.findChild(QObject, "releaseNoticePopup")
-splash = window.findChild(QObject, "dowpSplash")
+splash = window.findChild(QObject, "releaseSplash")
 assert popup is not None and popup.property("opened") is True
 assert popup.property("y") >= 0
 assert popup.property("y") + popup.property("height") <= 720
-assert splash.property("text") == "LA DowP KILLER UPDATE!!"
+assert splash.property("text") == "LA XOMACITO KILLER UPDATE!!"
 controller.shutdown()
 '''
         with tempfile.TemporaryDirectory() as appdata:

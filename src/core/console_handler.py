@@ -8,7 +8,7 @@ from typing import Callable, Optional
 class ConsoleHandler:
     """
     Handles command execution from the internal Xomacito console.
-    Supports running integrated binaries (yt-dlp, ffmpeg) and custom commands (dp).
+    Supports running integrated binaries (yt-dlp, ffmpeg) and custom Xomacito commands.
     """
     def __init__(self, bin_dir: str, ffmpeg_bin_dir: str):
         self.bin_dir = bin_dir
@@ -57,12 +57,12 @@ class ConsoleHandler:
             self._run_upscaling_tool("srmd", raw[len("srmd"):].strip())
         elif tool == "upy":
             self._run_upscaling_tool("upscayl", raw[len("upy"):].strip())
-        elif tool == "dp":
-            self._run_dp_command(args)
+        elif tool in ("xomacito", "xo"):
+            self._run_xomacito_command(args)
         else:
             self._print_to_console(
                 f"\n[Console] Tool not recognized: '{tool}'.\n"
-                f"          Available commands: dp, ffmpeg, yt-dlp, w2x, srmd, upy\n\n",
+                f"          Available commands: xomacito, ffmpeg, yt-dlp, w2x, srmd, upy\n\n",
                 tag="warning"
             )
             self._on_finished()
@@ -177,23 +177,23 @@ class ConsoleHandler:
         
         self._print_to_console("\n")
 
-    def _run_dp_command(self, args: list[str]):
+    def _run_xomacito_command(self, args: list[str]):
         """Handles Xomacito internal commands."""
         if not args or args[0] in ("help", "-h", "--help"):
-            self._print_dp_help()
+            self._print_xomacito_help()
             self._on_finished()
             return
             
         subcommand = args[0].lower()
         # TODO: Implement subcommands like info, etc.
-        self._print_to_console(f"\n[DP] Subcommand '{subcommand}' not implemented yet.\n\n", tag="warning")
+        self._print_to_console(f"\n[Xomacito] Subcommand '{subcommand}' not implemented yet.\n\n", tag="warning")
         self._on_finished()
 
-    def _print_dp_help(self):
+    def _print_xomacito_help(self):
         help_text = (
             "Usage: [tool] [options...]\n\n"
             "Xomacito Commands:\n"
-            "  dp -h, help            Show this help message.\n\n"
+            "  xomacito -h, help      Show this help message.\n\n"
             "General Options:\n"
             "  ffmpeg                 Integrated FFmpeg engine.\n"
             "  yt-dlp                 Integrated yt-dlp engine.\n\n"

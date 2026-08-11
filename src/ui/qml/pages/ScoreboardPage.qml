@@ -57,7 +57,7 @@ Item {
                         rarity: appController.catRarityForId(viewState.currentEquippedCatId || "")
                         rarityColor: appController.catRarityColorForId(viewState.currentEquippedCatId || "")
                         animationStyle: appController.catAnimationStyleForId(viewState.currentEquippedCatId || "")
-                        animatedEffects: false
+                        animatedEffects: settingsController.state.animationsEnabled
                     }
                     ColumnLayout {
                         Layout.fillWidth: true; spacing: 3
@@ -131,7 +131,7 @@ Item {
                                     rarity: appController.catRarityForId(player ? player.equippedCatId : "")
                                     rarityColor: appController.catRarityColorForId(player ? player.equippedCatId : "")
                                     animationStyle: appController.catAnimationStyleForId(player ? player.equippedCatId : "")
-                                    animatedEffects: false
+                                    animatedEffects: settingsController.state.animationsEnabled
                                 }
                                 ColumnLayout {
                                     Layout.fillWidth: true; spacing: 1
@@ -181,7 +181,7 @@ Item {
                                     rarity: appController.catRarityForId(modelData.equippedCatId || "")
                                     rarityColor: appController.catRarityColorForId(modelData.equippedCatId || "")
                                     animationStyle: appController.catAnimationStyleForId(modelData.equippedCatId || "")
-                                    animatedEffects: false
+                                    animatedEffects: settingsController.state.animationsEnabled
                                 }
                                 ColumnLayout {
                                     Layout.fillWidth: true; spacing: 0

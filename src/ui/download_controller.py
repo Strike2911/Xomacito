@@ -876,6 +876,43 @@ class DownloadController(QObject):
             os.replace(temporary, source)
         return str(source)
 
+    def _download_x_video_as_mp4(self, direct_url: str, target: Path) -> str:
+        """Descarga un stream de X y entrega un MP4 H.264/AAC reproducible."""
+        ffmpeg_path = str(self.ffmpeg.ffmpeg_path or "")
+        if not ffmpeg_path or not Path(ffmpeg_path).is_file():
+            raise RuntimeError("No se encontró FFmpeg para preparar el video de X en MP4.")
+        self.progressReported.emit(0.04, "Preparando video MP4 compatible de X…")
+        command = [
+            ffmpeg_path, "-y", "-nostdin", "-hide_banner", "-loglevel", "error",
+            "-i", direct_url,
+            "-map", "0:v:0", "-map", "0:a?",
+            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-movflags", "+faststart", str(target),
+        ]
+        creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        completed = subprocess.run(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=creationflags,
+        )
+        if self.cancellation.is_set():
+            target.unlink(missing_ok=True)
+            raise UserCancelledError("Descarga cancelada.")
+        if completed.returncode:
+            target.unlink(missing_ok=True)
+            details = (completed.stderr or "").strip()
+            suffix = f" Detalle: {details[-600:]}" if details else ""
+            raise RuntimeError("No se pudo convertir el video de X a MP4 compatible." + suffix)
+        if not target.is_file() or target.stat().st_size < 1024:
+            target.unlink(missing_ok=True)
+            raise RuntimeError("X no entregó un video MP4 válido.")
+        self.progressReported.emit(0.96, "Video MP4 de X listo…")
+        return str(target)
+
     def _download_worker(self, options: dict) -> str:
         options = dict(options)
         options["title"] = next_available_media_stem(
@@ -883,29 +920,16 @@ class DownloadController(QObject):
         )
         video = self._video_map.get(options["video_label"], {})
         audio = self._audio_map.get(options["audio_label"], {})
-        if str((self._analysis_info or {}).get("extractor") or "").startswith("x:media"):
+        if (
+            options["mode"] != "Solo Audio"
+            and str((self._analysis_info or {}).get("extractor") or "").startswith("x:media")
+        ):
             direct_url = str((video or {}).get("raw", {}).get("url") or "")
             if direct_url:
                 target = next_available_path(
                     Path(options["output_path"]) / f"{options['title']}.mp4"
                 )
-                with requests.get(direct_url, stream=True, timeout=45) as response:
-                    response.raise_for_status()
-                    total = int(response.headers.get("Content-Length") or 0)
-                    written = 0
-                    with target.open("wb") as handle:
-                        for chunk in response.iter_content(1024 * 256):
-                            if self.cancellation.is_set():
-                                raise UserCancelledError("Descarga cancelada.")
-                            if not chunk:
-                                continue
-                            handle.write(chunk)
-                            written += len(chunk)
-                            self.progressReported.emit(
-                                min(0.95, written / total) if total else -1.0,
-                                "Descargando contenido de X…",
-                            )
-                return str(target)
+                return self._download_x_video_as_mp4(direct_url, target)
         video_id, audio_id = video.get("formatId"), audio.get("formatId")
         if options["mode"] == "Solo Audio":
             selector = audio_id or "bestaudio/best"

@@ -51,7 +51,7 @@ class SettingsController(QObject):
         self.dependencies = ObjectListModel(self.DEPENDENCY_ROLES, self)
         self.models = ObjectListModel(self.MODEL_ROLES, self)
         self._environment: dict[str, Any] = {}
-        self._console_text = "Xomacito Console\nEscribe dp help para ver los comandos disponibles.\n"
+        self._console_text = "Xomacito Console\nEscribe xomacito help para ver los comandos disponibles.\n"
         self._state = {
             "section": "General",
             "busy": False,

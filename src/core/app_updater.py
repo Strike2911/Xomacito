@@ -25,6 +25,28 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "4.0.0": {
+        "eyebrow": "EDICIÓN DEFINITIVA INSTALADA",
+        "title": "Xomacito 1.0 Definitive Edition",
+        "subtitle": "LA EDICIÓN DEFINITIVA DE XOMACITO",
+        "message": (
+            "Esta entrega consolida el descargador, la cola, el Estudio de Imagen, "
+            "la colección gatuna y la comunidad en una versión preparada para seguir creciendo."
+        ),
+        "highlights": [
+            "Actualización automática compatible con instalaciones anteriores de Xomacito.",
+            "Descargas y conversión con formatos compatibles para editar y compartir.",
+            "Colección, temas y personalización reunidos en la Definitive Edition.",
+            "Scoreboard, rachas y progreso de la comunidad conservados en un solo flujo.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako",
+        ],
+        "closing": "Gracias por construir la Definitive Edition junto a la comunidad de Xomacito.",
+        "platinumCelebration": True,
+        "smoothMotionPromotion": True,
+    },
     "3.6": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
         "title": "Xomacito 3.6",
@@ -345,7 +367,7 @@ RELEASE_NOTICES = {
     "2.1": {
         "eyebrow": "ACTUALIZACIÓN INSTALADA",
         "title": "Xomacito 2.1",
-        "subtitle": "LA DowP KILLER UPDATE!!",
+        "subtitle": "LA XOMACITO KILLER UPDATE!!",
         "message": (
             "Xomacito dio el salto a una interfaz más rápida, limpia y fluida, "
             "manteniendo todas sus herramientas en un espacio más cómodo."

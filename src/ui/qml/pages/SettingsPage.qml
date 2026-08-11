@@ -252,7 +252,7 @@ Item {
             }
             RowLayout {
                 Layout.fillWidth: true
-                XTextField { id: command; Layout.fillWidth: true; placeholderText: "dp help, ffmpeg -version, yt-dlp --version…"; onAccepted: { settingsController.executeConsole(text); text = "" } }
+                XTextField { id: command; Layout.fillWidth: true; placeholderText: "xomacito help, ffmpeg -version, yt-dlp --version…"; onAccepted: { settingsController.executeConsole(text); text = "" } }
                 XButton { text: "Ejecutar"; enabled: !viewState.consoleBusy; onClicked: { settingsController.executeConsole(command.text); command.text = "" } }
                 XButton { text: "Cancelar"; kind: "danger"; enabled: viewState.consoleBusy; onClicked: settingsController.cancelConsole() }
                 XButton { text: "Limpiar"; kind: "ghost"; onClicked: settingsController.clearConsole() }

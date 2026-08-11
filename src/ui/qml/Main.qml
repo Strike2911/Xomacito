@@ -23,7 +23,12 @@ ApplicationWindow {
 
     onClosing: function(close) {
         close.accepted = false
-        appController.requestClose()
+        if (settingsController.state.keepRunningInBackground && appController.trayAvailable) {
+            window.hide()
+            appController.notifyRunningInBackground()
+        } else {
+            appController.quitApplication()
+        }
     }
 
     function finishReleaseNotice() {
@@ -452,8 +457,8 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             implicitHeight: 34
                             Text {
-                                id: dowpSplash
-                                objectName: "dowpSplash"
+                                id: releaseSplash
+                                objectName: "releaseSplash"
                                 anchors.left: parent.left
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: noticePopup.noticeInfo.subtitle || ""

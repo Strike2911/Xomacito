@@ -7,7 +7,11 @@ from pathlib import Path
 
 
 APP_NAME = "Xomacito"
-APP_VERSION = "3.6"
+# La versión visible forma parte de la edición pública.  UPDATE_VERSION se
+# mantiene numérica para que el instalador de Windows y el actualizador puedan
+# comparar correctamente esta entrega con las instalaciones 3.x anteriores.
+APP_VERSION = "1.0 Definitive Edition"
+UPDATE_VERSION = "4.0.0"
 
 FROZEN = bool(getattr(sys, "frozen", False))
 PROJECT_ROOT = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
@@ -53,7 +57,11 @@ def _run_self_test() -> int:
 def _run_main_window() -> int:
     from src.ui import run_qt_app
 
-    return run_qt_app(project_root=PROJECT_ROOT, app_version=APP_VERSION)
+    return run_qt_app(
+        project_root=PROJECT_ROOT,
+        app_version=APP_VERSION,
+        update_version=UPDATE_VERSION,
+    )
 
 
 def main() -> int:

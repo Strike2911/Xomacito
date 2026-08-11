@@ -1,4 +1,4 @@
-# Xomacito 2.0 - LA DowP KILLER UPDATE!!
+# Xomacito 2.0 - LA XOMACITO KILLER UPDATE!!
 
 Xomacito da el salto a una interfaz Qt Quick más rápida, limpia, fluida y adaptable, sin perder ninguna de sus herramientas.
 
