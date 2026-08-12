@@ -25,6 +25,28 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "4.0.1": {
+        "eyebrow": "EDICION DEFINITIVA 1.0.1",
+        "title": "Xomacito 1.0.1 Definitive Edition",
+        "subtitle": "LA VERSION DEFINITIVA V.1.0.1",
+        "message": (
+            "El Estudio de Imagen ahora presenta sus opciones por tarea para que puedas "
+            "preparar recursos sin perderte entre ajustes tecnicos."
+        ),
+        "highlights": [
+            "Opciones de resultado guiadas: tamano, lienzo, formato, mejora y video.",
+            "El perfil inestable Modelo Generico x4 fue retirado.",
+            "La mejora con IA conserva perfiles fiables con escala 2x recomendada.",
+            "Los controles detallados siguen disponibles solo cuando los necesitas.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako",
+        ],
+        "closing": "Gracias por seguir puliendo la Definitive Edition junto a la comunidad.",
+        "platinumCelebration": False,
+        "smoothMotionPromotion": True,
+    },
     "4.0.0": {
         "eyebrow": "EDICIÓN DEFINITIVA INSTALADA",
         "title": "Xomacito 1.0 Definitive Edition",

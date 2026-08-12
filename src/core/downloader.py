@@ -33,7 +33,11 @@ class _OpenGraphParser(HTMLParser):
         attributes = {str(key).lower(): value for key, value in attrs if key}
         property_name = str(attributes.get("property") or attributes.get("name") or "").lower()
         content = attributes.get("content")
-        if property_name in {"og:image", "og:title", "og:description"} and content:
+        if property_name in {
+            "og:image", "og:title", "og:description", "og:video",
+            "og:video:url", "og:video:secure_url", "twitter:player:stream",
+            "twitter:player:stream:url",
+        } and content:
             self.values.setdefault(property_name, unescape(str(content)).strip())
 
 
@@ -73,6 +77,19 @@ def is_instagram_post_url(url):
     )
 
 
+def is_instagram_reel_url(url):
+    """Return True for public Instagram reel URLs without treating them as photos."""
+    try:
+        parsed = urlparse(str(url).strip())
+    except (TypeError, ValueError):
+        return False
+    hostname = (parsed.hostname or "").lower()
+    is_instagram = hostname == "instagram.com" or hostname.endswith(".instagram.com")
+    return parsed.scheme in {"http", "https"} and is_instagram and bool(
+        re.match(r"^/(?:reel|reels|tv)/[^/]+/?$", parsed.path)
+    )
+
+
 def is_x_status_url(url):
     """Return True for canonical X/Twitter status links, including /photo/N."""
     try:
@@ -108,7 +125,17 @@ def extract_x_media_post_info(url, timeout=25, session=None):
     )
     response.raise_for_status()
     tweet = (response.json() or {}).get("tweet") or {}
-    media = (tweet.get("media") or {}).get("all") or []
+    media_payload = tweet.get("media") or {}
+    if isinstance(media_payload, dict):
+        media = media_payload.get("all") or media_payload.get("media") or []
+    elif isinstance(media_payload, list):
+        # FxTwitter has returned both a media object and a media list over
+        # time. Supporting both keeps X posts from silently falling back to
+        # lower-quality extractor formats.
+        media = media_payload
+    else:
+        media = []
+    media = [item for item in media if isinstance(item, dict)]
     if not media:
         return None
     title = str(tweet.get("text") or f"X_{status_id}").strip()
@@ -117,7 +144,12 @@ def extract_x_media_post_info(url, timeout=25, session=None):
         str(item.get("url") or "") for item in media
         if str(item.get("type") or "").lower() in {"photo", "image"} and item.get("url")
     ]
-    if images:
+    video_items = [
+        item for item in media
+        if str(item.get("type") or "").lower() in {"video", "gif", "animated_gif"}
+        or item.get("variants") or item.get("formats")
+    ]
+    if images and not video_items:
         return {
             "id": status_id,
             "title": title,
@@ -136,14 +168,33 @@ def extract_x_media_post_info(url, timeout=25, session=None):
             "subtitles": {},
             "automatic_captions": {},
         }
-    selected = media[0]
+    # A post can contain photos followed by a video. Prefer the first item
+    # that actually contains playable variants instead of blindly selecting
+    # media[0].
+    selected = video_items[0] if video_items else media[0]
     formats = []
     variants = selected.get("variants") or selected.get("formats") or []
     for index, variant in enumerate(variants):
         direct_url = variant.get("url")
-        content_type = str(variant.get("content_type") or "video/mp4")
-        if not direct_url or "mpegurl" in content_type:
+        content_type = str(variant.get("content_type") or "").lower()
+        source_path = urlparse(str(direct_url or "")).path.lower()
+        if (
+            not direct_url
+            or "mpegurl" in content_type
+            or source_path.endswith(".m3u8")
+            or (content_type and "mp4" not in content_type and ".mp4" not in source_path)
+        ):
             continue
+        try:
+            width = int(variant.get("width") or variant.get("w") or selected.get("width") or 0)
+            height = int(variant.get("height") or variant.get("h") or selected.get("height") or 0)
+            bitrate = float(
+                variant.get("bit_rate") or variant.get("bitrate")
+                or variant.get("bitrate_bps") or 0
+            )
+        except (TypeError, ValueError):
+            width = height = 0
+            bitrate = 0
         formats.append({
             "format_id": f"x-{index}",
             "url": direct_url,
@@ -151,9 +202,12 @@ def extract_x_media_post_info(url, timeout=25, session=None):
             "protocol": "https",
             "vcodec": variant.get("codec") or "h264",
             "acodec": "none" if selected.get("type") == "gif" else "aac",
-            "tbr": (float(variant.get("bitrate") or 0) / 1000.0) or None,
-            "width": selected.get("width"),
-            "height": selected.get("height"),
+            "tbr": (bitrate / 1000.0) or None,
+            "width": width or selected.get("width"),
+            "height": height or selected.get("height"),
+            # yt-dlp uses this while resolving "best". Prefer pixels first,
+            # then the higher bitrate version of the same resolution.
+            "preference": int(width * height + bitrate),
         })
     direct_url = selected.get("url")
     if direct_url and not formats:
@@ -164,6 +218,15 @@ def extract_x_media_post_info(url, timeout=25, session=None):
         })
     if not formats:
         return None
+    formats.sort(
+        key=lambda item: (
+            int(item.get("width") or 0) * int(item.get("height") or 0),
+            float(item.get("tbr") or 0),
+        ),
+        reverse=True,
+    )
+    for rank, item in enumerate(formats, 1):
+        item["format_id"] = f"x-mp4-{rank}"
     return {
         "id": status_id,
         "title": title,
@@ -241,15 +304,39 @@ def _instagram_images_from_html(html):
     return found
 
 
+def _instagram_videos_from_html(html):
+    """Extract direct MP4 URLs exposed by Instagram reel pages and embeds."""
+    found = []
+    patterns = (
+        r'"video_url"\s*:\s*"([^"]+)"',
+        r'"contentUrl"\s*:\s*"([^"]+)"',
+        r'"video_versions"\s*:\s*\[[^\]]*?"url"\s*:\s*"([^"]+)"',
+    )
+    for pattern in patterns:
+        for value in re.findall(pattern, str(html or ""), flags=re.IGNORECASE | re.DOTALL):
+            candidate = unescape(value).replace(r"\/", "/").replace(r"\u0026", "&").replace(r"\u003d", "=")
+            # Instagram CDN video URLs are frequently extensionless. The
+            # surrounding field already identifies these as video resources,
+            # so requiring a literal .mp4 loses otherwise valid reels.
+            if candidate.startswith("https://") and candidate not in found:
+                found.append(candidate)
+    return found
+
+
 def _instagram_public_pages(url):
-    """Yield the canonical page and public embed pages used for photo carousels."""
+    """Yield canonical and embed pages while preserving the Instagram media type."""
     parsed = urlparse(str(url).strip())
-    shortcode = parsed.path.strip("/").split("/")[-1]
-    canonical = f"https://www.instagram.com/p/{shortcode}/"
+    parts = [part for part in parsed.path.strip("/").split("/") if part]
+    shortcode = parts[-1]
+    media_kind = parts[-2].lower() if len(parts) > 1 else "p"
+    if media_kind not in {"p", "reel", "reels", "tv"}:
+        media_kind = "p"
+    canonical = f"https://www.instagram.com/{media_kind}/{shortcode}/"
+    embed_pages = [canonical, f"{canonical}embed/"]
+    if media_kind == "p":
+        embed_pages.insert(1, f"{canonical}embed/captioned/")
     return canonical, (
-        canonical,
-        f"{canonical}embed/captioned/",
-        f"{canonical}embed/",
+        *embed_pages,
     )
 
 
@@ -471,6 +558,86 @@ def extract_instagram_image_post_info(url, timeout=30, session=None, ydl_options
         "_type": "playlist" if len(image_urls) > 1 else "video",
         "formats": [],
     })
+
+
+def extract_instagram_reel_info(url, timeout=30, session=None, ydl_options=None):
+    """Build playable metadata from the MP4 references exposed by a Reel page.
+
+    Instagram occasionally replies to yt-dlp with an empty format list even
+    though the browser-facing page still exposes its Open Graph video URL.
+    Keeping this narrowly scoped to reel URLs avoids treating image carousels
+    as videos while providing a useful fallback for public reels.
+    """
+    if not is_instagram_reel_url(url):
+        return None
+
+    client = _instagram_requests_client(ydl_options, session)
+    canonical, public_pages = _instagram_public_pages(url)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36",
+        "Accept-Language": "es-ES,es;q=0.9,en;q=0.7",
+        "Referer": canonical,
+    }
+    shortcode = urlparse(canonical).path.strip("/").split("/")[-1]
+    for page_url in public_pages:
+        try:
+            response = client.get(page_url, timeout=timeout, allow_redirects=True, headers=headers)
+            response.raise_for_status()
+        except Exception:
+            continue
+
+        parser = _OpenGraphParser()
+        try:
+            parser.feed(response.text)
+        except (TypeError, ValueError):
+            pass
+
+        urls = []
+        for field in (
+            "og:video:secure_url", "og:video:url", "og:video",
+            "twitter:player:stream:url", "twitter:player:stream",
+        ):
+            candidate = str(parser.values.get(field) or "").strip()
+            if candidate.startswith("https://") and candidate not in urls:
+                urls.append(candidate)
+        for candidate in _instagram_videos_from_html(response.text):
+            if candidate not in urls:
+                urls.append(candidate)
+
+        formats = []
+        for index, candidate in enumerate(urls, 1):
+            formats.append({
+                "format_id": f"instagram-reel-{index}",
+                "url": candidate,
+                "ext": "mp4",
+                "protocol": "https",
+                "vcodec": "h264",
+                "acodec": "aac",
+                "preference": len(urls) - index + 1,
+            })
+        if not formats:
+            continue
+
+        thumbnail = str(parser.values.get("og:image") or "").strip()
+        title = _instagram_image_title(parser.values.get("og:title"), shortcode)
+        return {
+            "id": shortcode,
+            "title": title,
+            "description": str(parser.values.get("og:description") or ""),
+            "thumbnail": thumbnail,
+            "webpage_url": str(url).strip(),
+            "original_url": str(url).strip(),
+            "extractor": "instagram:reel",
+            "extractor_key": "InstagramReel",
+            "formats": formats,
+            "url": formats[0]["url"],
+            "ext": "mp4",
+            "vcodec": "h264",
+            "acodec": "aac",
+            "subtitles": {},
+            "automatic_captions": {},
+        }
+    return None
 
 def get_deno_path():
     """Obtiene la ruta absoluta de la carpeta donde está deno.exe."""

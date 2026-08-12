@@ -25,9 +25,11 @@ from src.core.downloader import (
     download_media,
     extract_info_resilient,
     extract_instagram_image_post_info,
+    extract_instagram_reel_info,
     extract_x_media_post_info,
     instagram_image_post_info_from_metadata,
     is_instagram_post_url,
+    is_instagram_reel_url,
     is_x_status_url,
 )
 from src.core.exceptions import UserCancelledError
@@ -437,6 +439,18 @@ class DownloadController(QObject):
 
     def _analyze_local_worker(self, path: str):
         info = self.ffmpeg.get_local_media_info(path)
+        # Algunos reels públicos devuelven metadatos incompletos a yt-dlp sin
+        # lanzar una excepción. En ese caso todavía podemos recuperar el MP4
+        # expuesto por la página pública de Instagram.
+        if not info and instagram_reel:
+            try:
+                info = extract_instagram_reel_info(
+                    url,
+                    ydl_options=options,
+                )
+            except Exception as fallback_error:
+                logs.append(f"Fallback de reel de Instagram: {fallback_error}")
+
         if not info:
             raise RuntimeError("FFprobe no devolvió información del archivo.")
         streams = info.get("streams", [])
@@ -512,6 +526,8 @@ class DownloadController(QObject):
             error = debug
 
         instagram_post = is_instagram_post_url(url)
+        instagram_reel = is_instagram_reel_url(url)
+        instagram_url = instagram_post or instagram_reel
         if is_x_status_url(url):
             try:
                 x_info = extract_x_media_post_info(url)
@@ -521,11 +537,11 @@ class DownloadController(QObject):
                 logs.append(str(x_error))
         options = configure_ytdlp_options({
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "referer": url, "noplaylist": not instagram_post, "listsubtitles": True,
+            "referer": url, "noplaylist": not instagram_url, "listsubtitles": True,
             "logger": Logger(),
             "progress_hooks": [lambda _data: self.cancellation.is_set() and (_ for _ in ()).throw(UserCancelledError("Análisis cancelado."))],
         })
-        if not instagram_post:
+        if not instagram_url:
             options["playlist_items"] = "1"
         cookie, using_cookies = self._cookie_options()
         captured = io.StringIO()
@@ -533,7 +549,7 @@ class DownloadController(QObject):
             with redirect_stdout(captured):
                 info = extract_info_resilient(url, options, download=False)
             info = normalize_info(info)
-            image_info = instagram_image_post_info_from_metadata(url, info or {})
+            image_info = instagram_image_post_info_from_metadata(url, info or {}) if instagram_post else None
             if image_info:
                 info = image_info
         except Exception as exc:
@@ -543,7 +559,7 @@ class DownloadController(QObject):
                     with redirect_stdout(captured):
                         info = extract_info_resilient(url, authenticated, download=False)
                     info = normalize_info(info)
-                    image_info = instagram_image_post_info_from_metadata(url, info or {})
+                    image_info = instagram_image_post_info_from_metadata(url, info or {}) if instagram_post else None
                     if image_info:
                         info = image_info
                 except Exception as cookie_error:
@@ -553,7 +569,7 @@ class DownloadController(QObject):
                     exc = None
             if exc is None:
                 pass
-            if is_instagram_post_url(url):
+            if instagram_post:
                 try:
                     # Mantener el intento público barato; cargar cookies sólo si
                     # Instagram exige una sesión para completar el carrusel.
@@ -563,6 +579,13 @@ class DownloadController(QObject):
                 except Exception as fallback_error:
                     logs.append(str(fallback_error))
                     raise RuntimeError(friendly_ytdlp_error(exc, logs)) from exc
+            elif instagram_reel:
+                try:
+                    info = info or extract_instagram_reel_info(url, ydl_options=options)
+                    if not info and using_cookies:
+                        info = extract_instagram_reel_info(url, ydl_options={**options, **cookie})
+                except Exception as fallback_error:
+                    logs.append(str(fallback_error))
             elif not info:
                 raise RuntimeError(friendly_ytdlp_error(exc, logs)) from exc
         if not info:
@@ -570,6 +593,12 @@ class DownloadController(QObject):
                 raise RuntimeError(
                     "Instagram sólo mostró la portada. Para leer todas las imágenes del carrusel, "
                     "elige tu navegador en Configuración > Cookies e inicia sesión en Instagram."
+                )
+            if instagram_reel:
+                raise RuntimeError(
+                    "Instagram no expuso un video reproducible para este reel. "
+                    "En ConfiguraciÃ³n > Cookies, vuelve a importar las cookies de un navegador "
+                    "donde tengas abierta la sesiÃ³n de Instagram y prueba de nuevo."
                 )
             raise RuntimeError(friendly_ytdlp_error("No se recibió información.", logs))
         # An Instagram carousel deliberately uses playlist-shaped metadata,

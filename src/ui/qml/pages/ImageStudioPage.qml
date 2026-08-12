@@ -387,7 +387,7 @@ Item {
 
                     XButton {
                         Layout.fillWidth: true
-                        text: "Ajustes avanzados"
+                        text: "Opciones de resultado"
                         compact: page.dense
                         kind: "secondary"
                         onClicked: advanced.open()
@@ -428,8 +428,8 @@ Item {
         id: advanced
         parent: Overlay.overlay
         anchors.centerIn: parent
-        width: Math.min(720, page.width - 100)
-        height: Math.min(520, page.height - 80)
+            width: Math.min(760, Math.max(360, page.width - 32))
+            height: Math.min(560, Math.max(380, page.height - 36))
         modal: true
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
@@ -438,31 +438,56 @@ Item {
             spacing: 8
             RowLayout {
                 Layout.fillWidth: true
-                Text { Layout.fillWidth: true; text: "Ajustes avanzados"; color: theme.colors.text; font.pixelSize: 18; font.weight: Font.DemiBold }
+                Text { Layout.fillWidth: true; text: "Opciones de resultado"; color: theme.colors.text; font.pixelSize: 18; font.weight: Font.DemiBold }
                 XButton { text: "Cerrar"; compact: true; kind: "ghost"; onClicked: advanced.close() }
             }
-            Text { Layout.fillWidth: true; text: "Sólo cambia esto si necesitas un resultado técnico específico."; color: theme.colors.textMuted; font.pixelSize: 11 }
+            Text { Layout.fillWidth: true; text: "La configuracion recomendada funciona sin tocar nada mas. Abre una seccion solo si buscas un resultado especifico."; color: theme.colors.textMuted; font.pixelSize: 11; wrapMode: Text.WordWrap }
             TabBar {
                 id: advancedTabs
                 Layout.fillWidth: true
                 background: Rectangle { radius: 10; color: theme.colors.surfaceSoft }
                 Repeater {
-                    model: ["Tamaño", "Lienzo", "Formato", "I.A.", "Video"]
+                    model: ["Tamano", "Lienzo", "Formato", "Mejora IA", "Video"]
                     TabButton {
                         text: modelData
+                        width: advancedTabs.width / 5
                         contentItem: Text { text: parent.text; color: parent.checked ? "#FFFFFF" : theme.colors.textMuted; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                         background: Rectangle { radius: 8; color: parent.checked ? theme.colors.primary : "transparent" }
                     }
                 }
             }
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: advancedGuide.implicitHeight + 16
+                radius: 9
+                color: theme.colors.surfaceSoft
+                border.width: 1
+                border.color: theme.colors.border
+                Text {
+                    id: advancedGuide
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    color: theme.colors.textMuted
+                    font.pixelSize: 10
+                    wrapMode: Text.WordWrap
+                    text: [
+                        "Tamano: ajusta dimensiones y que hacer si ya existe un archivo.",
+                        "Lienzo: prepara proporcion, margen y fondo para una composicion.",
+                        "Formato: controla transparencia, compresion y calidad de salida.",
+                        "Mejora IA: amplia detalles. Empieza con 2x para un resultado estable.",
+                        "Video: crea una secuencia desde imagenes. Para ampliar video usa Mejorar video."
+                    ][advancedTabs.currentIndex]
+                }
+            }
             ScrollView {
+                id: advancedScroll
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                 ScrollBar.vertical: XScrollBar {}
                 StackLayout {
-                    width: advanced.availableWidth - 4
+                    width: advancedScroll.availableWidth - 4
                     currentIndex: advancedTabs.currentIndex
 
                     ColumnLayout {
@@ -525,16 +550,17 @@ Item {
                         LabeledControl { Layout.fillWidth: true; label: "Suavizado de borde: " + options.rembgSmooth; Slider { Layout.fillWidth: true; from: 0; to: 20; stepSize: 1; value: options.rembgSmooth; onMoved: imageController.setOption("rembgSmooth", value) } }
                         LabeledControl { Layout.fillWidth: true; label: "Expandir máscara: " + options.rembgExpand; Slider { Layout.fillWidth: true; from: -20; to: 40; stepSize: 1; value: options.rembgExpand; onMoved: imageController.setOption("rembgExpand", value) } }
                         Rectangle { Layout.fillWidth: true; height: 1; color: theme.colors.border }
-                        Text { text: "Reescalado de imagen y video"; color: theme.colors.text; font.pixelSize: 14; font.weight: Font.DemiBold }
-                        XSwitch { text: "Activar mejora con IA"; checked: options.upscaleEnabled; onToggled: imageController.setOption("upscaleEnabled", checked) }
-                        LabeledControl { Layout.fillWidth: true; label: "Modelo"; XComboBox { Layout.fillWidth: true; model: imageController.upscaleModels; currentIndex: Math.max(0, find(options.upscaleModel)); onActivated: { imageController.setOption("upscaleEngine", "Upscayl"); imageController.setOption("upscaleModel", currentText) } } }
-                        LabeledControl { Layout.fillWidth: true; label: "Escala"; XComboBox { Layout.fillWidth: true; model: ["2", "3", "4"]; currentIndex: Math.max(0, find(options.upscaleScale)); onActivated: imageController.setOption("upscaleScale", currentText) } }
+                        Text { text: "Mejora con IA"; color: theme.colors.text; font.pixelSize: 14; font.weight: Font.DemiBold }
+                        Text { Layout.fillWidth: true; text: "Usala solo si quieres ampliar una imagen. La escala 2x es la opcion mas estable."; wrapMode: Text.WordWrap; color: theme.colors.textMuted; font.pixelSize: 10 }
+                        XSwitch { text: "Activar mejora con IA (recomendado: 2x)"; checked: options.upscaleEnabled; onToggled: imageController.setOption("upscaleEnabled", checked) }
+                        LabeledControl { Layout.fillWidth: true; label: "Perfil de mejora"; XComboBox { Layout.fillWidth: true; model: imageController.upscaleModels; currentIndex: Math.max(0, find(options.upscaleModel)); onActivated: { imageController.setOption("upscaleEngine", "Upscayl"); imageController.setOption("upscaleModel", currentText) } } }
+                        LabeledControl { Layout.fillWidth: true; label: "Aumento"; XComboBox { Layout.fillWidth: true; model: ["2", "3", "4"]; currentIndex: Math.max(0, find(options.upscaleScale)); onActivated: imageController.setOption("upscaleScale", currentText) } }
                         RowLayout {
                             Layout.fillWidth: true
-                            LabeledControl { Layout.fillWidth: true; label: "Ruido"; XTextField { Layout.fillWidth: true; text: options.upscaleDenoise; onEditingFinished: imageController.setOption("upscaleDenoise", text) } }
-                            LabeledControl { Layout.fillWidth: true; label: "Mosaico GPU"; XTextField { Layout.fillWidth: true; text: options.upscaleTile; onEditingFinished: imageController.setOption("upscaleTile", text) } }
+                            LabeledControl { Layout.fillWidth: true; label: "Nivel de limpieza"; XTextField { Layout.fillWidth: true; text: options.upscaleDenoise; onEditingFinished: imageController.setOption("upscaleDenoise", text) } }
+                            LabeledControl { Layout.fillWidth: true; label: "Uso de memoria (GPU)"; XTextField { Layout.fillWidth: true; text: options.upscaleTile; onEditingFinished: imageController.setOption("upscaleTile", text) } }
                         }
-                        XSwitch { text: "TTA · más calidad, más lento"; checked: options.upscaleTta; onToggled: imageController.setOption("upscaleTta", checked) }
+                        XSwitch { text: "Priorizar detalle (tarda mas)"; checked: options.upscaleTta; onToggled: imageController.setOption("upscaleTta", checked) }
                     }
 
                     ColumnLayout {

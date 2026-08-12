@@ -678,8 +678,7 @@ UPSCAYL_MODELS_MAP = {
     "uniscale_restore": "Uniscale Restore (Restauración de Daños)",
     "unknown-2.0.1": "The Unknown (Experimental / Nitidez Extrema)",
     "DF2K_x4": "RealSR (Detalle de Texturas)",
-    "DF2K_JPEG_x4": "RealSR JPEG (Reduce Compresión)",
-    "x4": "Modelo Genérico x4"
+    "DF2K_JPEG_x4": "RealSR JPEG (Reduce Compresión)"
 }
 
 # --- CONSTANTES DE REESCALADO (IA) ---
