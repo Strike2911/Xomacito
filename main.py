@@ -10,8 +10,8 @@ APP_NAME = "Xomacito"
 # La versión visible forma parte de la edición pública.  UPDATE_VERSION se
 # mantiene numérica para que el instalador de Windows y el actualizador puedan
 # comparar correctamente esta entrega con las instalaciones 3.x anteriores.
-APP_VERSION = "1.0 Definitive Edition"
-UPDATE_VERSION = "4.0.0"
+APP_VERSION = "1.0.1 Definitive Edition"
+UPDATE_VERSION = "4.0.1"
 
 FROZEN = bool(getattr(sys, "frozen", False))
 PROJECT_ROOT = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
