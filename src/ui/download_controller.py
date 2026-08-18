@@ -439,18 +439,6 @@ class DownloadController(QObject):
 
     def _analyze_local_worker(self, path: str):
         info = self.ffmpeg.get_local_media_info(path)
-        # Algunos reels públicos devuelven metadatos incompletos a yt-dlp sin
-        # lanzar una excepción. En ese caso todavía podemos recuperar el MP4
-        # expuesto por la página pública de Instagram.
-        if not info and instagram_reel:
-            try:
-                info = extract_instagram_reel_info(
-                    url,
-                    ydl_options=options,
-                )
-            except Exception as fallback_error:
-                logs.append(f"Fallback de reel de Instagram: {fallback_error}")
-
         if not info:
             raise RuntimeError("FFprobe no devolvió información del archivo.")
         streams = info.get("streams", [])
@@ -597,8 +585,8 @@ class DownloadController(QObject):
             if instagram_reel:
                 raise RuntimeError(
                     "Instagram no expuso un video reproducible para este reel. "
-                    "En ConfiguraciÃ³n > Cookies, vuelve a importar las cookies de un navegador "
-                    "donde tengas abierta la sesiÃ³n de Instagram y prueba de nuevo."
+                    "En Configuracion > Cookies, vuelve a importar las cookies de un navegador "
+                    "donde tengas abierta la sesion de Instagram y prueba de nuevo."
                 )
             raise RuntimeError(friendly_ytdlp_error("No se recibió información.", logs))
         # An Instagram carousel deliberately uses playlist-shaped metadata,

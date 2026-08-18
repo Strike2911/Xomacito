@@ -501,6 +501,41 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertTrue(downloader.is_instagram_post_url("https://instagram.com/p/ABC123/"))
         self.assertFalse(downloader.is_instagram_post_url("https://evilinstagram.com/p/ABC123/"))
 
+    def test_instagram_reels_have_a_video_fallback(self):
+        class FakeResponse:
+            text = (
+                '<html><head>'
+                '<meta content="Cuenta on Instagram: &quot;Reel bonito&quot;" property="og:title">'
+                '<meta property="og:image" content="https://scontent.cdninstagram.com/reel.jpg">'
+                '<meta property="og:video" content="https://scontent.cdninstagram.com/reel.mp4?a=1&amp;b=2">'
+                '<meta property="og:description" content="Reel publico">'
+                '</head></html>'
+            )
+
+            @staticmethod
+            def raise_for_status():
+                return None
+
+        class FakeSession:
+            @staticmethod
+            def get(url, timeout, allow_redirects, headers=None):
+                self.assertEqual(url, "https://www.instagram.com/reel/ABC123/")
+                self.assertEqual(timeout, 5)
+                self.assertTrue(allow_redirects)
+                self.assertIn("Referer", headers or {})
+                return FakeResponse()
+
+        info = downloader.extract_instagram_reel_info(
+            "https://www.instagram.com/reel/ABC123/",
+            timeout=5,
+            session=FakeSession(),
+        )
+        self.assertEqual(info["extractor_key"], "InstagramReel")
+        self.assertEqual(info["title"], "Reel bonito")
+        self.assertEqual(info["formats"][0]["url"], "https://scontent.cdninstagram.com/reel.mp4?a=1&b=2")
+        self.assertTrue(downloader.is_instagram_reel_url("https://instagram.com/tv/ABC123/"))
+        self.assertFalse(downloader.is_instagram_reel_url("https://instagram.com/p/ABC123/"))
+
     def test_instagram_carousel_uses_public_embed_images(self):
         class FakeResponse:
             def __init__(self, text):
