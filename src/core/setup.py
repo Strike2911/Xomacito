@@ -1,1305 +1,412 @@
-﻿import os
-import platform
-import shutil
-import subprocess
-import sys
-import tarfile
-import zipfile
-import requests
-
-from packaging import version
-from main import PROJECT_ROOT, BIN_DIR, FFMPEG_BIN_DIR, REMBG_MODELS_DIR, UPSCALING_DIR
-from src.core.constants import UPSCALING_TOOLS, FFMPEG_SAFE_VERSION, FFMPEG_SAFE_URL 
-
-DENO_BIN_DIR = os.path.join(BIN_DIR, "deno")
-POPPLER_BIN_DIR = os.path.join(BIN_DIR, "poppler") 
-INKSCAPE_BIN_DIR = os.path.join(BIN_DIR, "inkscape")
-GHOSTSCRIPT_BIN_DIR = os.path.join(BIN_DIR, "ghostscript")
-YTDLP_BIN_DIR = os.path.join(BIN_DIR, "ytdlp")
-
-# --- ARCHIVOS DE VERSIÓN ---
-DENO_VERSION_FILE = os.path.join(DENO_BIN_DIR, "deno_version.txt")
-FFMPEG_VERSION_FILE = os.path.join(FFMPEG_BIN_DIR, "ffmpeg_version.txt")
-POPPLER_VERSION_FILE = os.path.join(POPPLER_BIN_DIR, "poppler_version.txt")
-INKSCAPE_VERSION_FILE = os.path.join(INKSCAPE_BIN_DIR, "inkscape_version.txt")
-YTDLP_VERSION_FILE = os.path.join(YTDLP_BIN_DIR, "ytdlp_version.txt")
-
-def check_and_install_python_dependencies(progress_callback):
-    """Verifica e instala dependencias de Python, reportando el progreso."""
-    # Saltarse comprobaciones en un .exe compilado
-    if getattr(sys, 'frozen', False):
-        progress_callback("Ejecutable compilado detectado.", 15)
-        return True
-        
-    progress_callback("Verificando dependencias de Python...", 5)
-    
-    import importlib.util
-    required_packages = ['PySide6', 'PIL', 'requests', 'py7zr', 'rembg']
-    missing_packages = []
-    
-    for pkg in required_packages:
-        if importlib.util.find_spec(pkg) is None:
-            missing_packages.append(pkg)
-            
-    if not missing_packages:
-        progress_callback("Dependencias de Python verificadas.", 15)
-        return True
-
-    progress_callback("Instalando dependencias necesarias...", 10)
-    requirements_path = os.path.join(PROJECT_ROOT, "requirements.txt")
-    if not os.path.exists(requirements_path):
-        progress_callback("ERROR: No se encontró 'requirements.txt'.", -1)
-        return False
-    try:
-        process = subprocess.Popen(
-            [sys.executable, "-m", "pip", "install", "-r", requirements_path],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding='utf-8'
-        )
-        stdout, stderr = process.communicate()
-        if process.returncode != 0:
-            raise subprocess.CalledProcessError(process.returncode, process.args, output=stdout, stderr=stderr)
-        progress_callback("Dependencias instaladas.", 15)
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"ERROR: Falló la instalación de dependencias con pip: {e.stderr}")
-        progress_callback(f"Error al instalar dependencias.", -1)
-        return False
-
-# ==========================================================
-# YT-DLP (ZipApp dinámico)
-# ==========================================================
-
-def get_latest_ytdlp_info(progress_callback):
-    """Consulta la API de GitHub para la última versión de yt-dlp."""
-    progress_callback("Consultando la última versión de yt-dlp...", 5)
-    try:
-        api_url = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest"
-        response = requests.get(api_url, timeout=15)
-        response.raise_for_status()
-        latest_release_data = response.json()
-        
-        tag_name = latest_release_data["tag_name"]
-        
-        for asset in latest_release_data.get("assets", []):
-            if asset["name"] == "yt-dlp": # Archivo sin extensión (el zipapp nativo)
-                progress_callback("Información de yt-dlp encontrada.", 10)
-                return tag_name, asset["browser_download_url"]
-                
-        return tag_name, None
-    except requests.RequestException as e:
-        progress_callback(f"Error de red al buscar yt-dlp: {e}", -1)
-        return None, None
-    except (IndexError, KeyError) as e:
-        progress_callback(f"Error en respuesta de API de yt-dlp: {e}", -1)
-        return None, None
-
-def download_and_install_ytdlp(tag, url, progress_callback):
-    """Descarga el ZipApp de yt-dlp en bin/ytdlp/yt-dlp.zip."""
-    try:
-        os.makedirs(YTDLP_BIN_DIR, exist_ok=True)
-        archive_name = os.path.join(YTDLP_BIN_DIR, "yt-dlp.zip")
-        last_reported_progress = -1
-        
-        with requests.get(url, stream=True, timeout=120) as r:
-            r.raise_for_status()
-            total_size = int(r.headers.get('content-length', 0))
-            downloaded_size = 0
-            
-            import time
-            if os.path.exists(archive_name):
-                try: os.remove(archive_name)
-                except:
-                    try: os.rename(archive_name, archive_name + f".old_{int(time.time())}")
-                    except: pass
-                    
-            with open(archive_name, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if not chunk: continue
-                    f.write(chunk)
-                    downloaded_size += len(chunk)
-                    if total_size > 0:
-                        progress = 40 + (downloaded_size / total_size) * 40
-                        if int(progress) > last_reported_progress:
-                            c_mb = downloaded_size / 1024 / 1024
-                            t_mb = total_size / 1024 / 1024
-                            progress_callback(f"Descargando yt-dlp: {c_mb:.1f}/{t_mb:.1f} MB", progress, c_mb, t_mb)
-                            last_reported_progress = int(progress)
-                            
-        # --- NUEVO: Limpieza del shebang para compatibilidad con zipfile ---
-        # yt-dlp es un zipapp que en recientes versiones empieza con #!/usr/bin/env python3
-        # Esto hace que Python's zipfile (usado por pkg_resources/importlib) falle
-        # con "bad local file header". Eliminamos cualquier byte antes de PK\x03\x04.
-        try:
-            with open(archive_name, "rb") as f:
-                content = f.read()
-            start_idx = content.find(b"PK\x03\x04")
-            if start_idx > 0:
-                with open(archive_name, "wb") as f:
-                    f.write(content[start_idx:])
-        except Exception as e:
-            print(f"ADVERTENCIA: No se pudo limpiar el shebang de yt-dlp: {e}")
-
-        with open(YTDLP_VERSION_FILE, "w") as f: f.write(tag)
-        progress_callback(f"yt-dlp {tag} descargado exitosamente.", 100)
-        return True
-    except Exception as e:
-        progress_callback(f"Error al descargar yt-dlp: {e}", -1)
-        return False
-        
-def check_ytdlp_status(progress_callback):
-    """Verifica el estado de yt-dlp.zip local."""
-    try:
-        ytdlp_path = os.path.join(YTDLP_BIN_DIR, "yt-dlp.zip")
-        ytdlp_exists = os.path.exists(ytdlp_path)
-
-        local_tag = ""
-        if os.path.exists(YTDLP_VERSION_FILE):
-            with open(YTDLP_VERSION_FILE, 'r') as f:
-                local_tag = f.read().strip()
-
-        latest_tag, download_url = get_latest_ytdlp_info(progress_callback)
-
-        return {
-            "status": "success",
-            "ytdlp_path_exists": ytdlp_exists,
-            "local_ytdlp_version": local_tag,
-            "latest_ytdlp_version": latest_tag,
-            "ytdlp_download_url": download_url
-        }
-    except Exception as e:
-        return {"status": "error", "message": f"Error en la verificación de yt-dlp: {e}"}
-
-def get_latest_ffmpeg_info(progress_callback):
-    """Consulta la API de GitHub para la última versión ESTABLE de FFMPEG (GyanD)."""
-    progress_callback("Consultando la última versión de FFmpeg (Estable)...", 5)
-    try:
-        # Se cambia de BtbN (Nightly) a GyanD (Releases estables)
-        api_url = "https://api.github.com/repos/GyanD/codexffmpeg/releases/latest"
-        response = requests.get(api_url, timeout=15)
-        response.raise_for_status()
-        latest_release = response.json()
-        
-        tag_name = latest_release["tag_name"]
-        
-        # GyanD ofrece versiones estables para Windows. Buscamos el ZIP full.
-        file_identifier = "full_build.zip"
-        
-        for asset in latest_release.get("assets", []):
-            if file_identifier in asset["name"] and "shared" not in asset["name"]:
-                progress_callback("Información de FFmpeg estable encontrada.", 10)
-                return tag_name, asset["browser_download_url"]
-                
-        return tag_name, None
-    except requests.RequestException as e:
-        progress_callback(f"Error de red al buscar FFmpeg: {e}", -1)
-        return None, None
-    except (IndexError, KeyError) as e:
-        progress_callback(f"Error en respuesta de API de FFmpeg: {e}", -1)
-        return None, None
-
-def get_safe_ffmpeg_info(progress_callback):
-    """Devuelve la información de la versión segura de FFmpeg (8.0.1)."""
-    progress_callback("Obteniendo información de la versión de FFmpeg segura...", 10)
-    return FFMPEG_SAFE_VERSION, FFMPEG_SAFE_URL
-
-def download_and_install_ffmpeg(tag, url, progress_callback):
-    """Descarga e instala FFMPEG, reportando el progreso de forma optimizada."""
-    try:
-        file_name = url.split('/')[-1]
-        archive_name = os.path.join(PROJECT_ROOT, file_name)
-        last_reported_progress = -1
-        with requests.get(url, stream=True, timeout=120) as r:
-            r.raise_for_status()
-            total_size = int(r.headers.get('content-length', 0))
-            downloaded_size = 0
-            with open(archive_name, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if not chunk:
-                        continue
-                    f.write(chunk)
-                    downloaded_size += len(chunk)
-                    if total_size > 0:
-                        progress = 40 + (downloaded_size / total_size) * 40
-                        if int(progress) > last_reported_progress:
-                            c_mb = downloaded_size / 1024 / 1024
-                            t_mb = total_size / 1024 / 1024
-                            progress_callback(f"Descargando FFmpeg: {c_mb:.1f}/{t_mb:.1f} MB", progress, c_mb, t_mb)
-                            last_reported_progress = int(progress)
-        progress_callback("Extrayendo archivos de FFmpeg...", 85)
-        temp_extract_path = os.path.join(PROJECT_ROOT, "ffmpeg_temp_extract")
-        if os.path.exists(temp_extract_path): shutil.rmtree(temp_extract_path)
-        if archive_name.endswith(".zip"):
-            with zipfile.ZipFile(archive_name, 'r') as zip_ref: zip_ref.extractall(temp_extract_path)
-        else:
-            with tarfile.open(archive_name, 'r:xz') as tar_ref: tar_ref.extractall(temp_extract_path)
-
-        os.makedirs(FFMPEG_BIN_DIR, exist_ok=True)
-        
-        # Buscar dinámicamente la carpeta 'bin/' dentro de lo extraído
-        bin_content_path = None
-        for root, dirs, files in os.walk(temp_extract_path):
-            if "ffmpeg.exe" in files:
-                bin_content_path = root
-                break
-
-        if not bin_content_path:
-            raise Exception("No se encontró ffmpeg.exe dentro del archivo descargado.")
-
-        # Mover archivos a FFMPEG_BIN_DIR de forma segura (evita WinError 5)
-        for item in os.listdir(bin_content_path):
-            dest_path = os.path.join(FFMPEG_BIN_DIR, item)
-            if os.path.exists(dest_path):
-                import time
-                try: os.remove(dest_path)
-                except:
-                    try: os.rename(dest_path, dest_path + f".old_{int(time.time())}")
-                    except: pass
-            shutil.move(os.path.join(bin_content_path, item), dest_path)
-
-        # --- NUEVO: LIMPIEZA DE FFMPEG (LA DIETA) ---
-        # 1. Eliminar ffplay.exe (No se usa)
-        ffplay_path = os.path.join(FFMPEG_BIN_DIR, "ffplay.exe")
-        if os.path.exists(ffplay_path):
-            try:
-                os.remove(ffplay_path)
-                print("INFO: ffplay.exe eliminado para ahorrar espacio.")
-            except Exception as e:
-                print(f"ADVERTENCIA: No se pudo borrar ffplay.exe: {e}")
-
-        try: shutil.rmtree(temp_extract_path)
-        except: pass
-        try: os.remove(archive_name)
-        except: pass
-        with open(FFMPEG_VERSION_FILE, "w") as f: f.write(tag)
-        progress_callback(f"FFmpeg {tag} instalado.", 95)
-        return True
-    except Exception as e:
-        progress_callback(f"Error al instalar FFmpeg: {e}", -1)
-        return False
-    
-
-def get_latest_deno_info(progress_callback):
-    """Consulta la API de GitHub para la última versión de Deno."""
-    progress_callback("Consultando la última versión de Deno...", 5)
-    try:
-        api_url = "https://api.github.com/repos/denoland/deno/releases/latest"
-        response = requests.get(api_url, timeout=15)
-        response.raise_for_status()
-        latest_release_data = response.json()
-        
-        tag_name = latest_release_data["tag_name"]
-        
-        system = platform.system()
-        file_identifier = ""
-        if system == "Windows": file_identifier = "deno-x86_64-pc-windows-msvc.zip"
-        elif system == "Linux": file_identifier = "deno-x86_64-unknown-linux-gnu.zip"
-        elif system == "Darwin": file_identifier = "deno-x86_64-apple-darwin.zip"
-        else: return None, None
-        
-        for asset in latest_release_data["assets"]:
-            if file_identifier in asset["name"]:
-                progress_callback("Información de Deno encontrada.", 10)
-                return tag_name, asset["browser_download_url"]
-                
-        return tag_name, None
-    except requests.RequestException as e:
-        progress_callback(f"Error de red al buscar Deno: {e}", -1)
-        return None, None
-    except (IndexError, KeyError) as e:
-        progress_callback(f"Error en respuesta de API de Deno: {e}", -1)
-        return None, None
-
-def download_and_install_deno(tag, url, progress_callback):
-    """Descarga e instala Deno en la carpeta bin/deno/."""
-    try:
-        file_name = url.split('/')[-1]
-        archive_name = os.path.join(PROJECT_ROOT, file_name)
-        last_reported_progress = -1
-        
-        with requests.get(url, stream=True, timeout=120) as r:
-            r.raise_for_status()
-            total_size = int(r.headers.get('content-length', 0))
-            downloaded_size = 0
-            
-            import time
-            if os.path.exists(archive_name):
-                try: os.remove(archive_name)
-                except:
-                    try: os.rename(archive_name, archive_name + f".old_{int(time.time())}")
-                    except: pass
-                    
-            with open(archive_name, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if not chunk: continue
-                    f.write(chunk)
-                    downloaded_size += len(chunk)
-                    if total_size > 0:
-                        progress = 40 + (downloaded_size / total_size) * 40
-                        if int(progress) > last_reported_progress:
-                            progress_callback(f"Descargando Deno: {downloaded_size / 1024 / 1024:.1f}/{total_size / 1024 / 1024:.1f} MB", progress)
-                            last_reported_progress = int(progress)
-                            
-        progress_callback("Extrayendo archivos de Deno...", 85)
-        
-        # Crear el directorio de Deno (bin/deno/)
-        os.makedirs(DENO_BIN_DIR, exist_ok=True)
-        
-        # Extraer el zip
-        with zipfile.ZipFile(archive_name, 'r') as zip_ref:
-            # El zip de Deno solo contiene el ejecutable (ej: deno.exe)
-            for member in zip_ref.namelist():
-                if member.lower().startswith('deno'):
-                    final_path = os.path.join(DENO_BIN_DIR, os.path.basename(member))
-                    if os.path.exists(final_path):
-                        import time
-                        try: os.remove(final_path)
-                        except:
-                            try: os.rename(final_path, final_path + f".old_{int(time.time())}")
-                            except: pass
-                            
-                    zip_ref.extract(member, DENO_BIN_DIR)
-                    # Moverlo si está en un subdirectorio (aunque Deno no suele hacerlo)
-                    extracted_path = os.path.join(DENO_BIN_DIR, member)
-                    if extracted_path != final_path:
-                         shutil.move(extracted_path, final_path)
-        
-        try: os.remove(archive_name)
-        except: pass
-        with open(DENO_VERSION_FILE, "w") as f: f.write(tag)
-        progress_callback(f"Deno {tag} instalado.", 95)
-        return True
-    except Exception as e:
-        progress_callback(f"Error al instalar Deno: {e}", -1)
-        return False
-    
-def get_latest_poppler_info(progress_callback):
-    """Consulta la API de GitHub para la última versión de Poppler."""
-    progress_callback("Consultando la última versión de Poppler...", 5)
-    try:
-        # Repositorio específico solicitado
-        api_url = "https://api.github.com/repos/oschwartz10612/poppler-windows/releases/latest"
-        response = requests.get(api_url, timeout=15)
-        response.raise_for_status()
-        latest_release_data = response.json()
-        
-        tag_name = latest_release_data["tag_name"]
-        
-        for asset in latest_release_data["assets"]:
-            # Buscamos el archivo .zip (generalmente Release-XX.XX.X-0.zip)
-            if asset["name"].endswith(".zip") and "Release" in asset["name"]:
-                progress_callback("Información de Poppler encontrada.", 10)
-                return tag_name, asset["browser_download_url"]
-                
-        return tag_name, None
-    except requests.RequestException as e:
-        progress_callback(f"Error de red al buscar Poppler: {e}", -1)
-        return None, None
-    except (IndexError, KeyError) as e:
-        progress_callback(f"Error en respuesta de API de Poppler: {e}", -1)
-        return None, None
-
-def download_and_install_poppler(tag, url, progress_callback):
-    """Descarga e instala Poppler en bin/poppler/."""
-    try:
-        file_name = url.split('/')[-1]
-        archive_name = os.path.join(PROJECT_ROOT, file_name)
-        last_reported_progress = -1
-        
-        with requests.get(url, stream=True, timeout=120) as r:
-            r.raise_for_status()
-            total_size = int(r.headers.get('content-length', 0))
-            downloaded_size = 0
-            with open(archive_name, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if not chunk: continue
-                    f.write(chunk)
-                    downloaded_size += len(chunk)
-                    if total_size > 0:
-                        progress = 40 + (downloaded_size / total_size) * 40
-                        if int(progress) > last_reported_progress:
-                            progress_callback(f"Descargando Poppler: {downloaded_size / 1024 / 1024:.1f}/{total_size / 1024 / 1024:.1f} MB", progress)
-                            last_reported_progress = int(progress)
-                            
-        progress_callback("Extrayendo archivos de Poppler...", 85)
-        
-        # Limpiar/Crear directorio de forma segura
-        os.makedirs(POPPLER_BIN_DIR, exist_ok=True)
-        
-        temp_extract_path = os.path.join(PROJECT_ROOT, "poppler_temp")
-        if os.path.exists(temp_extract_path): shutil.rmtree(temp_extract_path)
-
-        with zipfile.ZipFile(archive_name, 'r') as zip_ref:
-            zip_ref.extractall(temp_extract_path)
-            
-        # Lógica para encontrar la carpeta 'Library/bin' dentro del zip extraído
-        bin_source_path = None
-        for root, dirs, files in os.walk(temp_extract_path):
-            if "pdfinfo.exe" in files: # Buscamos un ejecutable clave
-                bin_source_path = root
-                break
-        
-        if bin_source_path:
-            # Mover el contenido de esa carpeta bin a nuestro POPPLER_BIN_DIR de forma segura
-            for item in os.listdir(bin_source_path):
-                dest_path = os.path.join(POPPLER_BIN_DIR, item)
-                if os.path.exists(dest_path):
-                    import time
-                    try: os.remove(dest_path)
-                    except:
-                        try: os.rename(dest_path, dest_path + f".old_{int(time.time())}")
-                        except: pass
-                shutil.move(os.path.join(bin_source_path, item), dest_path)
-        else:
-            raise Exception("No se encontró la carpeta bin/ con ejecutables dentro del zip de Poppler.")
-
-        # Limpieza
-        try: shutil.rmtree(temp_extract_path)
-        except: pass
-        try: os.remove(archive_name)
-        except: pass
-        
-        with open(POPPLER_VERSION_FILE, "w") as f: f.write(tag)
-        progress_callback(f"Poppler {tag} instalado.", 95)
-        return True
-    except Exception as e:
-        progress_callback(f"Error al instalar Poppler: {e}", -1)
-        return False
-
-def check_poppler_status(progress_callback):
-    """Verifica el estado únicamente de Poppler."""
-    try:
-        poppler_exe = "pdfinfo.exe" if platform.system() == "Windows" else "pdfinfo"
-        poppler_path = os.path.join(POPPLER_BIN_DIR, poppler_exe)
-        poppler_exists = os.path.exists(poppler_path)
-
-        local_tag = ""
-        if os.path.exists(POPPLER_VERSION_FILE):
-            with open(POPPLER_VERSION_FILE, 'r') as f:
-                local_tag = f.read().strip()
-
-        latest_tag, download_url = get_latest_poppler_info(progress_callback)
-
-        return {
-            "status": "success",
-            "poppler_path_exists": poppler_exists,
-            "local_poppler_version": local_tag,
-            "latest_poppler_version": latest_tag,
-            "poppler_download_url": download_url
-        }
-    except Exception as e:
-        return {"status": "error", "message": f"Error en la verificación de Poppler: {e}"}
-
-def check_environment_status(progress_callback, check_updates=True): # <--- NUEVO PARAMETRO
-    """
-    Verifica el estado del entorno.
-    Si check_updates=False, salta las consultas lentas a GitHub.
-    """
-    try:
-        # Importar dependencias (Esto es rápido si ya están instaladas)
-        if not check_and_install_python_dependencies(progress_callback):
-            return {"status": "error", "message": "Fallo crítico en dependencias Python."}
-        
-        # --- 1. Chequeo Local (Rápido) ---
-        # Definir rutas (esto ya lo tienes, asegúrate de que coincida con tu código)
-        ffmpeg_exe = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
-        ffmpeg_path = os.path.join(FFMPEG_BIN_DIR, ffmpeg_exe)
-        ffmpeg_exists = os.path.exists(ffmpeg_path)
-        
-        local_tag = ""
-        if os.path.exists(FFMPEG_VERSION_FILE):
-            with open(FFMPEG_VERSION_FILE, 'r') as f: local_tag = f.read().strip()
-        
-        # --- 1. FFmpeg ---
-        ffmpeg_path = os.path.join(FFMPEG_BIN_DIR, "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg")
-        ffmpeg_exists = os.path.exists(ffmpeg_path)
-        
-        local_tag = ""
-        if os.path.exists(FFMPEG_VERSION_FILE):
-            with open(FFMPEG_VERSION_FILE, 'r') as f:
-                local_tag = f.read().strip()
-        # Deno...
-        deno_exe = "deno.exe" if platform.system() == "Windows" else "deno"
-        deno_path = os.path.join(DENO_BIN_DIR, deno_exe)
-        deno_exists = os.path.exists(deno_path)
-        local_deno_tag = ""
-        if os.path.exists(DENO_VERSION_FILE):
-            with open(DENO_VERSION_FILE, 'r') as f: local_deno_tag = f.read().strip()
-
-        # Poppler...
-        poppler_exe = "pdfinfo.exe" if platform.system() == "Windows" else "pdfinfo"
-        poppler_path = os.path.join(POPPLER_BIN_DIR, poppler_exe)
-        poppler_exists = os.path.exists(poppler_path)
-        local_poppler_tag = ""
-        if os.path.exists(POPPLER_VERSION_FILE):
-            with open(POPPLER_VERSION_FILE, 'r') as f: local_poppler_tag = f.read().strip()
-
-        # --- 2. Chequeo Remoto (Lento) - SOLO SI ES NECESARIO ---
-        latest_tag, download_url = None, None
-        latest_deno_tag, deno_download_url = None, None
-        latest_poppler_tag, poppler_download_url = None, None
-        latest_ytdlp_tag, ytdlp_download_url = None, None
-
-        if check_updates:
-            # Solo consultamos GitHub si nos lo piden explícitamente
-            latest_tag, download_url = get_latest_ffmpeg_info(progress_callback)
-            latest_deno_tag, deno_download_url = get_latest_deno_info(progress_callback)
-            latest_poppler_tag, poppler_download_url = get_latest_poppler_info(progress_callback)
-            latest_ytdlp_tag, ytdlp_download_url = get_latest_ytdlp_info(progress_callback)
-        else:
-            progress_callback("Verificación rápida de entorno completada.", 20)
-            
-        # ytdlp local check
-        ytdlp_path = os.path.join(YTDLP_BIN_DIR, "yt-dlp.zip")
-        ytdlp_exists = os.path.exists(ytdlp_path)
-        local_ytdlp_tag = ""
-        if os.path.exists(YTDLP_VERSION_FILE):
-             with open(YTDLP_VERSION_FILE, 'r') as f: local_ytdlp_tag = f.read().strip()
-
-        # --- Construir diccionario FINAL ---
-        return {
-            "status": "success", 
-            
-            # FFmpeg
-            "ffmpeg_path_exists": ffmpeg_exists,
-            "local_version": local_tag,
-            "latest_version": latest_tag,     # Será None si check_updates=False
-            "download_url": download_url,
-            
-            # Deno
-            "deno_path_exists": deno_exists,
-            "local_deno_version": local_deno_tag,
-            "latest_deno_version": latest_deno_tag,
-            "deno_download_url": deno_download_url,
-
-            # Poppler 
-            "poppler_path_exists": poppler_exists,
-            "local_poppler_version": local_poppler_tag,
-            "latest_poppler_version": latest_poppler_tag,
-            "poppler_download_url": poppler_download_url,
-            
-            # yt-dlp
-            "ytdlp_path_exists": ytdlp_exists,
-            "local_ytdlp_version": local_ytdlp_tag,
-            "latest_ytdlp_version": latest_ytdlp_tag,
-            "ytdlp_download_url": ytdlp_download_url
-        }
-        
-    except Exception as e:
-        return {"status": "error", "message": f"Error en la verificación del entorno: {e}"}
-    
-def check_and_download_rembg_models(progress_callback):
-    """
-    Verifica y descarga los modelos de rembg (u2netp, u2net, isnet-general-use)
-    en la carpeta bin/models/rembg.
-    """
-    # Diccionario de modelos: Nombre archivo -> URL directa
-    models_to_check = {
-        "u2netp.onnx": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
-        "isnet-general-use.onnx": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx",
-        "u2net.onnx": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx"
-    }
-
-    os.makedirs(REMBG_MODELS_DIR, exist_ok=True)
-    
-    total_models = len(models_to_check)
-    downloaded_count = 0
-    
-    try:
-        for i, (filename, url) in enumerate(models_to_check.items()):
-            file_path = os.path.join(REMBG_MODELS_DIR, filename)
-            
-            # Verificar si existe y no está vacío
-            if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-                print(f"INFO: Modelo IA encontrado: {filename}")
-                continue
-            
-            # Si no existe, descargar
-            progress_msg = f"Descargando modelo IA ({i+1}/{total_models}): {filename}..."
-            print(f"INFO: {progress_msg}")
-            # Usamos un valor base alto (50%) para que se note en la barra de carga inicial
-            progress_callback(progress_msg, 50 + (i * 10))
-            
-            with requests.get(url, stream=True, timeout=120) as r:
-                r.raise_for_status()
-                total_size = int(r.headers.get('content-length', 0))
-                downloaded_size = 0
-                
-                with open(file_path, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        if not chunk: continue
-                        f.write(chunk)
-                        downloaded_size += len(chunk)
-                        # Opcional: Log detallado de progreso intra-archivo si fuera necesario
-            
-            print(f"INFO: ✅ {filename} descargado exitosamente.")
-            downloaded_count += 1
-            
-        if downloaded_count > 0:
-            progress_callback(f"Se descargaron {downloaded_count} modelos de IA.", 90)
-        else:
-            progress_callback("Todos los modelos de IA están listos.", 90)
-            
-        return True
-
-    except Exception as e:
-        print(f"ERROR CRÍTICO descargando modelos de IA: {e}")
-        progress_callback(f"Error descargando modelos: {e}", -1)
-        return False
-    
-def check_ffmpeg_status(progress_callback):
-    """
-    Verifica el estado únicamente de FFmpeg.
-    """
-    try:
-        ffmpeg_path = os.path.join(FFMPEG_BIN_DIR, "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg")
-        ffmpeg_exists = os.path.exists(ffmpeg_path)
-
-        local_tag = ""
-        if os.path.exists(FFMPEG_VERSION_FILE):
-            with open(FFMPEG_VERSION_FILE, 'r') as f:
-                local_tag = f.read().strip()
-
-        latest_tag, download_url = get_latest_ffmpeg_info(progress_callback)
-
-        return {
-            "status": "success",
-            "ffmpeg_path_exists": ffmpeg_exists,
-            "local_version": local_tag,
-            "latest_version": latest_tag,
-            "download_url": download_url
-        }
-    except Exception as e:
-        return {"status": "error", "message": f"Error en la verificación de FFmpeg: {e}"}
-
-def check_deno_status(progress_callback):
-    """
-    Verifica el estado únicamente de Deno.
-    """
-    try:
-        deno_exe_name = "deno.exe" if platform.system() == "Windows" else "deno"
-        deno_path = os.path.join(DENO_BIN_DIR, deno_exe_name)
-        deno_exists = os.path.exists(deno_path)
-
-        local_deno_tag = ""
-        if os.path.exists(DENO_VERSION_FILE):
-            with open(DENO_VERSION_FILE, 'r') as f:
-                local_deno_tag = f.read().strip()
-
-        latest_deno_tag, deno_download_url = get_latest_deno_info(progress_callback)
-
-        return {
-            "status": "success",
-            "deno_path_exists": deno_exists,
-            "local_deno_version": local_deno_tag,
-            "latest_deno_version": latest_deno_tag,
-            "deno_download_url": deno_download_url
-        }
-    except Exception as e:
-        return {"status": "error", "message": f"Error en la verificación de Deno: {e}"}
-    
-def check_app_update(current_version_str):
-    """Consulta la última versión estable del repositorio oficial de Xomacito."""
-    from src.core.app_updater import check_for_app_update
-
-    return check_for_app_update(current_version_str)
-    
-# --- FUNCIONES DE INKSCAPE (NUEVO) ---
-
-def get_latest_inkscape_info(progress_callback):
-    """Consulta la API de GitHub (Mirror oficial) para la última versión de Inkscape."""
-    progress_callback("Consultando última versión de Inkscape (GitHub)...", 5)
-    try:
-        # ✅ CAMBIO: Usamos la API de GitHub en lugar de GitLab. 
-        # Es mucho más fiable para obtener el enlace directo del .7z
-        api_url = "https://api.github.com/repos/inkscape/inkscape/releases/latest"
-        
-        response = requests.get(api_url, timeout=15)
-        response.raise_for_status()
-        latest_release = response.json()
-        
-        tag_name = latest_release["tag_name"]
-        download_url = None
-        
-        # Buscar el archivo .7z para Windows x64 en los assets de GitHub
-        for asset in latest_release.get("assets", []):
-            name = asset.get("name", "").lower()
-            
-            # Lógica de filtrado estricta:
-            # 1. Debe ser .7z (portable)
-            # 2. Debe ser x64 (64 bits)
-            # 3. No debe ser un .exe ni .msi (instaladores)
-            if "x64" in name and name.endswith(".7z") and "exe" not in name:
-                download_url = asset.get("browser_download_url")
-                break
-        
-        if download_url:
-             progress_callback("Información de Inkscape encontrada.", 10)
-             return tag_name, download_url
-        
-        # Si no se encuentra, lanzamos error para que la UI lo sepa
-        progress_callback("No se encontró el archivo .7z en la release.", -1)
-        return tag_name, None
-
-    except Exception as e:
-        progress_callback(f"Error al buscar Inkscape: {e}", -1)
-        return None, None
-
-def download_and_install_inkscape(tag, url, progress_callback):
-    """Descarga e instala Inkscape (formato .7z)."""
-    try:
-        import py7zr # Importación tardía para asegurar que se instaló
-        
-        file_name = "inkscape_portable.7z"
-        archive_name = os.path.join(PROJECT_ROOT, file_name)
-        last_reported_progress = -1
-        
-        # 1. Descargar
-        with requests.get(url, stream=True, timeout=120) as r:
-            r.raise_for_status()
-            total_size = int(r.headers.get('content-length', 0))
-            downloaded_size = 0
-            with open(archive_name, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if not chunk: continue
-                    f.write(chunk)
-                    downloaded_size += len(chunk)
-                    if total_size > 0:
-                        progress = 40 + (downloaded_size / total_size) * 40
-                        if int(progress) > last_reported_progress:
-                            progress_callback(f"Descargando Inkscape: {downloaded_size / 1024 / 1024:.1f}/{total_size / 1024 / 1024:.1f} MB", progress)
-                            last_reported_progress = int(progress)
-
-        progress_callback("Extrayendo Inkscape (esto puede tardar)...", 85)
-        
-        # 2. Preparar directorios
-        if os.path.exists(INKSCAPE_BIN_DIR): shutil.rmtree(INKSCAPE_BIN_DIR)
-        # No creamos el dir todavía, el extractor lo creará o extraerá una carpeta
-        
-        temp_extract_path = os.path.join(PROJECT_ROOT, "inkscape_temp")
-        if os.path.exists(temp_extract_path): shutil.rmtree(temp_extract_path)
-        os.makedirs(temp_extract_path, exist_ok=True)
-
-        # 3. Extraer 7z
-        with py7zr.SevenZipFile(archive_name, mode='r') as z:
-            z.extractall(path=temp_extract_path)
-            
-        # 4. Organizar archivos
-        # Inkscape suele extraerse en una carpeta tipo "inkscape-1.x.x-..."
-        extracted_items = os.listdir(temp_extract_path)
-        source_folder = None
-        
-        if len(extracted_items) == 1 and os.path.isdir(os.path.join(temp_extract_path, extracted_items[0])):
-             source_folder = os.path.join(temp_extract_path, extracted_items[0])
-        else:
-             source_folder = temp_extract_path # Se extrajo suelto (raro en inkscape)
-
-        # Mover todo a bin/inkscape
-        shutil.move(source_folder, INKSCAPE_BIN_DIR)
-        
-        # 5. Limpieza
-        if os.path.exists(temp_extract_path): shutil.rmtree(temp_extract_path)
-        os.remove(archive_name)
-        
-        # Guardar versión
-        with open(INKSCAPE_VERSION_FILE, "w") as f: f.write(tag)
-        
-        progress_callback(f"Inkscape {tag} instalado.", 100)
-        return True
-        
-    except Exception as e:
-        progress_callback(f"Error al instalar Inkscape: {e}", -1)
-        print(f"ERROR DETALLADO INKSCAPE: {e}")
-        return False
-    
-def check_inkscape_status(progress_callback):
-    """
-    Verifica si Inkscape está instalado manualmente en bin/inkscape.
-    """
-    progress_callback("Verificando Inkscape...", 10)
-    try:
-        # Buscamos el ejecutable principal
-        inkscape_exe = "inkscape.exe" if platform.system() == "Windows" else "inkscape"
-        inkscape_path = os.path.join(INKSCAPE_BIN_DIR, inkscape_exe)
-        
-        exists = os.path.exists(inkscape_path)
-        
-        if exists:
-            progress_callback("Inkscape detectado.", 100)
-            return {
-                "status": "success",
-                "exists": True,
-                "path": inkscape_path
-            }
-        else:
-            progress_callback("Inkscape no encontrado en bin/inkscape.", 100)
-            return {
-                "status": "success", # No es un error crítico, solo 'no encontrado'
-                "exists": False,
-                "path": None
-            }
-            
-    except Exception as e:
-        return {"status": "error", "message": f"Error verificando Inkscape: {e}"}
-
-def check_ghostscript_status(progress_callback):
-    """
-    Verifica si Ghostscript está instalado manualmente en bin/ghostscript.
-    Busca gswin64c.exe, gswin32c.exe o gs (Linux/Mac).
-    """
-    progress_callback("Verificando Ghostscript...", 10)
-    try:
-        # Nombres posibles del ejecutable
-        if platform.system() == "Windows":
-            gs_exes = ["gswin64c.exe", "gswin32c.exe", "gs.exe"]
-        else:
-            gs_exes = ["gs"]
-
-        gs_path = None
-        exists = False
-
-        # Buscar cualquiera de los ejecutables
-        for exe in gs_exes:
-            potential_path = os.path.join(GHOSTSCRIPT_BIN_DIR, exe)
-            if os.path.exists(potential_path):
-                exists = True
-                gs_path = potential_path
-                break
-
-        if exists:
-            progress_callback("Ghostscript detectado.", 100)
-            return {
-                "status": "success",
-                "exists": True,
-                "path": gs_path
-            }
-        else:
-            progress_callback("Ghostscript no encontrado en bin/ghostscript.", 100)
-            return {
-                "status": "success", # No es error crítico
-                "exists": False,
-                "path": None
-            }
-            
-    except Exception as e:
-        return {"status": "error", "message": f"Error verificando Ghostscript: {e}"}
-    
-def sanitize_upscayl_models(models_dir):
-    """
-    Purga modelos conocidos por causar errores graves o que han sido descartados.
-    Actualmente elimina Anime Video v3 x2 y x3 por inestabilidad.
-    """
-    if not os.path.exists(models_dir):
-        return
-        
-    blacklist = [
-        "realesr-animevideov3-x2",
-        "realesr-animevideov3-x3"
-    ]
-    
-    purged_any = False
-    for name in blacklist:
-        for ext in [".bin", ".param"]:
-            file_path = os.path.join(models_dir, name + ext)
-            if os.path.exists(file_path):
-                try:
-                    os.remove(file_path)
-                    print(f"INFO: Modelo purgado por seguridad (Vía Código): {name}{ext}")
-                    purged_any = True
-                except Exception as e:
-                    print(f"ADVERTENCIA: No se pudo purgar el modelo {name}{ext}: {e}")
-    
-    return purged_any
-    
-def migrate_old_upscaling_models():
-    """Migra los modelos antiguos de Real-ESRGAN y RealSR a la carpeta de Upscayl."""
-    old_folders = ["realesrgan", "realsr"]
-    upscayl_models_dir = os.path.join(UPSCALING_DIR, "upscayl", "models")
-    
-    migrated_any = False
-    for folder in old_folders:
-        old_dir = os.path.join(UPSCALING_DIR, folder)
-        if os.path.exists(old_dir):
-            if not os.path.exists(upscayl_models_dir):
-                os.makedirs(upscayl_models_dir, exist_ok=True)
-            
-            # Find all .bin and .param in old_dir
-            for root, dirs, files in os.walk(old_dir):
-                for file in files:
-                    if file.endswith(('.bin', '.param')):
-                        src_file = os.path.join(root, file)
-                        
-                        # --- NUEVO: Renombrado inteligente (paridad con lógica de descarga) ---
-                        # Si el modelo es genérico (ej: "x4.bin" en RealSR), le ponemos el prefijo de la carpeta.
-                        dst_name = file
-                        if file.startswith("x4"):
-                            parent_name = os.path.basename(root)
-                            # Quitamos el prefijo "models-" si existe para limpiar el nombre
-                            prefix = parent_name.replace("models-", "")
-                            # Evitamos duplicar el prefijo si ya lo tiene
-                            if not file.startswith(prefix):
-                                dst_name = f"{prefix}_{file}"
-                        
-                        dst_file = os.path.join(upscayl_models_dir, dst_name)
-                        try:
-                            if not os.path.exists(dst_file):
-                                shutil.copy2(src_file, dst_file)
-                                migrated_any = True
-                        except Exception as e:
-                            print(f"ADVERTENCIA: No se pudo migrar {file} como {dst_name}: {e}")
-            
-            try:
-                shutil.rmtree(old_dir)
-                print(f"INFO: Carpeta antigua '{folder}' eliminada tras migración.")
-            except Exception as e:
-                print(f"ADVERTENCIA: No se pudo eliminar '{folder}': {e}")
-                
-    if migrated_any:
-        print("INFO: Se han migrado con éxito modelos antiguos a la carpeta de Upscayl.")
-        sanitize_upscayl_models(upscayl_models_dir)
-
-def check_and_download_upscaling_tools(progress_callback, target_tool=None):
-    """
-    Verifica y descarga las herramientas de reescalado con reporte de porcentaje real.
-    Si target_tool se especifica (ej: "Real-ESRGAN"), solo descarga esa.
-    """
-    os.makedirs(UPSCALING_DIR, exist_ok=True)
-    
-    if not target_tool or target_tool == "Upscayl":
-        migrate_old_upscaling_models()
-    
-    # Filtrar herramientas si se especifica una
-    tools_to_process = UPSCALING_TOOLS
-    if target_tool:
-        # Manejar coincidencia parcial (ej: "RealSR" coincide con la key "RealSR")
-        # o búsqueda inversa si el nombre varía.
-        if target_tool in UPSCALING_TOOLS:
-            tools_to_process = {target_tool: UPSCALING_TOOLS[target_tool]}
-        else:
-            print(f"ERROR: Herramienta '{target_tool}' no encontrada en constantes.")
-            return False
-
-    total_tools = len(tools_to_process)
-    processed_count = 0
-    
-    try:
-        # Iteramos sobre el diccionario filtrado
-        for key, info in tools_to_process.items():
-            tool_name = info["name"]
-            folder_name = info["folder"]
-            exe_name = info["exe"]
-            url = info["url"]
-            
-            target_folder = os.path.join(UPSCALING_DIR, folder_name)
-            target_exe = os.path.join(target_folder, exe_name)
-            
-            # Verificar si ya existe
-            if os.path.exists(target_exe):
-                print(f"INFO: {tool_name} encontrado en {target_folder}")
-                processed_count += 1
-                continue
-                
-            # --- INICIO DESCARGA CON PROGRESO DETALLADO ---
-            print(f"INFO: Iniciando descarga de {tool_name}...")
-            
-            # Descargar ZIP
-            zip_filename = f"{folder_name}_temp.zip"
-            zip_path = os.path.join(UPSCALING_DIR, zip_filename)
-            
-            try:
-                with requests.get(url, stream=True, timeout=120) as r:
-                    r.raise_for_status()
-                    total_size = int(r.headers.get('content-length', 0))
-                    downloaded_size = 0
-                    last_reported_pct = -1
-                    
-                    with open(zip_path, 'wb') as f:
-                        # Chunk de 64KB para velocidad
-                        for chunk in r.iter_content(chunk_size=65536):
-                            if chunk: 
-                                f.write(chunk)
-                                downloaded_size += len(chunk)
-                                
-                                # Calcular porcentaje
-                                if total_size > 0:
-                                    percent = int(downloaded_size * 100 / total_size)
-                                    
-                                    # Actualizar UI solo si cambió el porcentaje (para no saturar)
-                                    if percent > last_reported_pct:
-                                        last_reported_pct = percent
-                                        
-                                        dl_mb = downloaded_size / (1024 * 1024)
-                                        tot_mb = total_size / (1024 * 1024)
-                                        
-                                        # Mensaje estilo: "⬇️ Real-ESRGAN: 45% (15.2/30.5 MB)"
-                                        status_text = f"⬇️ {tool_name}: {percent}% ({dl_mb:.1f}/{tot_mb:.1f} MB)"
-                                        
-                                        # Valor numérico para barra de progreso global (opcional)
-                                        progress_callback(status_text, percent)
-                
-                # --- EXTRACCIÓN ---
-                progress_callback(f"Extrayendo {tool_name}...", 100)
-                
-                # Descomprimir
-                temp_extract_dir = os.path.join(UPSCALING_DIR, f"{folder_name}_temp_extract")
-                if os.path.exists(temp_extract_dir):
-                    shutil.rmtree(temp_extract_dir) # Limpiar residuos anteriores
-                    
-                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                    zip_ref.extractall(temp_extract_dir)
-                
-                # Mover contenido: Buscar la carpeta interna
-                extracted_items = os.listdir(temp_extract_dir)
-                source_path = temp_extract_dir
-                
-                # Si solo hay una carpeta dentro, entramos en ella
-                if len(extracted_items) == 1 and os.path.isdir(os.path.join(temp_extract_dir, extracted_items[0])):
-                    source_path = os.path.join(temp_extract_dir, extracted_items[0])
-                
-                # Mover a destino final (bin/models/upscaling/realesrgan)
-                # --- OPTIMIZACIÓN: Fusión segura en lugar de borrar todo ---
-                # Esto evita borrar los modelos que el usuario ya migró manualmente.
-                try:
-                    os.makedirs(target_folder, exist_ok=True)
-                    # Fusionar contenidos (sobrescribe archivos del binario, pero respeta otros como 'models')
-                    shutil.copytree(source_path, target_folder, dirs_exist_ok=True)
-                    # Limpiar carpeta temporal
-                    shutil.rmtree(source_path)
-                except Exception as e:
-                    print(f"ADVERTENCIA: Falló la fusión, intentando reemplazo total: {e}")
-                    if os.path.exists(target_folder):
-                        shutil.rmtree(target_folder)
-                    shutil.move(source_path, target_folder)
-                
-                # --- NUEVO: Descarga de modelos adicionales si existen ---
-                if "models_url" in info:
-                    models_url = info["models_url"]
-                    progress_callback(f"⬇️ {tool_name} (Modelos): Iniciando descarga...", -1)
-                    
-                    models_zip_path = os.path.join(UPSCALING_DIR, f"{folder_name}_models_temp.zip")
-                    with requests.get(models_url, stream=True, timeout=120) as r:
-                        r.raise_for_status()
-                        total_models_size = int(r.headers.get('content-length', 0))
-                        dl_models_size = 0
-                        last_reported_m_pct = -1
-                        with open(models_zip_path, 'wb') as fm:
-                            for chunk in r.iter_content(chunk_size=65536):
-                                if chunk:
-                                    fm.write(chunk)
-                                    dl_models_size += len(chunk)
-                                    if total_models_size > 0:
-                                        m_percent = int(dl_models_size * 100 / total_models_size)
-                                        if m_percent > last_reported_m_pct:
-                                            last_reported_m_pct = m_percent
-                                            dl_mb2 = dl_models_size / (1024*1024)
-                                            tot_mb2 = total_models_size / (1024*1024)
-                                            progress_callback(f"⬇️ {tool_name} (Modelos): {dl_mb2:.1f}/{tot_mb2:.1f} MB", m_percent)
-                                    else:
-                                        dl_mb2 = dl_models_size / (1024*1024)
-                                        if int(dl_mb2) > last_reported_m_pct:
-                                            last_reported_m_pct = int(dl_mb2)
-                                            progress_callback(f"⬇️ {tool_name} (Modelos): {dl_mb2:.1f} MB descargados...", -1)
-                    
-                    progress_callback(f"Extrayendo Modelos de {tool_name}...", 100)
-                    temp_models_dir = os.path.join(UPSCALING_DIR, f"{folder_name}_models_extract")
-                    if os.path.exists(temp_models_dir):
-                        shutil.rmtree(temp_models_dir)
-                    with zipfile.ZipFile(models_zip_path, 'r') as mzip:
-                        mzip.extractall(temp_models_dir)
-                    
-                    m_extracted = os.listdir(temp_models_dir)
-                    m_source = temp_models_dir
-                    if len(m_extracted) == 1 and os.path.isdir(os.path.join(temp_models_dir, m_extracted[0])):
-                        m_source = os.path.join(temp_models_dir, m_extracted[0])
-                        
-                    # Buscar la subcarpeta "models" real dentro de la extracción (Ej: custom-models-main/models)
-                    inner_models = os.path.join(m_source, "models")
-                    if os.path.exists(inner_models) and os.path.isdir(inner_models):
-                        m_source = inner_models
-                        
-                    models_target = os.path.join(target_folder, "models")
-                    # --- OPTIMIZACIÓN: Fusión de modelos en lugar de borrar la carpeta ---
-                    # Esto permite que los modelos migrados de RealSR no se borren.
-                    try:
-                        os.makedirs(models_target, exist_ok=True)
-                        shutil.copytree(m_source, models_target, dirs_exist_ok=True)
-                        shutil.rmtree(m_source)
-                    except Exception as e:
-                        print(f"ADVERTENCIA: Falló la fusión de modelos: {e}")
-                        if os.path.exists(models_target):
-                            shutil.rmtree(models_target)
-                        shutil.move(m_source, models_target)
-                    
-                    # Evitar WinError 32 reintentando el borrado del temporal
-                    import time
-                    for _ in range(3):
-                        try:
-                            os.remove(models_zip_path)
-                            break
-                        except Exception:
-                            time.sleep(0.5)
-                    try:
-                        shutil.rmtree(temp_models_dir, ignore_errors=True)
-                    except: pass
-                
-                # --- NUEVO: Descargar modelos de familias antiguas para usarlos en Upscayl ---
-                if folder_name == "upscayl":
-                    legacy_zips = [
-                        ("Real-ESRGAN", "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-windows.zip"),
-                        ("RealSR", "https://github.com/nihui/realsr-ncnn-vulkan/releases/download/20220728/realsr-ncnn-vulkan-20220728-windows.zip")
-                    ]
-                    models_target = os.path.join(target_folder, "models")
-                    os.makedirs(models_target, exist_ok=True)
-                    
-                    for leg_name, leg_url in legacy_zips:
-                        # --- OPTIMIZACIÓN FINAL: Saltar descarga si ya existen modelos clave ---
-                        # Evitamos bajar ~200MB si ya migramos o descargamos esto antes.
-                        canary = "realesrgan-x4plus.bin" if leg_name == "Real-ESRGAN" else "DF2K_x4.bin"
-                        if os.path.exists(os.path.join(models_target, canary)):
-                            print(f"INFO: Modelos de {leg_name} ya detectados. Saltando descarga de ZIP de {leg_name}.")
-                            continue
-                            
-                        progress_callback(f"⬇️ Modelos Adicionales ({leg_name}): Descargando...", -1)
-                        leg_zip_path = os.path.join(UPSCALING_DIR, f"{leg_name}_temp.zip")
-                        try:
-                            with requests.get(leg_url, stream=True, timeout=120) as r:
-                                r.raise_for_status()
-                                with open(leg_zip_path, 'wb') as fm:
-                                    for chunk in r.iter_content(chunk_size=65536):
-                                        if chunk: fm.write(chunk)
-                            progress_callback(f"Extrayendo Modelos de {leg_name}...", 100)
-                            leg_temp_dir = os.path.join(UPSCALING_DIR, f"{leg_name}_temp_extract")
-                            if os.path.exists(leg_temp_dir):
-                                shutil.rmtree(leg_temp_dir)
-                            with zipfile.ZipFile(leg_zip_path, 'r') as legzip:
-                                legzip.extractall(leg_temp_dir)
-                            
-                            # Buscar .bin y .param y mover a models_target
-                            for root_d, _, files_d in os.walk(leg_temp_dir):
-                                for f in files_d:
-                                    if f.endswith('.bin') or f.endswith('.param'):
-                                        src_p = os.path.join(root_d, f)
-                                        # Prevenir colisión de nombres genéricos en carpetas distintas (Ej: RealSR modelos 'x4')
-                                        dst_name = f
-                                        parent_name = os.path.basename(root_d)
-                                        if f.startswith("x4") and parent_name.startswith("models-"):
-                                            prefix = parent_name.replace("models-", "")
-                                            dst_name = f"{prefix}_{f}"
-                                            
-                                        dst_p = os.path.join(models_target, dst_name)
-                                        if not os.path.exists(dst_p):
-                                            shutil.copy2(src_p, dst_p)
-                                            
-                            # Purgar modelos prohibidos tras extracción de legacy
-                            sanitize_upscayl_models(models_target)
-                            
-                            # Limpiar
-                            for _ in range(3):
-                                try: os.remove(leg_zip_path); break
-                                except Exception: time.sleep(0.5)
-                            shutil.rmtree(leg_temp_dir, ignore_errors=True)
-                        except Exception as e:
-                            print(f"ADVERTENCIA: No se pudo descargar legacy models de {leg_name}: {e}")
-
-                # --- PURGA FINAL DE SEGURIDAD ---
-                sanitize_upscayl_models(os.path.join(target_folder, "models"))
-
-                print(f"INFO: [OK] {tool_name} instalado correctamente.")
-                
-                # Limpieza final
-                for _ in range(3):
-                    try:
-                        os.remove(zip_path)
-                        break
-                    except Exception:
-                        import time
-                        time.sleep(0.5)
-                if os.path.exists(temp_extract_dir):
-                    shutil.rmtree(temp_extract_dir)
-                    
-            except Exception as e:
-                print(f"ERROR descargando {tool_name}: {e}")
-                # Limpiar en caso de error
-                if os.path.exists(zip_path): 
-                    try: os.remove(zip_path)
-                    except: pass
-                return False
-            
-            processed_count += 1
-            
-        return True
-
-    except Exception as e:
-        print(f"ERROR CRÍTICO gestionando herramientas de reescalado: {e}")
-        progress_callback(f"Error en Upscaling: {e}", -1)
-        return False
-
-def install_custom_upscayl_model(file_path, nickname=None, custom_models=None, save_callback=None):
-    """Instala una pareja NCNN ``.bin``/``.param`` sin depender de la UI."""
-    if not file_path:
-        raise ValueError("No se seleccionó un archivo de modelo.")
-    base_path, ext = os.path.splitext(file_path)
-    ext = ext.lower()
-    if ext not in {".bin", ".param"}:
-        raise ValueError("El modelo debe ser un archivo .bin o .param.")
-    partner_ext = ".param" if ext == ".bin" else ".bin"
-    partner_path = base_path + partner_ext
-    real_name_base = os.path.basename(base_path)
-
-    if not os.path.exists(partner_path):
-        raise FileNotFoundError(
-            f"No se encontró {os.path.basename(partner_path)}. "
-            "Los modelos NCNN requieren .bin y .param con el mismo nombre."
-        )
-    nickname = str(nickname or real_name_base).strip() or real_name_base
-    upscayl_models_dir = os.path.join(UPSCALING_DIR, "upscayl", "models")
-    os.makedirs(upscayl_models_dir, exist_ok=True)
-    shutil.copy2(file_path, os.path.join(upscayl_models_dir, real_name_base + ext))
-    shutil.copy2(partner_path, os.path.join(upscayl_models_dir, real_name_base + partner_ext))
-    if custom_models is not None:
-        custom_models[real_name_base] = nickname
-    if save_callback:
-        save_callback(custom_models or {})
-    return real_name_base, nickname
-
-
-def delete_custom_upscayl_model(real_name_base, custom_models=None, save_callback=None):
-    """Elimina una pareja NCNN y actualiza el mapa de apodos, si se entrega."""
-    upscayl_models_dir = os.path.join(UPSCALING_DIR, "upscayl", "models")
-    bin_file = os.path.join(upscayl_models_dir, real_name_base + ".bin")
-    param_file = os.path.join(upscayl_models_dir, real_name_base + ".param")
-
-    try:
-        if os.path.exists(bin_file): os.remove(bin_file)
-        if os.path.exists(param_file): os.remove(param_file)
-        
-        if custom_models is not None:
-            custom_models.pop(real_name_base, None)
-        if save_callback:
-            save_callback(custom_models or {})
-        return True
-    except Exception as e:
-        print(f"ERROR: No se pudo eliminar el modelo {real_name_base}: {e}")
-        return False
-    
-def get_remote_file_size(url):
-    """Obtiene el tamaño de un archivo remoto en bytes sin descargarlo."""
-    try:
-        response = requests.head(url, allow_redirects=True, timeout=5)
-        if response.status_code == 200:
-            return int(response.headers.get('content-length', 0))
-        return 0
-    except Exception:
-        return 0
-
-def format_size(size_bytes):
-    """Formatea bytes a MB/GB."""
-    if size_bytes == 0:
-        return "Desconocido"
-    
-    size_mb = size_bytes / (1024 * 1024)
-    if size_mb >= 1024:
-        return f"{size_mb / 1024:.2f} GB"
-    return f"{size_mb:.1f} MB"
+# Generated by scripts/obfuscate_python_tree.py. Do not edit by hand.
+from __future__ import annotations
+
+import base64 as _base64
+import marshal as _marshal
+import zlib as _zlib
+
+_PAYLOAD = (
+    "c-ri}3wRq>b|#2d;r)J)011-do1jSWDN&**N_>kVMN%U5v}88Kf+$cVz%GE6hz4vYliAQ2&6-"
+    "L&BWi4~siZTer<G}X+B3~$vKv~mTlBjiKr1wwU!qPln|L<ggmNn@N8WF<_ueWL3S{vi+R5~O8}ZYvTUGa67w4Yy-"
+    "*e9WOCIZ=h`R89`5hsTca4YhaQ-OoG<D^l=A*0Nv;bX&r-kS$IxRw1>@<e1;?rVum7JD<t6)?*COa+T!!m@U@-"
+    "f9}#hCK6a!hqvHKsnT9@CuGpm(BC?U?SgZcKk#KV~>>;PYI(krLjTe<M5AK65E??1us>emd=$@`;&z>Cco;!sIhQQ$8t^&+<(9WK"
+    "6z{XULa^%b9$c&yY`rE0}!NXULb1E17&*&ydfItC)P*&yX(zS2Ou?aLsS<PTO!T2y<~A2=j0~2=j3R2n%o{2n%r&2#fGE5EkR<AS"
+    "}VnAhhEa5SHQ@Al!lPz%ze?f4U5}g1d4&3xp0l8-"
+    "x{j4hSo88wjiLTo6{{c_6I8^FdgP7l3dlUI@Znco|*<%BaK3@nUe@jXUrXaNUF3!P|Pg6oh*x`Syx0VAFf-"
+    "{J7)=7vXbzJ$5Xv>^s_fsI6sS@Mv%EKwQ$?*)!PMc{HwWZ$I4E)-"
+    "jm4*B)&<+}tsExVN>fyB|GK9qa3FY3lCm>43L(VO*1ZFwooE-5)p5W%M_-"
+    "w+$X|JKEpb+Y{HYA09i}9T(v)k2fwE_l}Q`x`?>c?YZb1a*n&=is1`hpWin`xX1l*Y|@X9jt8_b@gUuLhySuapg(_pY}_@R^2|UN"
+    "mh#Y;C^+S*4wcJ(G{k3pb1C>Qgam2;5hy?N&M!#Ba6T^hp^%Cbase+02oEkwOcXwE5<}0#$saKwKvG;bDhTn1dAR)d_#weCFC+{K"
+    "T6t$Hc)XA($R81NOi9_=XF<^q=@$JO|4L3!IHK4n4WD<VO2i8aeN-zI9IaF)e;RzAU&++1=4g*@?K8ig85QQI62dkq$HdWQEYW7V"
+    "tr}d*YO6rT^QSZU%^dAuzRpO-+PAn4*W(7<7{rFf{xl|~m7|;u-"
+    "{Kf<x|#MvjP9p6C?3gKo9c)3^$ciJND`8QR5p&Xq!;VJ{3&PkE01GbIP-"
+    "$11sqQ$LFvu(AJR+guk+D3np3}dKD&n;^%d}l9U+;&m}#XYDB~iRukqdxBxf0_DTDpRPVsPANcN&^Qb1iV@h|Z%3s3Pb@$H#`=Ho"
+    "8HecnCfw7G0<kI(NMb=q*(xXS~6>qBm*58T-LCjA$@o-"
+    "!NZ8ut=@rw8}iT%)#e!aGd3d|pRfe4g+IT%PtoPTPoUXu|J2H|nwtdB?`xqfU?(clljIeh_nfp#cpV2oxsj^q{v~l{p-"
+    "aFW{#o1c+#2aY^4~zZ-Y$iVOQXyW>*A_1y^<pigmZe6lV;#4*A(c5XP3-^y8<?FG6*-"
+    "05=!3OlKOuBqMQ8gluZ1c<`w<)G$(7FOg2g}Xd{A0$u{rQmVf(WAXb>uo(=o6ltfnY|uAar?)%;?;?Z9bfzd_!khAkHv-"
+    "K?(w*U8sbs#ga}|0{`2L#?V`BY=f}MhespyaL|o)|UG~SNuwdNn8MX`JV(@x=!cV{%9x$hLlKyD0XA^bFwzY#=K$F1Nq!SFeZ~xc"
+    ">ha{!Tpy@WyuzDN#b_C%iY|ha{1|lV;!)}U8hFyNA-"
+    "%rGazDZwP?H+^EVbp!jG2wTQ#ziQUop*ciLEpG*C@yx6!~Ai9*B2L!JN*~pq7kp#L%<(JT<p5+hTl)_n>Yt%5*T>!E&IG6LtO5<o"
+    "R~#%QD0|YTU-Gq)7XRud_cb|E+<_62?CCdE3R(=-E`r7Q~{_5agmc4hVz1Od#C}k%i}tFvib&xK!$V9p^I@D)BL!O{%-i-"
+    "IC$e6cKPDkF}KeL#y<H(IDT=MNr}GjAnKEZZat9=rz@;4&Ug9X<gqdTp6YzWP{oj!a8>v~<HsH2lkvi#3$CGygJ2d8(vxCv98K22"
+    "<gmMZ#C}jvCM3oG6ZnO{%zG^6Ni|n|(+6i<QAxqiq!uz`@50fj^gv8w_=U(srtMq!ZdBCtmm*8te2^5GV(AuAWPG5peaRDG_9<aZ"
+    "VSKgmmB#yu{IDW_wk4t{2`egNO6z@Pepm?}+*6jUU?AlqDNkud#qVF#N2RUF;)$rJdD)!trsTThP33jv56+M^Z4q-"
+    "jsB2lFdbRGAI#@oLu_LM|L;2g61W{>MOk-RTXfe~W-g;l37uM%3tF*5^|H|_-1G78l?DGTU-fmKPc-"
+    "fG3ZU5E%^d+V<#Z1=63b8>xC0SAPGIH-*%EFeih{f@WdP+Pkjw$r_6<J|L)~xQXA`cZ^5!P4COYT=Thbx;GJMMJ9*G--pBrkZPdM"
+    "~N;q6XE@pNmTOfDV1NtT5e&15olMPY9YORgv0`CI08q52cF%QVmA6A7-"
+    "%bT>u%HmNmw&S0o_aQ=bKVkK5wryf!=U1G}NUSolFhZhM~ar+FBNr*JS>f`j?De8|Bd+6*}shBnIpzY^jnIhzpy$6CV2MK>9tCnN"
+    "|8MzHl)IzA7)m#qID@H#?V47&h$9pQ+OV>Ofv^AfcIuE+|xh#-"
+    "bbVIEv|5v)Ky{uL$ai##bjfO<tBl@g{pFBlT=dHq1b42p2oc|ku9taVAAL&~|<rG><(Om$EUS2SFcvVy5X;upn}TIza<@0T-"
+    "N0>j^&7qCjvZKV`u9n??k14&xE9^b^M-wCN^Q(q?}mK|>Y!HILWaVLSE-"
+    "u~lJzkAGSLmVqjPbdB5fQfZXl(9;HOUuT|9S*_>iFy46zkl3UUs2&4cRPmN{tFZ59Dv$Yz_r#_K_yOH2-"
+    "m2~>2vuiMgbl4`3VCk;B6pJfI3`o{gC>d!-F2@m<y0zA0RY<?83W%n94r^d5liac`q@RTn(sKiA4-"
+    "7BMt&GZE@o{!h6XFxOm)q$usJ8;)4^!Xis9502u+fgp0+w3BcA9bTRcd0@A9t1wB21LMo-"
+    "p15*0N;bILLi^RAl(!VVsAkP&Sf~6&{C7f=bYY;SW5Ty1`fcB60ydEI_P^*30<ssL&A4m#uc_$!{mnnKL?Q%_`7$|EOEK35061Em"
+    "{3BGagMO<+MHDZJG2oB;-zmsTzi7_-%1pNFyNs?$2jqs%jv}%yfN{K3NID7-"
+    "(T^G#oS3F3Q5n*gybVfx7R|EzuBc|_}k}MlCuQgn4n3c@yqlVfkX-ulUFU<{0bEDGySa#8yW7o%C^ODlc2Zo~AK-"
+    "f?{C4FEjxo;{9o66=+&Jz(+Js?W5{Znm#a!wzAB{VCIXi9#j%_Z|7LDhD}(sO1_WbwXmZX=oAcvss9Xp?OJikzo4&lsm(B&At^yc"
+    "zB*3c`v4Nc%HrQr5Iklc4F#8q3$q%Cy&|q#`$&q-imC(LiRjEfP`bA(#ZN2N_R&m7uTxswuOnk@sG)4u*R~Fl;om$c49b%H}-"
+    "btvo%9*D6~u;cW~9@gX*KQ6y;Lzr!Fcl<_vEdVWz-"
+    "#=FU)m@GQ7MLCUCl8~XIKuQdW{EWmlqU5Bzd>p$ePRN%#5gi=SY(#tgx}+2}qUUIzii_SRp`rvI9}?rzkOWDp@{n|sKBsfEU6?3|"
+    "FtNtjyirQf`mE&BBxMKvmVw@INLRS>rYeyetQ0=bZh24+RtGVVRB}1$k|*m5O8oh2p9fS>P78wGUu;F|%nq;~fct;~O0@wna{_R5"
+    "6s&PpB=QDDbe^`L1lOP(C=4k<dF*=?SRn+sHmJmPuZeJdP=&6BH?W{0s0^wSQd`Q`WNHbCu1tvFx-"
+    "El$EL36Dy)1P!jVYrk8!6mig;uXF>m~I_F~{hem^NvG8fwG{`v%{T`<tjiURee&`DIquo-EN{#?+m@g_1WY6MX@55Xi2$<qaX8!I"
+    "F#l`LIs@Mi@d6@-"
+    "TAN*O7AJ7>V&rv;y)2aP}nY@<{R#U*Hi^e84H*H2=!KpyK(wDlnHW3E+D^L~kCg^Zf7DdH(Ztp3fzo`%75dk2$3EGq5L~7SyIn^+"
+    "<--zNo!&hq@+tmo?@82hQ@-LRvKDnN-PaBqCAvq;+-K_N>6pRu^30hn-O5KkXiG8Xr$#8*Jy?o(i-!(p-"
+    "uo;2w7j0JcPmB)mcI#i#P*8^j-caTzfQP~Ih6&M~4H+&)!91_X#z<)bdou>S%j_&>!Q-"
+    "cfuoF1U2=3!V*eJMy6m6P}BMK6k+N1?=D#a33RJOf(a6UJ2&nsnAh%{wcrWsnB+~IW8d1`QR_RuS+Nj>}qN~-"
+    "gb1Lt*524DIv&@Pe85>h=p#z(170hF1XG)J;Q8vCC<MTkkEa9Y5{MkN+BR}+3olGoKP@yIljOlDa&Le>O{IEpVV$oC+v{Lkd8Sox"
+    "^Oq)i>pozw08F;Fkb@V3<R7Jh(RJcVQ>hsN<glSOD?#aIN&PdBFOv^Wk{q3a;f(P7rY`SP=usurP~j<IC^m7*d+qo$Aw^!<03Hlc"
+    "w7Vp_PC7Ut%#klEIrj28aEzn@9b`~>*7MdV8(@jwW1g;rIQ%C;C{hH@tkR+PQ+nBsTzvXw8S0f6LGoU3j|#B&ElE_LkZHr2ZR@i%"
+    ";)16`mk{+lTkD@ICc(n5QdUO2V{UVB>aPJ{4&L}=~4vk6z(m9VO`lmHkzx%6i6@x^Z#c7WZ_msRZswwzp8je@%_Vdt@or=%juSDm"
+    "#$vA7Q7n#!QuIaNcw>(Wh^(Jlx9CvnO;5f%9)w`S$w`Fs@lE6OP96q7n)*9)qQ1lSeYGF+LkTWnImtWx_;`-"
+    "v)9j(JN7OdiDd1MSPo1bie=|a_5P(YeOaS>_0lVsUVZVE7iUJJnjOog^lPWCo|*|pO=XYeJbl{q=xl35XJ6qdR4x3uBeAUPH=n=$"
+    "{JekW`AAm7mpr+yg+JZ)vrOA;Nz7=v)^W9CrtSMZF=PG@d~-"
+    "X0KM*!nP4~vqb7z}==fzll;atu_ec0Z%qz{*Lh4Z^+q|2GvGnZf6NA75fWH!a}tLF#8`Fj>x!}$khT4VX;^P+Hm?YuvnzjvnfXV!"
+    "AEvUPD_DSz?Ml9TKkAdj6~3XrGHkdCwD;4tYPBfY+;)xW%R_k#JyXT#R&M<&?1CqmfrCl)w5EA>)YAAebAVtU0_<%3RTWWHH+z38"
+    "=)X~`2Ic=EuU13`t^vk`O6RA)?Mo~in+(6Y%gQ#L1xn94yeUDdoU(cg~Q&e=nxwIXV)1i5upVA$09sJ>u!D55GQrTgZb^SYm;zmv"
+    "XTc-MMgx(~3oAWO^aPO_wl%xGS0iAoPb7+|G^FVN*KTQc9YT(`_N%v%==KM^jqe%|?E=f_=<gD1(3Q{;iu;i}X3EYE!vGup1V{=-"
+    "*KM6hqvw|Po;5lw@qPZ~f!Q1_lbk%C5{Hh=w4WB!uIheM#$k;X$yRZID#zURKOH>~XadPNA|JbfbO$r?ekzkV#{DNT?gHzAI^Zh="
+    "4VOW-"
+    "^Rh5#J7>8bAtM3$Q@hpKq*Wj1AYW(jZYG96S4ZYz`^emi|%rw)7HWPxEt6$n4bm4fFV*rg!D2i3|$eBK9*x=y?Br<zg_|LGo6=T6"
+    "}rwG_nfq-jB#J4O0Kg~B_#O(4Fc7IdnyC2dWoNc5qQ58@w+1f5dJhhhxI6=G2GhdQh?L-"
+    "t{s1je(l&LYW&c@mKKLp#=4E&0$P0VRL96YFf0d{__TAMs^}@`NAB)rYc#ADJ<b@}n#aKFJfpcp-MkA^E5jmhe%PtV=8Ws9xEn5P"
+    "qz{Ks*Ix5hnzTTYOru;B6#WaDgX&aZ=b|L<IgO<#25Y@fns(fD1yxXD=ZMY%mObonN)~ZBmrk34t8ZMq&xqW>FFj!bR|p#qJr_GH"
+    "_`71Oq||78C&H3j++b_;n1zI;)tE9ESNYvX~D&5M_Wc6O<s<L-"
+    "x90NC21)QAqNlq@TXBm=1ZMIJqe?YJ<oDLh5ZvHo`XQ9deF3h?9`c^N1HAuMn5`CWasqYsVmGf$#%*gAoF?gEZi5Kv@S<b{^x#6d"
+    "^zHR8QTq5s*0Mf{XeDWZxNpW7NrPFs#B=>TPceh${$`7y~VH4!i6MwC=N(_fZ(Y1)P|K0Re*-"
+    "5HtbUBfv31w1I#elU+(JyYghG;z}w`_f1Ci4Xo0{uc4H5x8Sm^WOsvFJEg3(lUg$M6evv<N{u1$Z^4ThnEX>7wNx6g=lF27I&t;H"
+    "wKG@G{Gfc^8Zk9a$rCH)i&tNq9f_n@O(`E3)23uBSU8$d7FCpkRUn#HGM69GIUt=ZpU;h1v)*jK-"
+    "u~LbH+!!4M66}gGPoL)13Fl+hum{0lHV1U+NR{w-78{Vx-FJl9?LI_6*yvfjz<cyR=&a$%j8cKAO|Y%>&Iq9Klz}Yv5Z`@@)&vi1"
+    "X#03$EmR9^gZcmNN~Zsr@mc?g6?h+^4_b@X|5CAvSfkytvalQC%M%i0rA^HSxdI?wo=k!5#BcNVcdd&kQ?Q_`74R?;*t=y4$>=4L"
+    "3;DiJ}Ufi%V5qIpe(Jx<;*=F+#BfKYh?=VE5=o8a9{P7abF3w%S@Ap)SXK;Bo320>bfEBOO>MEN+}GfF-#oZ9`4)LKhV_N-"
+    "3F6VDiyYpj!CDd)$W+swKW{Ly&Y;!*h<=bXs650Ai|9sBEqPa3b^@onbN)BM1_ea7(jqCpgunVxZZOU?ok{GV6E^?8<H1%7o3C(M"
+    "?0FUVPU#;E~;^B;9;U2QrvaXU@A9_1`{2y85_gFOooF=I!E-"
+    "u;0SD~Iu*X9kXy}p_oxd90zfJNq!*Coewcn8!j{HDa%r6v1m(U7Uj7JXd76ZBd&s^cQPI&AK{}T4K!0=-EZ36zX4dtr*K(%R4-"
+    "C1prC~$)loXJu%pFsj2d4b{rsA-vcuqQ>7cuQ*5Z&zA!a4Dc^1GUf`GbpXOGWP;zFT_)fxDpYqfu@DKRLR)3!%H#W(n`T5(x||bs"
+    ")SY5W!GlXfX(HWhk3>2ygAs!}vaBi&}VFje&RyB@`tnAzaV6D50N2O9avhyKn+d*;dyJ6Ry!0T-"
+    "3gG>XaO1{eFC|;R(XY{u%9dR644_udg1I(t8ewif$MD@oiK{GB;Hm`~||vZ5I%b$`BA7w)4?k^ubQjQ^^RYlFxbGl`@fTfL9;Gl$"
+    "PW~I!X>4kBUw#E3$u}Ar%#*sN$Efzuc(!ZW+bA2Kgg=4ob~1mbd^>bs<a3M#RBda;y!0DGT#WtTQ6Ored4o;6k)EC2?@5ZL?JzT)"
+    "br*oTa73u+e~V3`zZ_q&`&=D@Vwqm<#>JWjE#P;?kB)aA~POa~)h7FtE6U!KD>JaF0-B#U{8k#^BOYT#0fhX<S;8a!=vXs-"
+    "O~Azb3-"
+    "@K^3}cwunn(G%l@$e=J;j)jg_1hwE9t$!{=|a04@w)SHx(#f3eyb}5+s1x_t1HR}tBM)EnnxsfTW%Fm$dBSl;~dANx+hcrRWh<)Q"
+    "4SC65mGKtlW7&&W5W7VJyYM-"
+    "?RKSLu%$~eZ~krV@OrnA3wNXN=qxlx_qccBJ?9Y`J0hYTSjZVnm|$EOVHLpsn$KH%bXK83#~sehKp`|EsGEwvoA=vcM<HmJe0jXB"
+    "2jG01$aP}(-;SQ;}gEI<g=j%J3^S*_o_Q4a7OlC!d5Lrupm_A01L_9mE?{Bl>mFXDZZF~T#MF*0vsjLgg!<;r-"
+    "QjE<Q#I{TUWt(;@F$uD`6npnEC$rZqVfT=Tk)gF{(lRYRdN|=N8plojl@m$s(lyEh$F)g_A2i*HD;LX2Z=MDeL!*$;<yGbddP|r0"
+    "RgK2mMi{ht`)O~AvUE>T~Q=PIGWnq2Ute|DhUX(UudC_v^@2D$#FABcB@;51Wf40s()gouzX(0>xE_qa~Y~C?Z?_~b!dhG>)_T)Y"
+    "lqsK}~X6xy#LjDgihc@pxkj~rzB;B~+j{q_N1H>s9Jq?312~AYuc^C}B;5#rl2Lrf|kh%fIh%;~>h&YdAC0pBNAV5tbu9Vt0@%oZ"
+    "1C{#E-2DwWE%~bkbV-VH>S%&;iMM!dkC|5v4)L#w|$Kj5doJ#6&U3N|Efpx4>M@_!AK_Q8NJswTe&Dy(i5NBb@pt$i-"
+    "=Oj!YsO;=%@2$5bpMZe_L*#)#9FmEh7rX=kx5<3tfVuWM0z1~*P&-"
+    "E@Ocn)(<pQivLNnh_6^st6*YO1$+d#%zUDU*ow%c>#m~VX4?O%<fiPr9w5o0j$FtC~r22cbcCK8|<l!B4ss+bt_6D}82yTyH%+)%"
+    "R<3_6rC<C4?v@pc%I(;vh+IvSVwodkSKT!ckI{5USU<Q%<-pt`tZ)a~=*ZUXIY5#uoUE=mG-=%_8Wgn>rN9$N+hf3?K-"
+    "V1U3r8Ip401{)EC4?{43Gl6&s1~0<^VtvG~!{A@Q;5T6KFJWdKdlu2^s-"
+    "ROqjy{jtk0RQ0Zck!=kV+#Wyk37?gmxt{SidhWa)YAcG91d!Fb%b9r=Y$n^#n=Y8C=_OtM=tGIrrtL*-"
+    "E?zQjoBuuY?rZ*ulq4F=P6*&a0g>L%-"
+    "8ATOBqQP0851bKUdyNP0tJcW!yj?ws~ncjwsKR7%dxH$`IeEoQd;>g~RzE70y6Z2A)!?ERxWo-BjRXrL5Xt=VsOT<>_Z`+E0HD_P"
+    "eau^uL+mNm+|H_!iQ?CmkK;c(Q^6H}z$SJ=V|+iY4?QL?NvU(30gGi#mmMRYZ!(lvi+QF8yl(eQzzWIrA~;JUALfu|2aGV4|A%;;"
+    "SEy2&2WTdqBG1NWrWD`KA2MoP`gx%qFU-"
+    "$*Cz^^x4Y5Hv{(E3>9rrweAVm?m>(;;yD3mS0S2Z9mhRATW~lNY2yRmi3vW^+ZH}l2o32EasWguN}I2h|H;o7%RWzNoAe<saCe$^"
+    "7Hcp5p(@iCwm{(9o3ZlT$`ELik*y_?2n~9mEqN{SGryoB(jo)JLmlobHjrBp7P*|4i^2`%mWj0`0DVr(W|3BXq<0|q#c-2u*P%-"
+    "3~AAdK&0yAFKhMJWLIV2iMD82Ya-JQMzx)w8nyA&v#*>bGs~i?@`ozTtEXN$H64tq3LdI-QGMa8FQVE(N*m|CJD>ZL;&+M{^4~4H"
+    "FKuM@H0Km7&E_YQeE9Jnq1pSCo&)H2@bpP3Pj#LjR=S@4mC^++U$2y~Hb3{wxfj~r&tJsvxZiW%z8GmfN;dVA^#ftYz&*<`dh_$|"
+    "9~*hbtS@<d)EN_LZdq(vtRd4n?rRT*wFe=(4&HpdBIU_US4CexkQ%Rwp8mPC5ww2w*5<DH@6HdA8TAXzQR#lx)@C6e0`vMK^}P3t"
+    "O`=}C@RoUBFNWPtv%s*j3WV?HNx}2?OPjSI)lcj7y*a`=${Y~CvqRroCcLw+2?IAD3Y)6H<)d0t?;gR&vZg)Y=2M}quYvbzzUhdK"
+    "_vvoakz(FwDp<&8S^6Um;b#>l5dR#*dNs1o<*<&=^;oY}@_D)xKF`5=?UK(6P`nK5-6i?F3dQ#b`u1R-"
+    "@2%;p5Rnc(h?5n9z8VQxg~9kPF-Su;$c|(Q!<hPrSr|6J)`iU&e3B)Eahu>sfiRqho)-"
+    "&_>=1_SDDJ?H)JeiM5*V+S9kmGW3YABV!n;Nc#JTq&mVYJpA^gmC=ZJiR92hQvyAZe(YMK*5Tow|0bl_f2-"
+    "z&hq3~HLw_bPDDpHzc-G!{zY%%pS(gFxC#?qg6|;cVO^C;}-AYxXUSYxXUa>+D-dQJJQo6mhC)DV(Y?Bz;jjsiv-"
+    "%_<qLr&aYjyZ$XukzLioKe%Cy)ciZ~vtuBw(fk6K)>{6h_ThmpC#-Y%t3Pm>Al^}i#F-"
+    "a%fpz2G$Kn~1OetGw<!CkfG<3r__sORNlz88id>l??q-JXfdfn0XF3C~3jU?j>%;j8jt&jd;-"
+    "ZgmnMd%((0>VyWV<v4nSSZTN=k=zNHuyO2wz@D$S?~%36z6Z=h?|KCCH{9@`Qrcy!8P+bO69$+nKWq(PPA7eU@gln6JGfOv^gvKr"
+    "wrYcfILZv{9T@yCFi38P$k<F73&f`PLy%Q30<o9CD=QzeaeM~EZeDDPirQBM8QWHDf2gxSej%dEn-"
+    "a$|tW%npLN|Ttt|FVP?!TdlsSMMX?yA7eG3w^>T~!WQbL2)&%#`!MR5E7{o2of>PSAEq>*6`Ecy4dEWY0qGf`QC{7ERJ-"
+    "?%k68i~I#2nbER%G%7u~X1AoQIfwV&ZVd=;Np&#H5Wz6V(6U2#t6JG26y6r<LHxE!*-"
+    "|9DU4(&n3ihu|(Cc?4|BU^why6pvkx_X_wn?AUH^Pqy6ANQ8Z-"
+    "O*su~1w&3t^ITTNvYtn@SeiIR<wDf(o?PAm`MIR;27T<gb0svDctt_8L^oUW1Y~&dRlW4G2Y12c>MycU+716(nn(>E6JCtQ~!>l0"
+    "(=PFWO&_!oL)2`jmTAuRggikb-"
+    "Y<SW5egSXj1^m5V{lM@l!v@Kr(8NcsA65`33OaEBtO9;w(sO{$9H>oQm{7}NZ1{O*djh!xjtgp@MBSj{$m1)3E6oBAzn{A<v#W~g"
+    "dpCs)go{rX1xNJXr^Ci<uiYJ(bRj}JzC*<ZIILJU%}F!Wz?&Cl)p^8NLkb`J7&e$i}<nd{fUZRa3dh5d5bIf%eKm$810vTx1KL2z"
+    "YaU2OWlt^4M0IZ<n_mP3n_f1H-"
+    "{uXL@0DF0t6xbt7Hlj<V|cWy}G=5@4vgpLDumWFgM>L#t!HN`%nk^^_9Sx3lIgID7&!1+Nd3B(s~hA{UaFqR8v4(QnsGtFv3>^X@"
+    "t2eQ`znG<aM4`9mU41@?5d<u-"
+    "kP@9Q4_~32iWMC}>OI6u!&msOjO!iFhtCvx7WUx?9NcJMKD`;)&>17Nd{sVmeBg7X&7!(4lactCk$wkEF$QXb^Yo+IaxPc52BsAb"
+    "j!0AQ2i-"
+    "1s6A{%L?G%EG0;8x;4!(d&Y)ysjlE+7zj%r$lnHt4+D;~b?>R5jfU<W?YokLo$`QHm$GaN?qH)(}zfelKLqaT*of`)r`-"
+    "T9XCSKdQ-sj1x7Lev2jx2o`N#+)o}m6>d32p7~C=<vXMkC!1ZQ>pVI9UDAI!Jban_-b>-"
+    "(msWVZCPAwJT!#5=@X{tY2rm_#Fzgca3m)@$SpxzVgsPJw2vvp*7~ohvav%tmLaH8%c`^k8F1zPy?@24cz1sBZ;46bOXXa`mstSl"
+    "XH}U7|9%SU+&nOLNltwbjzT~M@P5fzb%wU1?)9*CiH<X19Wpl^x8ER?3^DXNQ>&?+WY5voWKkB&O&>e2*UOFCW7>MK^n?97HTpLZ"
+    "V`nfrOIV%T#uGv5|s~QM9ChN7{tG%=BH@l<8Jr4_u-#T&Q#9L=>oO!owQ5-"
+    "4knC^+C7tUow(rcD2Id5iO&zyaJ{`5V|fk#=eT~9FB;>QI%wKf%a%%AO#sO+S)VeZI0|0j}nBn!fKmG`9$5O{2x&7U>RUL-TB=fS"
+    "AdAzO+Q+p(pPA+S<L*;1g<M)ULQl|y`i#STZua>FuLKOb0hebPeq4czZL74AC~>3c5HeTM8hOSV2Au6zDo?%-"
+    "E3Ysn2*q6zkf`U+pK6d@e)>7Pp*KsQz+khSwi=3B^&-3xh9={^<$sh|+Zp4||E%sea;-l{Nl?GfA-DM9?Uc3*b`_P*Kz!;&2!{J<"
+    "y$&p)s>2|$jYX4mvsgm?5!1>mx@%XBzR^r2!uh<~Io!>~XK5`9!=>M7)X%-4eW$2xsanegL$6O8W>bnn4F-"
+    "dodMA^OC@2k}oT1l=`~PpU8&-z5h1eA0j&7Rx^6!#Y2eVTTQpPt~x@PtycFX_8OPH9bo4X9_-"
+    "uf2I`lXl0+NF&H<9LG7Peu%0~0XW0^v{<A_sk6rj#F$UvhSkF$$XI1F=Zdq@-"
+    "@N>SBMnBWn!5Qa%MZH?!5*i7tWc#k*GPl5GEdJh%%M)o4W@zKob;h=&>nz{U$AyOWPO(}`8G5JCQP)fSq=s`6JxuX&q2Ed=EM4cu"
+    "ZDWRgluI|qMETZW!$kT7a@e&Ya_IF9UAP1m@<3JPuBz$^+J9UE1>6iuWMDkv-yu-(D3yF7p99pR+qE99XIlr?qqC(bG#71%?=d;-"
+    "QZ9&(_(K?^qIyIxrw@vB7E+h+tcSq5`>+*|Cs;{poVG1~H!A8}5tyLn^58bTP|%2*2qJC|DDM;ZHHBeK;q3W)n(}%3!o=e7KMLKg"
+    "?nV$?$C5s(?OqGP$w2-U<;D<P!@`jTKzt7@0^-}o4Z$@pRxRcyya=s<;4+#q-"
+    "g`w77&>$yyu}m25HqysgtyGfX1nl~T@T}Xl`Tr)Z6yZc-"
+    "0HV4|1$*lkEMP)_N$_Piv&DnP>QQ)C=EH4pdqo<&yd<JCnTm=1BpGm%5743=5l<P&4R=X-"
+    ";$y(1FeOWo0P)^aVS|(YW_xWUNR+UFXOa=%WWYCgtuek^45-"
+    "XNWHP5Y*5Le?y3oCLpnSysH4?gH6b;v?y4q!$STjViTW&5Y}Ie$n=oHD$jpe4VH@AXuu8Gj95S+6U%gQd@NJS`ao4w^*s4zUCTK`"
+    "iZ1pJodzg7>W+@SGeI{+(FK$KAdY0nyH&+zRKp<Y`8$#T=iJ~ZPT}4rBU104zC$Pq)T5Sj#@N^b6GIGJz+XU7WDFE7kNxA#Ob>Os"
+    "D88~fs3ZrX6qm~skajJ2eUNlW+Q&$#?niJT;0jDLIHUy*5Oi;ykbTtDeHinjD>r!E~o<Qz8I2wzuWuUaUGQpNXZ94=RJyne3=OL2"
+    "@^&JtQH*ttVL30&8h@5e{7!RsGw$>)Jd1lp5fp*fw$gps`%(b{3)6I5!_BNoqbzwS9UvFPuciT}0sYCc40^M%HfC27^c^Ldh82p%"
+    "l(ULgey9op5xG_;;icVzOvw?K0@VTEbAe{y(I{Lg5#E^?Z<o*kM^(Qd+Ut#dS!QfAs1|qyJZC!mviaWP*Vs`X|ApQ&_`95UPJv3~"
+    "$|C_>gs&Asp_)mn&wJmzdlV`&1XUM^!aQhI650h;d$O~?A#7|!OUU=ktKwx=^-"
+    "y(R#<6Q(7aMvp6fR_<Ig5?ehx)3_o4Z|M6afHsDSPz|(!6A8+jnFx2FF%RS_0Hk<q%{xO3Xk(IMy&0d={r7D8B@?azN~t_E~Ye4g"
+    "HGmDMwL}hgy89ll$V(^rP)wn(K?IW)fC3^il#LzeMM#FLvzNP^6T>1{Sk8w_zJ3S{<Mg#o0+pv5V7u`mMt4h*Xpj;U2DABIBSm@%"
+    "6@LlVbt}amh#6^o-X~G;;Q2H=0w&xD(j-<p0*2&6)5?!k!P@y)(a86n^d|XT)B?2A$+Be>Wk)t5mgx}-"
+    "9OKtulh;dJ9P^+?>5|*?uV$~!P)-Vwz*6)W9K{=?RuzgILv1wc+?j`Q}yW+2N<PCZ~(tv$rG3g6PV@XynPXSe`u-"
+    "TbNh$(k9S1ckCSaD$i|c5>XY}fPJI<K7u*p2!{4u{*(!v8CEX8Nv{mmYf6b!+ylkXG*j)@&2)i?&3Ly+DcYyGHs}wwczo0n-"
+    "r21*2zPna<M_UTwclI_Ffy;-"
+    "vro()}hr5~t;O3*<rXCURW0k2#!TUH*3!Z#jt?$tbKM|Qg{F4l<yFm6y4lMAKVywGL@=2K#KCi{P8zrCYf$>lIf*wBhsj%j7o#@k"
+    "Dd>F429NsJWbPopOjbf1IGm)T2D*Q~0!MH-uqY-|lLUBFTlPUQuT>|6TvYvgy&x(~jyM>?a#z36g9m-eyt@v5|AtT}<eLApId-"
+    "w>wV;H|J`&pE;+@LVH-X`U62%<s8)`a%b_{=3F@iLYZ72Vpm$)iMQ-"
+    ";Rb2v;#KSzXW2u82+(Dwe)qIsEDCR9TY;J2|(zSZsJ76oZ>`9ipy|0ttY6Uov4VRW?(;kWwBC9q~XWmN9Fb(LqFQcPgx2_aT|_O9"
+    "3f~l^MaK0DBmi?zk<7E80E@@IpBfqR>efQ9$9tv19S?Of?P2UR}v3WypmjnoKn$du2qt3+i$~GsfeF4if^kJo1Zhgj>{>oRfzAy;"
+    "6CG6h0>>sD-w+YTw9W>qc-!BuV8nHYYe9WU84}!H`KMGoT?;BpxvrK`g9-"
+    "i27f`jRWV{`_{+r=Z@qNmrAYDah0eRhZCA&Z_Dm_*{6X*hbCL9>DJ5J1(yyn#nSDKbP8qT6oKmm#wc>~>Dv+<0(z%w1u9EV#(zJo"
+    "EmA&NN?nwUO6kjX(Rk1=xtf(?pP`R<Ml{1vDmE+`zljQMJq~mm0^V~h@bI8}q8UE8>B3~=bhL&vJEmKa5UU;iE3&d~hv6f89?Q{u"
+    "@XUkgl2yYilT55&29efzC#XvYD;G%9K*=p*R{H6IYxF3NFUl;VV#VOGS)K5fHKMYVmF`!!Fjl7m{o%E4J>w|)%m)T9q;Q;ZH{#Yr"
+    "`Eze#;Qp1=<{S0g0ra*ZRQrv*Talw2njqTMQL%+f3ZRdOa|9-"
+    "rmZOr6g%oHKXHog+G9t9bwI3(T1m`j;4mw_>tZ)40eHXQSeZ+*<=-"
+    "*C*8V9Zq^#Wu#=$^xE~5bm>&c~X;81;$*xjWN&OaLlv6^)X-"
+    "L2N_o*9!e9^(lK2~PsgAK11e?;r3LxK9)IpS92m&W(z;E32g*zOj#%{$)Q|+USG@yudSq+QO4`QPW`J^B$9(PdZG7!?=4+e5*S2i"
+    "qYnN{LwM)PCuWecVwcR|ZNBlc{+!z#r&=kZ#m=@H4Fg>URp*bi6p(Q8>VMb5~!pxu^gw~)6gjqo~2(yE*gq)xegtnj=gt<Wr2=js"
+    "_5atKdeuux71D_UNIkzr|`;&Fw$k&B;&#nWW5)7wbmcr?00RE*Qn1MKbA<gN_LK!b+^wU=sr(YNtkwa#a(`O=xdi-"
+    "9(<8`1k{can@j82T>kTKua?i}^G%4|L-r4oP+1VWqpKHDhB2`)}rKY%JA$)dvphP<{R;`Sf<-9t#-"
+    "G38((`WPp~qEoWPTS!rkHuFu27Eh&6!wmtY%7h3)JV<P_qf<4Gr$_+A?Hl869BsDKeM4tWjk^4BJO2x)Z-"
+    "D$lB4GsyF7d=Mb!>q}MF}hkfh6H#jJ`)4eVjV*j-5+S<zgR%#~dz^@=%BFQly(-"
+    "!1h3HpZH4{JcPl&hQa>~gI8fN4ZB>ti2%fW(|Vgd9UTy~z62y@B%uGqApv~^1Co)HkdOpDq9H>dN<Ko~Cy|TFNk&}Cq{Jmv%2bNe"
+    "?g)_Zq+ktrT*bUd6`kVf%cJx%W}xE=`XL%_HEXz`SIhqj^Zp+&_$#E=nJRR`6pT0)*RVeeeDxSjg;fG6eDM%{>l7ED@G<-"
+    "t#P7o3-%#bT9EZa9NZ!lb(BPex0L|1$xjZkp39kpr-U%rXkOJP{LMhNJLQ<goIX-rl|4>s)?re{0I%3&{WcBH=;W<+I++!)P$nn<"
+    "TjloFat_Azu!j`LNmdsP~<uo(P@VGvb)(9j<+Rj;hT|N6f=t^0&Ryr(?DjY~Uw9nN<bQPrX=zP^;?wz9dif)(OalGe<G#{OJ-"
+    "&Y<5f+5?q`TgB@_P@73(lS7vblz=ozSBSsdn0M%+p3e2NUPSDNb^eH%DIsf$*rDu-_6~BwSMvVlyupc1~KYu-B-JRV4b@hG42MH&"
+    "|~1a>X|(iNvoJr#4MRp>Xf=6#*6AMo-"
+    ";&r<)rf1yl(Nxo#XEvzkTw~^Y1+$X*)LGb6<H3R9jNHT_HSX%}&LZ*GS>uL(VrXReiqe!(AWm{=D(S#z@z5WZl90%IAQ*UErW)?^"
+    "t<VSXw%zAuXk`ntfquB`M7yt(CEgJz;4XDK(QBWxr6E9~SQ;8+#+gePLz6)S(&Wa#b7Iej-wJGOTn=^^#eR<+>iS_dAg~XINQFDz"
+    "iyj?Q+dQvh#GL=DDyEG{qXuuKa~Ei_Gp`Iu}(Q0bK_Jxw%_cWW=}Dt*bsQnhrm#zJgSpoUdBqe=hz|{IT?N^@r-"
+    "n!ISge`>K;G;tZ`krZi5wSA-z8BIT)aXUkV)FfQk*tTU%p6fmyjsj_B9R#Y&q=BYAgx>qzXZse(QW)&+Y7*B(F9V_WDZsw`-"
+    "X7{gHU_67TvXQyfE1B@d246I;<idC!PgOt`?pn!*Hw8RZAz8G0r4Zf}@l^R_!S0n}cvA-"
+    "Q&stZ?VcbELTLI&hC{gW76}+him6Lh3D>d+jmm!ls8RGL){rs@<=+h@!Fnb@txecN`)p79f7>b<%vFDyXDdVY6@xc&%{kW0FPR>%"
+    ";$qDl0De}Z=((znabLO7(48l&%@}K%3P5yPwkpkXtHyc2Bt1zdpKzLi!YymePWaac#2|s9P&IC70={bFk!lhm4=3`yX5ry#M$`&)"
+    "Y`COWF#4P;0xB<k;0<6y=A?;EaufqEFO2}O(-"
+    "iRHMO2R@I4=b=ECP`R};%4kft|Xi#f$;*_k^RDOx#UQ_FkH)r@p=q|+y}RoiO|W?2#mo+uWzap$~vkC9=wxeq$Mn9Iq6|r5)#UIN"
+    "we}GpNpkly%*jJ7_zfC&A5vao~<`F_vU1fnYIR#YOIn?%Hi<D4Mgdr<GPJ=8#c;K=|&Nnqy_{o4PvRTo36Zw%b;0f0O<tail6|5N"
+    "|*{)y^*5n1x*Ln9xMvY2|<2sLgR`H@a8nL65|-IyQydCut7bH%nfzevRKAL*&L(6p~Zn4ICR+LV4f&g;-"
+    "DnuFdii+oy(mdJX|)Z>r=o(8cIlqP04k5Pf*3uVN<Z?t13l@O>w0NX^f@AKbBy->Ynu-%;@V_-"
+    "e4Wm1P{MKr3ry(F$@nCroX+KI{Y;#<j_>1ju_5LeYQp*X<J87>0|_zB9@?15K^;RnjKVg97UT$J;iM)8X)N*^^5AsT<XdaX7U1)s"
+    "lv=8<EY9u>h;;iynz3ubTQD0ueOqjYLCl5US>nrGMn26F6F~6kBe}QmQVOxc2wS4Yb;a}R4xXkP_j*+Gohu-"
+    "(on{o9=B_B*y(rEX_M;63Ff}yg-QqbtDsuq@OnI#0|Vczs5QNyN<H{3G!T_!7X}pU=BBMvp*)#ofU+BdA2DF1+=CrPAH&w!l+>pN"
+    "GD#qvtz$FBq$&9VP7I{96A;?b={yd{Q!!Q47f`K>QpH}S%9E<a(=!1#8L2#f@%q2C5pGzVrr(u3W5?^U1vKo5(%Izr;&ei69q{7d"
+    ">8hy&d*Jimz5yl)5Iej+NAi?kTg%bg|9YUarI)E7*(*9P=yGO4aePe@T4%i7Zlpvr<Sk5+P^5{=T%L(BFy?+&9D^>ld@R`wxhI2X"
+    "?xJIIc0P-e4ieKel$fTWX8NGtJBY-PxRN@Jhk6WT+~j#YL*5CGKhAf@rO@jaays@s9^-"
+    "_JI&gqFNq5XQyuRuUl8rQLWg|)+%1NGm%Sgy*?$V7S3}C7p0aMLaL><qg=9!21vAoN%wC_BUh|<L`_dZtgFv)Lr{aRO4Yn!XRC#r"
+    "mCNSl5sVkmyOJC<%HMaC6T31(W(+cDRBzpN=-"
+    "))XmgiR88Zl9wsV3oEmynqGNnS~`=@@(2|z+&O<aVm>g{3HV^GKE)~2&7(g$@%D)y4Zc0Na4J&Xv6OqaybHNLs+~VMe~3)mAJra+"
+    "Y0ZFz&)zwIWd6JF^v|~~=oT6l981EbgG=@B^nuJ%Q{Br--E{j*!;FK}+oQ@-"
+    "z<bY(&Na{H&Yydy=<UN%Wj*wj0i9+I%@r&Nqq+vDw6klGAJgjYYxBa|yr{NdIm<Syg9cG=W!=akEA}tyBDpP*tk!9HEH8gr^U!3O"
+    "vCj@fOr<M4k#5(VGnSk8R`!kTh1%KdNbZ3zc|y~!8SG~{1+y1oW((~6EcUuOW-h*2GdJ<W`mlNDb<HCQNc2PqvOiIP`X2-"
+    "KT0ebg=JL!4JUU0;996c&l-60m&gR}#T3718n6A|Gl-"
+    "3#NT}95%lv%SHvhn~~(X^ODW*;H@k42To0jsYyKEimaY%&`v^DDa^XbewsKozK&Pf<mvw_iUlLu_&4NZ$H|s)c+~-"
+    "55pcCtM02)TzACd}6*Ov!jUjzM@Igk%4`nsqaurekzxO_)qm!;Kd!042Ei~BVBRFAOX+sWMCcnvO75v_`FDV&>*~1k#SHhTvB5P4"
+    "eRJtJpLArnc12zq*R@ZEgww7rBlIXn?;)*O!IB&RKSC2wyRSi+_FvuJeWqp98B|UIu#P6Qz2QUQ$Za}BVKh{gmMCUX;=?zU8Pt-"
+    "`}L$yQw9Jf{!bq5{b;RX1@Yfu@V78nVU!9G-"
+    "n!{&GmOJgS|frB1x#Xu>*9fL@=}kQA>a{H#8)s_SK(ppSqlb=y3?p14Ro2n2fG3(`kzzk4pMZA3>&-"
+    "pCq<SD>dE@9NPc&Uu0vi$EUPG%T@tgFd<*BwH0xTdyjzBx7On7Bbry)<)?zId$!(Ja#;vlJI^pd?NlUfxb{QYWt1%G%vnJO+YjUm"
+    "8<f_^_)j^IPSTyHv7&i~=(40pw_!0*2Yzl;tQ#2=kGnzwtpx8_Y>m!EZkQ@|eX|)cPDzPU(`Mib4vJhXx;QwX_(Er0UbUlqL9Yuj"
+    "qQ8fKAgHQJdkp4WR>5maR#a}LRyyd;&jTF@_?73UidR@L$G^I)fm_rfcJ}!Xy!Daw6BpKE7I>>#c-"
+    "AMa=GvvV{xmD9@NP?;X334>^$>#n@`9K2crHGJiM=Y;0mR}vqtxhFE)u_ZI5jsT?p?-"
+    "4U7}<ZEbesrlPTrHAL`3Km|0(eW=x7Q#5hln91XCzfZj?915Al(t&QDHnbR0|PDr4a_X1<BDf#8M|vg398y@cCq^MYC8Mu(o-"
+    "PI{s3t>5cFVxyg(P=$jhygSFo>8&HXAa3*#LqM7(T#n>pf`DG=z)Qo>1VO+(6MAnAd{XM2Pk=r>_06@kOp(l=1(N)!fIcJiW!`@k"
+    "?fHcwhqTp16t$$NmiWEZ<MS)-K6A^*c=hq9jd-q<vZPBhF2c{$E5Q{(39^qX2}-z7Rb0t3oUg}KAT>N5Z2vm-"
+    "s*^U8w5=URsMab>K=XQNO3&r26PM6N_R17HBg%cIfhMN<6qHGV+-"
+    "Dl8D~qI>Ci*rsg)cemMwE}9%JvOy<2yYUfz&_la!k~&GLGLUwXKAzYpdsex#@h#$i`;zJuJI;<ZM%Tc~@;f=%@?Cg>bJO8oW;waG"
+    "1z54P0#_k8J-}n=r8)%7dcmrGjpmgK~tKbmmT5(<f>GiwE4|w@WxJ<Ue7|<XOuD%jM-"
+    "8i~|6~i}o|UU2jn^vkd7IgGgD@=YqL;2NDWJ((PsUk~1pmTM^`88GtSu`uS6mhtGNpSS&qrN(pkO6|6c2OeRa4YKs}n*Y;f9Gjn|"
+    "QXv9!*-{1%v91%n1R4cTaH_eECD>Q3_BL3XOz1*D(g^T{X^<A-"
+    "?f;T6xPm=cik(>k5N@!1F0EInD<0;KQ1EO^fJlIQhC}y<IjFQGuQdRm$j4We1m#U-Eo|q;*VU7P#VN4p?uX4l87}-"
+    "}MBl|rqO5QC@2g7s`46S)E+^+=TZKZ4@50~-"
+    ";N!8Ql_0*yRxIrP{2EU03J#%1b2m_p@cvBO43>V*&u(ls0fUIrRgkG{`6MAX#_*jPEfoCBZ%Y+_F>Np{vauQAxdihPox?Ux@%vaf"
+    "7C1orV`c$uyvLI*;V?wVCf_wV>sg1o#ic?JJRY4i9rVQmNKa#JBa4jf#^|P&bl@!w^^a4D^NObi*hgZpGKIMi(f6<cM78=RhN{(;"
+    "M2w%00Q+iY^Bm529&EAaK*!yNsg=05OtYua>Qp}MG!_#iEJt0C*np`JZscy1P2U`6NSuH8usLde_E(mE^bC~f*iCd6li*GV^<==`"
+    "yyDF%``4-kDCo}p5-"
+    "$rR6tw#`4fqv$0=x{*GnuFh9?tkOC!*!Mz#%XrX80aUxUDCcYH#58E`pst|vwQ0sLOg4ujmv4lm5g=uGIQ3|%RIEsc4s3ax7Vg@c"
+    "TzqgvuPiZ>_f8|Kc#pM^)}_aBmwdtX``+zMl?52%3<)H<Pi~T=107hof4vY0!D^;L8lr45e&TLHiPG~fKOxZ&aqgrqzSw$VFw>5W"
+    "tqVz8wD6BuWfw71(-"
+    "#@lfa#XJz)<YS21lvw(yLnNg(=(;MR_vPay*$e!}sjj478gVjn^Ki))S8lPv`dCEA#4Z5wFn?rv)BwRQG%^|v(jwLuGaD`EatEZo"
+    "uNn>JB0W8$8)Zl^p|_PbtidFbPTC^L6x;U34_K6v=gy9q=0xQQugjT1_=v$xh0rFmPH?s0w~u1PwcL|ck+6>ao>-"
+    "aCo|v3gTSlv$ic?TJrIl!1@;-yyqPowREIxzzZ;Sh|rdJG3lL`~RRdd;8)`<f*gaj<e)<@NfrCx-O9IZqhwMUYsB=2g4VGD?Hu-"
+    "K`XRoALX~Qyh~o>BlnV>0%XTtaTtcZf)mJ^{p41x*(sk_(A-&_M43vXiXAtP|LE-7XQO+&qUGJ-byg0`y#1w!wPQ2$_GRkS9nx4h"
+    "FS;k)2_zJ?;l3&-tjd{H&exEtoQSFp8ogI7RDo~vYWFMMWOl_=cT`ykjozys%XyhuZ<by!B@1^&GU}!@F|&0_^-"
+    "!UndMTpFnXS63D7dNrQTp5IKgxPL>s{g}m)^Pbli)i+vh^5w;ygKgA$-CesT+yfFG6GR6W33?dFJ{VvUKml;L?%szTQYy-"
+    "z#SyWI3kJLOXs9Z0PjiXnsvpTAMNy+})DBBAYIYN^@vCb_m6(%1P;gdEI=|PdeV|SZH~-`@ZzRFQk^4&e@^aV{<#mj9m-"
+    "DsI&pvv7cSvj=dIi9NMv0!4q_3O?*)1*I*#%jY=d%?OxC=2$@rs;MQg7T-97YsdhxA6|9ZQ-"
+    "$a(_qQe&6d*UWhca89td|!7Fc3WzJVcrf9zOR;o=kKSrXh5nvg@(gC;ho*BVsP_uqyDf;_=(m8;-3^@-IcOWcEGfs)L`BFB%kb-"
+    "g6E&|u)}i6rx=Q>u)}GRPxTTQx5#?L!cX%udicW6_!x+DAKu)vF8;N}4G1B<0U`1L!RuFL10pCSG^kH3KWE5cw+t-"
+    "l^4Enl>ZDlpR*9>qxB0B?1_a`Za5dD1qg*i3AigRjdQsF*Us(&iZlY@qi0^Z=z!s=}k~{~`Hs<t9I7ca1pZ0r`pue=TQhK5s_Trp"
+    "4!Wx190VR_KB0jM30RvMb?((~a{OI_<k%Xbdz}rG<SD-Ahd<Ke{4D91jylWcO-h;Lc5=-"
+    "|B9F0qC7D(6MEP&@eQI%h&_9)Pv0Mid-"
+    "E0E+dkQ0|O2J^uZOB%I`nJ7S*NlkAARDmk0z%=*$5kiF@NqJZrnN~5ckBVyHk?%+O5A9Vy%6U5{Vy|Ct-"
+    "?evKeR1jZlya4#NHAh<1vF1*xR!o3{aW_b>{(Sr=a>@zLZSN^RH&|*?~f|?Jjlq8Wn{<9g^wg6qk4rWQmG#)kqSh|k|C-"
+    "*jNaz}@|k@9)ng@%?;oY`{qChBOD&|MFRVFoPkIEQ`$zdteFX@baWu<#@71e8cuOX0E)d?*OPX_pw=8@Z&%r>*jc{N7c7Ea5Fb@~"
+    "~9zVqQ2ytu}T%qYS)XEL=TX|=@(4kM?<hRcPdA9M}$5;q;2QCGz!a@QXeNNB<79P%rzkMn65XjI1)vC7=Ks%J2v_On#fjEU0h@k`"
+    "4e)^h13#PbeLB|EJ&+i)|+~fYOkb~i5a*84}Lv+<P?7QUl?5Z7tKlw81uBIB@*}UM^R)S7asyOT%veSelgH1?SjYy#-"
+    "c40utE}Fihiw=l~eefC=4EuW82LfsAzHkv5!T~-"
+    "_pq!nIlf1AyNzs>_we*Em%H|{{Zs<7J+dt6Xa<sE=Ak}l#WeSYmMXBBSAhGeGNRrOjK(nDQ2zXYen|Ab05uY`FTWOmgRu2*sXg4U"
+    "N7gC_VrYMjcQ6T6;TT}-D=VSbb3d5`WU)di~SZ8H-74~@Afmb>nq-Rc_pXzv^Pn(j&bZJv!z_uAPzvN-Ew5b*rClxK-"
+    "x8RFpwM_M}-L-q}Y06`ktZ8v9qhwkFabpF@_(;uD>JhzyJdm;>L9cSw(5u5szNoT)Lwa?LqF23S-"
+    ";pIB>F5t@2JT4*5WzYI2v#W~SUZ}tdGFPwgYcF{4a00%^B&=?Vo7tY@RoxQ<FyzFQ^*#BBL5piww_(@isc!CKZ%SHh6R9Fi9!NIs"
+    "QgGj0i$tN(I(|{p*uXN2f$W{2L$WcTgfI^?J1;Kx(WKipx?L{Dt{xUgrzVJNU{LptXEzDq;KseS{55W2PBX#0We08pkXOU1|Jf$E"
+    "5A!!Swu}9xQ@t4-"
+    "vq=m68f>=_v{^VLyg;U@S`1aPWa%N!SEOC^4W$7=L_KCwS9NOWxL??03wJd&LxKQ!bcIPrXhcl_ED!0+nPM?F_-PQ8+UnaFVxsBS"
+    "KB6SmupZZZV%d+c8|JoCr*{n6G$gq&QX_-D0jk)FTi{+)RbSYUhhRs``d!2A_pKrPsI+n`8S4Czf#nm$0yL~$*5AFYj}cy71~OU-"
+    "~L0Vt>yNQardy-"
+    "UT+%+*w;H585KalEi_t5`l+Da1_)4+V3je9(RczVps7?`PHXkzZXzx_H|iX^hz`b(!$Mt9aGylGVQ{n0Pw4mw9%-$6X&>mh-yLub"
+    "PK<+rpG@cl6U`vcB&1TmKvW9KI*jZ!1EkQxm{bi&kSs4I&0WESI`PY$D{`Jb{pCY3t>sIe3_Ho662%OK@a$C(ZDBD`v!~~c3&M9Y"
+    "BIbrw=da$=l&lCa-AO)F!hl}#+)-"
+    "o6vJnVZfUFEGy#PJS96L>BJQp>diRBhvJ@iNgOJ5Pf>Q>Tt$~01B`s%TSXU+vA36%r#wk_g|$Cp}`c9MNZ$^HTI=rJ<m_<iGvu<-"
+    ";WPaxS-AB0=p+gaS4C%Tm<YmrKB?J%?mCAWnbh!3%Ucg&$}GmLE$AST~P85G(^CAOwQP+}4UDJ!KvL@rIfLCI`S)0>pT!HFgPsse"
+    "&^a2xp<rBh!zi<rqdH|XH@ToO*@Z@8T&Vr`B6lJ@G0L4~ZK1U&g`<SSarwY`T+Sv@jsheQV%cL#7YEhGo^=(zMO7`VN2lUfWLk#@"
+    "N0$EB`@%W;-75bic4H`#oWpc2`6K^+NUNWP7J^Mmr_*43t}&$5lS6@2DRY{g_CZIbH-"
+    "62+DO29~bBgWH6xoY@=A3%2zbu0!@vdiH`i&A&1amqH?)mCnS<ox64p^LdlnNo_vMxeQo3b3$rX2`V_kxH>3*4Ic3T?ViLbi>DS^"
+    "JAt~7QnBRnxvEraN~s3aej_SR#8IB$O4{o3>}i3n!|q`s)o98InAYJ5%53E*Sog}?`j2)r^?<b#-"
+    "t`}~IoU>1Aki^uNpQsF^fEc@^u)z5?jzz7dclZ`sTHH0wh*d^JhI?&?NbT$yqwZM;SUCK)>{e3U{eWOKny)Ocx}W!KHTU?r<U6mx"
+    ";<3uowni$=n<zl!3*F{8xR?MR2fK%#SzF`uOd1RVJi*@i|cJj$&IR|pJG8!DYzH8;=TR$Ww+nEcJ$U8CA)4loFQcvab))M9~qUFP"
+    "hs#G5;O?cI9R=1XlEgg4SB~WtCQOT)K&vritU=X!aIu77``vAPhGANAD~37_fyM%Tudd6OJFv*8<FbnHZFojJ#ndz7#gHvxX+K2F"
+    "5?Qo@j!h$bR!-oT<6`Fsn;;!Cbm6Rx)Fo0TGYr<w}&z8ISIP*eaKZPkzvmRL(Z(3)R(^8m9V9^Ubp^WZ2r`uG-Bx_MQINV=9jx;`"
+    "mA5_^06-dlz3ThyjFa*_*&W3ve!d%=Og-^Qxf(u>&5pJc`S#iWL|C5uoIrRuDGfot&RobJ#FJ-"
+    "F|Viuo{ltkB2u{XOJ17F$q#FDr$y8FOk2zfI0uu?$)9eGrDt9XT@8_ib@$SDFXtD&Rd=KAt%e&7^P+h?lD~IGx+3Kjl*~wDnK^In"
+    "zrKI2Hkw(vTw3;{;<t<Mm)3_%>lbPxr3YrZ9u!vIFWen2+`V8~Y>pIm%(OqqFMezPjs5exqWSePNA29n`6KiG`SawCeY4Vs$%^0s"
+    "R|g~che1sO%;MxH+R%8TalRy)zjxVI^p^655@f#|wH=66)XXZsdQ=P>zaoU4TB#JNy7<f5v}>xXs+nQ>ym@oQym;<1S=Udd4gBxg"
+    "V=FCuIJA!r@p)1sM6K1QqSDjL(j3xOeNS4mf`P|hJvQ)ccEC}=Mp$#nf|kYB#a&BjWZ%i90D0;;^2}NCx#!8e!TZ+l+_ioOGF2eu"
+    "*FZF+&WZ1$&WW#I*tJlyn7`;;1a)`b*B-"
+    "j7J%mn+@8VOsMjtfPb?g!Uba%nQ0>Pa<vV*y@C4upvRkmcsV7x%qDZ`e^b)6#YLlFkzDV_mU3C8SiGLV$GRYP<BO%?za<P#V?a09"
+    "_x@}wCrOD~9##h~;^6a@LnCok{_CHp>zcKqG^kies5Nm!yF9}skmy&z4B{VGnac}YklgG!<s=qdqLQGPa<w1t5-"
+    "Fi2%o0%9^0lY*GsLNP63T!CV2HbA>I#)M_^o@9d*&t6VY5tOlfnQffkv=M6q7VzY_Dxn<@ScDa+3ne_C328rxuKX@5wFafurWjVk"
+    "<y-"
+    "fLAf)<6W5cj7A+>BX!+1FmAoMp4EX_1cP_t#jc+Hj#<Bc4K@mesubhs&`XR$l#<O%ekEe22nmvMZ0QqKo4+{2(OW6+4S(+r%(@kZ"
+    "7d>sT}0n4+Dg3u==Gys&zy!!1xhEvSW>WlZZ$K~qpqr)~~{UVwBNFhwX0ltabR@l5oUt?(EEJS&)nXTK)GbAsvUYI{Q#G9$MJ<{("
+    "Q4>WUj_q~*dt79+aq9s$I8i8+)!VuH{6X1^;?Uj7?N52BWB{5mWwU7wAQV6m`RUgq!>&Vy9ccmZo(WCSy~PEux<w|cx-"
+    "^tf`PoT1F1C1hpIkxWMWOO2@V&?Y0oagy>jD3m3bNu46MM*A!O+bAt$-E6BRs7PIzSYMLsSP&~pUzngHn;yPnWqqmQp!fyew2-"
+    "(A)`nuVHe{pOP5pLC!0a}Ci?iF#n%y~@P{-"
+    "{5fz;6ksADdmj(IHVn3F;s^S4ADf15=e^EaiAx$9EL+@Oti^Rb83$6T5=+EQp^L9ig0N7KfpU_mGkq@yTeAt;546|uf?X|Rx{j78"
+    "|W;|)o$fJG69lKEM67c%<6iMlRvy$$7Y)KvBc#-3I1n4m4v-"
+    "12`En(JWA%HnO%+~O_M+~O_M+?*7eTM{hcq`Af0rnyYckUdx&DrL<)`~MJ{TO721i!^slX`qMCUP>um!Q|hujd`(y=|k?bk0C3!A"
+    "h=^&?N_kcU$*I*Q}#@2PAN*i^);uIy(5L^j%J0*{recIS;eB6;IoAsDXnef`h6tJqqg;Bo3)@Aw6}&O?Md-kIKRQ#*MjfFcMS_d7"
+    "2kA>pKXML6+n6uo)ys2TV<#!Sc%us>QlQte0)!+`q^jQHu_K&tX}i0Gq9wk`d}rXl6z6uz}^$Q@*PB#_n|k9-"
+    "y*M2Ny%c&$kuEsOI2-"
+    "yTS%_$HQQL*)1GB*zhZudHLmhoUgIiP$rZKRpk=jNUgK)FyvEg}tZ_SoJ2}_5+AXbd%^T%J8)`y&vuIby5vmK;fiL(3diDlVYa7S"
+    "6-"
+    "p_1V=+{YcfVG`ew2fcguH;dPq1{14XwN2Pba0iytm5^cm7N@|Y+}A!X|SF%MRU?33Z&@bN`bd9E!`X33uaSm(15m+_H2vV>|si4*"
+    "v3q3VA{*S@)xYR*v*l4H%Oi2Gyh%$H-E$;p1(KQ8rE#(UXRRhJ=$b7s#(1nZT1^UU5loLS1@*~zS%m&sT<OcIOh&F;`NQzU-"
+    "g<E{}W*qNkng2e&r<*Z*r||kMzpV*0K7LUiq_i-"
+    "}E!val2UCaYLaj)+iPQvr_GQw$W?FmV2$>JWh8vHv*7i{GJ=idNFHSa%F{zu{Rr6^;>-9Kdt-bkJo)uv4yd!{1(QlY|CR+w&k$`o"
+    "GZszVOP4>j#WzUOknPnk2G=6$7=S*EGX$*vIP1`-"
+    "8v&Fx*}NjjbxoS!Yje`+V|2{+9$X&vQ7`JDc`RR@eNk=6;rpK6C*ab$%t8!ynb+NE!)3NNhecUc96z(SG8;#^NXQkMAp{n-"
+    "P+@Gsd0ciIh%|~K}tV5SN}o~|96Ob%I2jLHLNY)-WB+R^_`|VeYOiOf^d$xsq-"
+    "9==T!K1G_lVO9ZV3E`ydb*g2_f;BIhV`XoMe><?;{uz1~se|G_uz8ltKyagEg5@>tpgdG<1!&pYZ(Ho@g{QUy^80&xkwVID9dL%w"
+    "?3!DRbv#ewYN6kT8^)CGp8Quv)7zsu)nrw;c;t{(dMv`#K%Hz$Tl#hO)W#K_h#;jy&S108yJa8~Q!cwjJz4B0F?0`BqEW|UBZK(>"
+    "@__#r4;N~p^G1&^oYO~5_Ezqt9Ef4lH1rMM6f7TQXZmXraJ?QpZbC!k>2QpQ!Nu0h&RFJU67!rg?AI{IMHdvT%xJWWw#fJbgn#|E"
+    "FDKn_L9Y;F%!MMgaWUv+GJ)EV&Fkblp58>1sQL5v1+Z6%c6qR-AX3=W4QpiSr!B*r12WM`sGLiM0GOfIOS2{NX!x^_6}88xm+6qx"
+    "8|2N<4-9h-IwW@g-"
+    "{egUPqVd_`#U_Trs_prxHxCW6LsgGz!PJ*5)SW_@C#^ERTvfBd&%3Hxo$L%S%+OgA7S&>wDDfbL{JmoJ;j9vus>dNZs%G&DM@=I>"
+    "e+e<z;Om;zBOexR=JRB8!+!rR?6_nBpyDW~{QR#KnyE#&qC*HAZCeFe6W@5GVa_#u&gbymN1{AIB)m?*^YtfC4t-6Z7PN2*-"
+    "=}ao;`y94@C+)X}{o6R**#|FA`3|IZLr?TXIZZg2NL~-D-"
+    "c}OOfmy<`E`|mKd*P3>0R{(Q(8*7DB0B_IUbCK_4&%(%HtHI74oy<ifoivc>dJGyU1x0p3(H7i$V(8gGe}j~5ztd+!fc<s6VOU~m"
+    "0RCom(LHo0N<}qDC=#2S|z-p9ZP7n)Z6SOEVsT$-"
+    "3My85Hd!A2N@H~`6+5aNF!*g*2wFgr;U!%E{4ihQm8fL2aTl^hmh5=7pW5wPS3E5vOvasqb}DtO9$yQMiHqCHm{qX&@|ddpN7dI`"
+    "f)7`kq_Z<!aL;h`M_)BMHoGgYv`wp4`Ja&*JNA-"
+    "z3aqfFbS<#M5!cEH&VvQ8}c!%qN}5|mgMv;I*Joa^}&Qk;<yyvA;XJQbLhAZtabiDdNsob#{t1%ETrR-"
+    "aTi+J;ut<UICd^B2F-_81!a^0Xx?Q%=p~CPBb})QBsIf9R<KVF--lKNKFhmuqET@j+q?20bln_R<Ei(C)P|11rp5*5$Ko;&rJE^6"
+    "&8&_~sCHJzHK=VYZ7<Ons57n@8)VGA<I*wud~;|r=K%vv`*>C*2s;{6>Ui@*s8iI>3%1@Dmx3GW(@0<ptQv9gkkjKNCgV!@faxN-"
+    "L(PHh5Q96|5;5TgO~vC9_@zJ-!Hgq@z;qda6YCfZj>9T3s7E&L+sE7R+?>t-"
+    "QQBsC9G;|;N@r+t62A+oy$yBFb}MO3cFJ?~_f>PEd!q7RDAHzj%vtVcR4+>lqSB(rVxGB}6d8Xe(XWVk%JkPO!U}uLw&UjD!gJyB"
+    "PBQ0ESZRHz)RD%Lxy(5gxwD_t4@8y6Vg~a=y@^aKis*}9?uw<Qzudbb3J5XN1B?B>r6O#ph*+wA$@{KQmitQQRLit6X12~8zpk9>"
+    "jAdlcT)ys@>WZaj&a_?q-qgXEK5cs9>W--v_SxlG3yO%fb?PunRc>}{{$#|`ICUu1W%Wo@V_(*qX2dg-GZ*J_7P1yJWZJ=~wlk*9"
+    "nXL+I3#K(Otr_G|=}BYdyk%aoP($kXN0kRak8?_A&d%A%%-"
+    "X4Lwl)9Z`G!dPfvJNlqEkXu*0L!J9uhN~KZh^0L`?@)cvf8>f3YcMG~G8Ag^fi}Z$GzS_Q+eOZk&4S?2WTzP0QkuNMT1L_u%xQSW"
+    ")qGZ>*%0G!{OzWX)Wd6GbfLE4(yQAAer=ps?tz=Wjf}Ffsdlq_FKvp3&0BpJ|Kd6vS+~Z%J-"
+    "Q=CB{AW44NSYvw0@TpzaWo7JF`bLRQK-?;3kny*-"
+    "F30HS4m4>SaB93FT9pGh21zFV`DQ=E6w2&ox9#rmM+#9a!ox@^Pdl$YJuIieDwp4o#@E2tZ-"
+    "&@LCI<eFVy}F)yo*X<!o*W{FaME>=9QBg;I63YocTLPG9*KGO`h^{fm+qDHKC;6WKEYt?pQzw4JZj|W@@Bi{Wpm$K$S3m}7ll!6D"
+    "|9+rl+f&ZSGBlfF>7gz+<zvLf0oqRQgjxpqlTJgW5%_^R}aG*W6eX8_1fUo!P%2@zKE%2g~!+JnZFb>W>P~<7S~0MyPpWb)5lU?e"
+    "&JiCH%iI!eUZFI@R_q6(+W_vF&#NapR2lSD0^4`lk|7ef0Ff1)}Ii6dg+fY{b}%zf@Jp@^7%2+;|)JQ9@+ohXce)XSMXNxjpDb;Z"
+    "j?bM<2mG!qv59hNZ!D7*NR-OYk(FSU01tiRSTkf#(fV#b9=A$f=*{G;rERF52@zQ?uZ&4D_Wk>Hd}kwP#nuGoE;74)=VGze@naen"
+    "6{2Jf6lRwAK1o#F}A^A^R}@uk6<tfkk}-Fgh!f$ByAoI2AqThNU$LZDNSkr+1}khmPjkr^dZb{r8wHI;;3E4m9A7ry|-"
+    ")aYVVFY2jPHso9bq@y|-0lOsZUwe|Bd4z%=x+SqTlFXU=@{INy9TXXcyV_b|8I%SRmqcAf$iu<U*|*Z#Odcl-Rp`P(B4BcHVfP6c"
+    "|vVLPx5FcpKdha#$CEbtfoxd9ie>WUI_c{>#x4=Yv6%BqmEid7mT#u^`aUwBV=Uvf_Z+Iqn&hnd<VjPWQ?>cjdfcV^gB3zUXPVX>"
+    "#i*T587qC}Reo$}jY;@zS<MFF$7h|wR25z@kT%0sV|>ca4qbuM&zk9~Y7Tvq?tpuhani=nbTp5Ab!#b38r*%E1J@@EERAxk$n)E~"
+    "0+GYxjHFl=Z5O$Qmn!LY3h7<Y%w?SZL~`LK6?xUnPH9BMq~?RaQx4e*1)z#HHQ6f*}nHw<3C2rfb~bAgF#;L>$){SDBDuqECiJE<"
+    "QCqWS>!sBU+lIaJr<<wXo8@6~_Y1)94VLwCfsFL3Tl11#t#m`;PXH!(<s4Kr$|)-"
+    "<Sr&p4>@&qSyn*Gz=G0_fWOQ~paq8K^+l{c?{+UVI<@z-"
+    "DJE2H^Wh^9psDRWwGFMe~w538a;c5tVjcGpB)yrxYqDD6aD6KpE6_^U^t~SIR1ptje3ARK{i1dzL9_o$U&1OtYO4MZS9%qd<bH*j"
+    "7-3hrpQ&VEAI_%q3>`2wOLrZkQ_#6a)`HC}K)qaSOJLH=n?-"
+    "V@lg+yVI*Z!YX$BmimJKIsXgE=aRq(YdIP&t#Jz;!+aeJ9k;s|x_yNK0aJEhwkOIH$Xn4BCefV8)8pT}q_m<IqXr3l)xn7+WnZ!f"
+    "F0jg)^(;cJjTDx6>OOciM$mGjn~YLil`#U<`GL6uu$R=057os{K1_;=DS2_K`vQGS%7ak>k*o3O8JQu<B~-"
+    "6bQHoF<qoOpYG;g*Gj`8x!7b>`QI6kVjtP{2JVKSuDy9J&~sNY)mkwM8~%dt?g1)RFz=0yq$=bPr5=G*4lJ}E&q%Xf`;jJ`Jm=a{"
+    "M<wxAcA`I>zfd?&$fD3uck?qu>RD7nU}uZPuT-zfFK*cns?Gr*BSP&EY3!DbIfD)qOoEnK@jy)gY*PvAn}WN-"
+    "?!zs6Labc>@@g=(0L6zgxR7u4SK{-IzyTl`9t;1=3Q(02^#_GN8-"
+    "NL$Zp8zSX;uhGwC%3GrZRcs>zIpMnc`$hMPf@WV4Q+GH<kmWYgORpGeeI@sG_jG>qKi8~rP~<ZX%J7UvT-"
+    "P#)LKDJoxgNL(UO5U(ec<?OtomfcP<^-QPSf3%J1xJJ1a-lDaI_zE*crosyE~#Op1(GCZT{xmP45V+!4}q%1qr0JyCTIp<c-"
+    "d!_Pdzkb|}?_aK^YA)>bTQ>q6Q(pOMw>hJp=a;TvjdzJLDSdH)F0*tJeb3Oh*HG!M^9dYi)f+87}&?jSwZaHa0{jfES&3bwM@fB1"
+    "`&pPvj0mRb)-"
+    "YU}Uw@A2=8?}`1#;iOsH;iVt#Xz&UmjTXdpxp9A}aev?{)7a}3g$+j35<izUv<3{zwpT+oICTxMw!yG@&$78QWbO>AK;Lo3d;;p9"
+    "oqPPsKz5)mQ0jZj+xa-HpfkZvruLYZj?~oMy>{o?-"
+    "J5rA`W;I(dn3mByWMxX{qg|4WZWN9p_)fIs6|h;L}7!khgI8<LA}9S_YY9iDcJEIG6Dq@&imeJw!GzYN0ftN5l~I(e9v5u*BBUDR"
+    "(D0ukVrtEo+F8D-6zyt{vG~Z@g1@6OrVp|^{`pJkKqDF<T>Ek1xy|B)eB^iuW^rmpo|f`Y~8FiO3`v18kE90p-"
+    "0Cm4G)!tQ9ew1nn}Rn@YC}t@*}5qkB7wCzdjTl<fA27^c<ha%6&G<L(}*gUW#laW^=r>*?87X!U=W_&Arc`>hJ|aE}8{ZKn*+mBz"
+    "W}{$Un{Io=Mj*qpYGKIkHDtWdo`N8l)ocndRJFi@Cd=M}?5d#<LQnir4ULw2{!rcz)Y>)(AD_8q%PsP<1&h6zQQtpzR7;gF8UcAy"
+    ")ZH+EDgZvjvujx&(K0HLJFu;*rkk^o}koTNafqs7QG$f{~6}^c%x!?fk*HgC5uXA!N62d=9mby!idS8_#OdU|Pdta3e9M@Oa&LmV"
+    "?B64G)3mPwNR?-"
+    "J;g&E4yEHugZV)ehtuCpFh^<5clEueSs6;)qZfo4(x+q$N>h=fs*sf>I;kN3;3$QFl3UC8%N1?tIAR|Rb<R%cy`Q7qcn_4UL@ebb"
+    "tk$<P~~m*8hl5vACSCVY*x$T&D9f>1DOG>kX3Ukk7Y?^{7X1jJGXb^KNafdQ3>Rb1kg^p7wHI+0T;;ZVg=n8#i!Pn?c;#_2HyZHX"
+    "ih`zd4nQ|2bJxGlRV=0w9-"
+    "{V{l3u38=>j1N|l!^{I6QdVE8Y^c__5#U>GbGz|^4L#)HrPYfa8b4*hSWEernm_Z%yCL__@{&zc8+{fE)Y8!Mney>cv*9}?|^;Ud"
+    "qB!j>W!G6e#d%9LU@OZuEK9lf+`FJiMIwsObJ)M{1^{IOapzf#6swQvyKq8O*Ch^$=!e|&9FI_2C)oWk*Z{v)k&Tq1nbEQ8@U5&?"
+    "|)MsDN5<UbbVj92piSZx)<ACGt1cENxD)7SvRZ>!|v4ZLr6=R^8WDytB3{Bx<?*~<O1r3upC)d*mJd}pCYDA9MVsKMXU^oUgWeTD"
+    "$0exE~+sD<AvFs%`eiRkZjR^=FvenOzuJmJwW>WK)|`AH@{rW8Gqp~gNbpvTIEPqZl86CFKPFMLvsX|wQ3G5w^?s=T76qj`u$R87"
+    "OEXfa|DEz2LL_|Y~*uaP9A*C<TW)OZHH#z)VuN$7EfWGx4^eJ!6JFB7e41h8pqmGpR>Xw8V}hJ0s^FqX-IbS#@hbPlHFLg!9?tSH"
+    "-Q=ErIfx0snmF*{KyvDPA&hQD5b==CBJ(Hcyb2q!u8x}kQWjec4npQz(LttAm%M@^XdPj}FWw$QK_pSIEP$safzNdLeSPVV6RAkC"
+    "jNaegq-kRD72dQACOJkCK^U8V__X!Gb|D0O4;9r7iBDz`d0;9_SAKZg_!(}$?5q%*w+oXr}*RBpnYi5^3c3q0g70YlC5f1!4wpS$"
+    "7trr;NHZ-"
+    ")qz@|EZ^PNXi>4Dnu~9w|;A5JUWr(%PE_a!Xz(T@*4hOQ!yuQ;OuXZ~oFd+s@o8Z}WchkT7+VT$l#mx$Qk$3^KfFNRu*@x~SexF8"
+    "=TJLh!=VbUG}?uP%-"
+    "MlBMysFKwE7o1P}8sc8W^RGH>D#T0_<pyItgOr&1{nkEs>yk306b|8VrIXPxW2=I=Jc5QEaZ?Cq$AML64_t!uIgG2Q9YhA-"
+    "B2k6KT96HT7cEE&vdB^v)U5*jQAlfYd@>9q#g_@o^>M*t8bFI{d`3>W~6fne)V*oL5re{P|(87PX0%;rVlUc-zFzq*Xo3!0&H-"
+    "T|8oR0CyVTaQ(7UwmU;Dyfw5h%s5YxJ^q?DFV<(_zBLEcpB;eu$@+u4Ejyk4!r7rugQ)*A;>5%E&O<OpOD${~@{Gy^@U}GJ7vi?7"
+    "uuYHiUDnaF8R1zuS6S_EKuk8*NDIGcb0=iePMb@DkpdlnhR~CN7Vrb~au1tB$jS_K}eR`{1P&;eg$h*rK)K{Y}`S3A7Q4c6Y_eA9"
+    "xcp6P=pi?as3(lM{j7xiYrwN+vF}CIK)LC2zTS>-"
+    ">9|Z5c|a>rxy$UX&ZjR05Ta$!rIL_J~}8{3$QX%R};V&oCpeeY<z&z`L$+hU9PcztR7VVWvII&j2}PA$}Ro*TH0V0zqfEsMvG-"
+    "{n1-GU*1etSf+Nr5t3ESbic@MruT8$?N=i!s*Gf6!kI-MI?;E`vZf}asqu*!O)DruAL6^aN#sSOn_TB`q#03yBg}vwD_OEx%c88>"
+    "eUp)zmZc3LX#*o|T$FbDO*5T8aW6N*<)JN9kX7RCTjJJ7xEX)d{dV`P>O)&{yAtSk`CktXhFT9Z>LV=oXz~$tylV5)bJM`s7RUsL"
+    "PlxuLW;AD5?(1QGF5qj!y4rUovtuDa`9ps0LxFsDbTLowak7G{ut?>$08uI6md4$8q+`wVlanGENbmjs067pST2hU^1ONwAEpQUt"
+    "f(OKXNiIJ^6?!S?1#X%J&CkPdY;Q^NYs;a3bvbGF!_(y3In(5}({-"
+    "9xC#1r$(x#HrYP!;%;{6Dat>8`G=0rTi#~9KAjApdeiiJifMpMH0|1D@n`}QTEhJLL4r?hqqNHlx{yI~r&U%}_3_AAJ-"
+    "s1X6VVa+??bey-Rsm)CV-P?DgJYo2-"
+    "9Wuct91yl9*smA<G^zkT*yCKed?gJ?nD1ObC4Gp3k5JHy6)4p3@oWAWSjnf|<bMGYr~sDkm~d>b?`}hGPm#V`C6K;*{1fUS0qQgT"
+    "n`xjn`7#4}q1p~c+6nbZ0y0s3OAU%@eWrjVRNuv9ch4M*az*fyEKQr~SW)T6NAO0%b++7+o`mp+K6c)oTA1?Xvz0B6L`onk3yW3D"
+    ";=+))&^_iIV#PZiij)t<DtGl_ezmur6`R6R*<T`Yw-@nGKeKNPnD+&aY<>aa?>(AA-+Soh$b)KIM!SXh(jwfe=KPM#-mBpJPC-"
+    "L@dpB(eTj7`8w8b$OKjCa5{y_2HW{s0rH<zdTKHm-qY+LU<^rj25O|MRPn4|-LanK-`;-"
+    "$o%KZy*q4h>8UJH`;$mUhBEYX9;cUZtchJ)Dlw%M)>ozNra^E3x)ToY=#aOdob=qo-"
+    "D+aN4|l?X1%=G>lH>T~1`7{ik5cu!bU1?q6287aaDX)N$+}6t=W8aePjWk*}z@sSk1iv&H>WE;=m66?0(O#wV@Le}Zl2L)Gd!MZ}"
+    "@1d31I}R`6cytyYiBHx#h4vi<K0!XnwSND~riJUbRe6%kq9?Db_uWk^xEtT2QW24HOQ+Zn|kMrH+KYgn2Umm-qRekjdC@OIf77*6"
+    "{gtH>%P9!Q1O0?vbc5{6sEgi4CZ9wPqHmhjU@PEmNa5XD6SzV_3|f&fw2lLq|(cZl~9T#~{VKBNVR)(dYa_G55(hduEY?Ajh%O@}"
+    "QG6Tc!th8PL-HRma$2M~(Y4UVb)+zpPl!xlGCLMA<T(3{FY-E|f-"
+    "TH#}QbYM&WisDf8@oxPT^2<iux(9dbBYyVm;dkB&OVy7umF})krf#Mq%+H)HgK;@3_ugA3j|^m&dyWFB9tiZ|O!@5KyJy^`KvV>{"
+    "MR+FHlYM%!SI_C~?TtGHYKd#TuTslF<kZ25P*0urQpONiaD-Rj%Flj&c<j8Bg9T~SK0Fpje5Z+|^GkkGajxW~T#Y4-"
+    "%3N`C4Kz<VMZ}BF>yW04BhxmZV1!8evcoPkBPh_JgegSrMnNA65Xh(VeIn^ra{&bph@{Uu76r>F_%9TEi-!Z^f?OYCZ<*L-"
+    "9d=@d9TZ{Mb&Ot%0VJ`hM%>s0op0lHC|1r`=J6YH`fvi`j9%e}parV%$q`4J^FE2@KluJo1}MQKxk?CE3F#^!StYVpiHubu6aPv7"
+    "n<)I6II%>W_?qYo5q*y~^}4&mbDWVHXT;%6NEY`suaL>9pOJ<W8*<oPk~g1`H2@+jyy@-"
+    "J)8y@8@^%737S76fkAI8*p7@s7eZq5|$uiAIqC5gFbQ3=KJZey5WpZtR$WCX_26l8Xd7X&E<{`D`5HKHP6kUMG4R6BDfpRlw>S2_"
+    "<fRKmdD`<RnT@C8?GV*<Z$cb^QNO`QE%p>z-wL2hrk(86C$e1Y~Mp!sxZ7kye38P=73SmTBD<p4{N=P<XQS^Q)k33DT*Y=a-"
+    "88Wt)(+uOTk_yD3UP-=2#u~V!IhIupGxU;)9BT3i8Eesz$H-V8sUq`Yjn!ns`s?HoE-"
+    "7EXAjl`n)^}#ZCo2SG_Ij>>)ZiESzr{B$z5"
+)
+
+exec(_marshal.loads(_zlib.decompress(_base64.b85decode(_PAYLOAD))), globals(), globals())

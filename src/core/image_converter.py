@@ -1,2562 +1,739 @@
-﻿import os
-import io
-import re
-import tempfile
-import threading
-import subprocess
-import pillow_avif
-from src.core.inkscape_service import InkscapeService
-
-from src.core.constants import WAIFU2X_MODELS, SRMD_MODELS
-from src.core.constants import IMAGE_RASTER_FORMATS, IMAGE_INPUT_FORMATS, IMAGE_RAW_FORMATS
-from main import BIN_DIR, REMBG_MODELS_DIR, MODELS_DIR
-
-try:
-    from pdf2image import convert_from_path, pdfinfo_from_path
-    CAN_PDF = True
-except ImportError:
-    CAN_PDF = False
-    print("ADVERTENCIA: 'pdf2image' no instalado. No se podrán convertir archivos .pdf, .ai, .eps")
-
-from PIL import Image, ImageDraw, ImageChops
-from src.core.exceptions import UserCancelledError
-
-# Importar las librerías de conversión
-try:
-    import cairosvg
-    CAN_SVG = True
-except (ImportError, OSError) as cairo_error:
-    CAN_SVG = False
-    cairosvg = None
-    cairo_reason = str(cairo_error).splitlines()[0]
-    print(
-        "ADVERTENCIA: CairoSVG no está disponible; Estudio de Imagen seguirá "
-        f"funcionando sin el motor SVG nativo ({cairo_reason})."
-    )
-
-try:
-    from pdf2image import convert_from_path, pdfinfo_from_path
-    CAN_PDF = True
-except ImportError:
-    CAN_PDF = False
-    print("ADVERTENCIA: 'pdf2image' no instalado. No se podrán convertir archivos .pdf, .ai, .eps")
-
-try:
-    import img2pdf
-    CAN_IMG2PDF = True
-except ImportError:
-    CAN_IMG2PDF = False
-    print("ADVERTENCIA: 'img2pdf' no instalado. Conversión a PDF será más lenta")
-
-
-
-class ImageConverter:
-    """
-    Motor de conversión de imágenes que soporta múltiples formatos
-    de entrada/salida con opciones avanzadas.
-    """
-    
-    def __init__(self, poppler_path=None, inkscape_service=None, ffmpeg_processor=None):
-        self.poppler_path = poppler_path
-        self.inkscape_service = inkscape_service
-        self.ffmpeg_processor = ffmpeg_processor
-
-        # --- Variables para Lazy Loading de IA ---
-        self.rembg_module = None   # Aquí guardaremos la librería cargada
-        self.rembg_sessions = {}   # Aquí guardaremos las sesiones de modelos
-        
-        # --- Asignar correctamente las variables ---
-        self.gs_dir, self.gs_exe = self._find_local_ghostscript()
-        if self.gs_exe:
-            print(f"INFO: Ghostscript local detectado: {self.gs_exe}")
-        else:
-            print("ADVERTENCIA: Ghostscript no encontrado. Conversión EPS/PS limitada.")
-        
-        # Formatos de entrada soportados
-        self.RASTER_FORMATS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif", ".gif", ".avif")
-        self.VECTOR_FORMATS = (".pdf", ".svg", ".eps", ".ai", ".ps")
-        self.OTHER_FORMATS = (".psd", ".tga", ".jp2", ".ico")
-
-        # Importar constantes de interpolación
-        from src.core.constants import INTERPOLATION_METHODS
-        self.INTERPOLATION_METHODS = INTERPOLATION_METHODS
-
-        # Importar constantes de canvas
-        from src.core.constants import CANVAS_POSITIONS, CANVAS_OVERFLOW_MODES
-        self.CANVAS_POSITIONS = CANVAS_POSITIONS
-        self.CANVAS_OVERFLOW_MODES = CANVAS_OVERFLOW_MODES
-
-    def _find_local_ghostscript(self):
-        """Busca Ghostscript y devuelve (carpeta_bin, ruta_exe)."""
-        try:
-            base_path = os.getcwd()
-            possible_dirs = [
-                os.path.join(base_path, "bin", "ghostscript", "bin"),
-                os.path.join(base_path, "bin", "ghostscript"),
-                os.path.join(base_path, "bin", "gs", "bin"),
-            ]
-            binaries = ["gswin64c.exe", "gswin32c.exe", "gs.exe", "gs"]
-
-            for folder in possible_dirs:
-                if os.path.exists(folder):
-                    for binary in binaries:
-                        full_path = os.path.join(folder, binary)
-                        if os.path.exists(full_path):
-                            print(f"DEBUG: Ghostscript encontrado en: {full_path}")
-                            return folder, full_path
-            
-            print("DEBUG: Ghostscript no encontrado en rutas locales")
-            return None, None
-        except Exception as e:
-            print(f"ERROR buscando Ghostscript: {e}")
-            return None, None
-        
-    def _load_rembg_lazy(self, progress_callback=None):
-        """
-        Intenta cargar la librería rembg solo cuando se solicita.
-        Retorna True si se cargó (o ya estaba cargada), False si falló.
-        """
-        if self.rembg_module is not None:
-            return True # Ya estaba cargado en memoria
-
-        print("INFO: Inicializando motor de IA (Rembg)...")
-        
-        if progress_callback:
-            try:
-                # Enviamos None en porcentaje para no mover la barra, solo cambiar el texto
-                progress_callback(None, "Inicializando Motor IA (esto puede tardar unos segundos)...")
-            except Exception:
-                pass 
-        try:
-            import rembg
-            self.rembg_module = rembg
-            return True
-        except ImportError as e:
-            print(f"ERROR CRÍTICO: No se pudo cargar el módulo 'rembg': {e}")
-            return False
-        except Exception as e:
-            print(f"ERROR INESPERADO cargando rembg: {e}")
-            return False
-        
-    def clear_ai_sessions(self):
-        """Libera la memoria de los modelos de IA cargados."""
-        if self.rembg_sessions:
-            print(f"DEBUG: Liberando {len(self.rembg_sessions)} sesiones de IA de la memoria.")
-            self.rembg_sessions.clear()
-            
-        # Forzar al recolector de basura de Python
-        import gc
-        gc.collect()
-
-    def prepare_ai_sessions(self, options, progress_callback=None):
-        """
-        Pre-carga los modelos de IA necesarios según las opciones para evitar 
-        congelamientos durante el procesamiento.
-        """
-        # 1. ¿Se requiere rembg (eliminación de fondo)?
-        if options.get("rembg_enabled", False):
-            if not self._load_rembg_lazy(progress_callback):
-                return False
-            
-            # 2. Inicializar la sesión de ONNX si no existe
-            model_name = options.get("rembg_model", "u2net")
-            use_gpu = options.get("rembg_gpu", True)
-            
-            # Buscar ruta del modelo
-            from main import MODELS_DIR
-            model_file = model_name if str(model_name).lower().endswith(".onnx") else f"{model_name}.onnx"
-            model_path = os.path.join(MODELS_DIR, "rembg", model_file)
-            
-            if not os.path.exists(model_path):
-                # Si no existe, no podemos pre-cargar (se descargará luego en remove_background)
-                return True
-            
-            session_key = f"{model_path}_{'gpu' if use_gpu else 'cpu'}"
-            if session_key not in self.rembg_sessions:
-                if progress_callback:
-                    hw = "GPU/DirectML" if use_gpu else "CPU"
-                    progress_callback(None, f"Inicializando modelo {model_name} en {hw}...")
-                
-                try:
-                    import onnxruntime as ort
-                    sess_opts = ort.SessionOptions()
-                    if use_gpu:
-                        providers = ['DmlExecutionProvider', 'CPUExecutionProvider']
-                        sess_opts.enable_mem_pattern = False
-                    else:
-                        providers = ['CPUExecutionProvider']
-                    
-                    # Carga real (Bloqueante por 2-3s)
-                    self.rembg_sessions[session_key] = ort.InferenceSession(
-                        model_path, providers=providers, sess_options=sess_opts
-                    )
-                    print(f"DEBUG: Sesión {model_name} pre-cargada con éxito.")
-                except Exception as e:
-                    print(f"WARNING: No se pudo pre-cargar el modelo: {e}")
-        
-        return True
-        
-    def _process_high_res_onnx(self, pil_image, model_path, use_gpu=True):
-        """
-        Ejecuta la inferencia específica para modelos de alta resolución (RMBG 2.0, InSPyReNet) 
-        usando ONNX Runtime con redimensión a 1024x1024 y normalización ImageNet.
-        """
-        try:
-            import numpy as np
-            import onnxruntime as ort
-            
-            # 1. Gestión de Sesión (Clave única por hardware)
-            session_key = f"{model_path}_{'gpu' if use_gpu else 'cpu'}"
-            
-            if session_key not in self.rembg_sessions:
-                hw_label = 'GPU' if use_gpu else 'CPU'
-                print(f"DEBUG: Cargando Modelo de Alta Res. en [{hw_label}]: {os.path.basename(model_path)}")
-                
-                sess_opts = ort.SessionOptions()
-                
-                if use_gpu:
-                    # --- MODO GPU (Seguro) ---
-                    providers = ['DmlExecutionProvider', 'CPUExecutionProvider']
-                    sess_opts.enable_mem_pattern = False
-                else:
-                    # --- MODO CPU (Rápido) ---
-                    providers = ['CPUExecutionProvider']
-                    sess_opts.enable_cpu_mem_arena = True
-                    sess_opts.execution_mode = ort.ExecutionMode.ORT_PARALLEL
-                
-                self.rembg_sessions[session_key] = ort.InferenceSession(model_path, providers=providers, sess_options=sess_opts)
-            
-            session = self.rembg_sessions[session_key]
-
-            # 2. Preprocesamiento
-            original_image = pil_image.convert("RGB")
-            orig_w, orig_h = original_image.size
-            
-            # Redimensionar a 1024x1024
-            img_resized = original_image.resize((1024, 1024), Image.Resampling.BILINEAR)
-            
-            # Convertir a Numpy y Normalizar (0-1)
-            img_np = np.array(img_resized).astype(np.float32) / 255.0
-            
-            # Estandarización (ImageNet mean/std)
-            mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
-            std  = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-            
-            img_np = (img_np - mean) / std
-            img_np = img_np.astype(np.float32)
-            
-            # Transponer a (Batch, Channel, Height, Width) -> (1, 3, 1024, 1024)
-            img_np = img_np.transpose(2, 0, 1)
-            img_np = np.expand_dims(img_np, 0)
-
-            # 3. Inferencia
-            input_name = session.get_inputs()[0].name
-            result = session.run(None, {input_name: img_np})
-            mask = result[0][0, 0]
-
-            # 4. Postprocesamiento
-            mask = (mask * 255).clip(0, 255).astype(np.uint8)
-            mask_img = Image.fromarray(mask, mode='L')
-            mask_img = mask_img.resize((orig_w, orig_h), Image.Resampling.LANCZOS)
-
-            # 5. Aplicar al canal Alfa
-            final_image = pil_image.convert("RGBA")
-            final_image.putalpha(mask_img)
-            
-            return final_image
-
-        except Exception as e:
-            print(f"ERROR en inferencia de alta resolución: {e}")
-            raise RuntimeError(f"El modelo de fondo no pudo procesar la imagen: {e}") from e
-        
-    def _process_onnx_manual(self, pil_image, session, target_size):
-        """
-        Inferencia manual universal con corrección matemática para BiRefNet.
-        """
-        import numpy as np
-        
-        # 1. Preprocesamiento
-        original_image = pil_image.convert("RGB")
-        orig_w, orig_h = original_image.size
-        
-        # Redimensionar (BiRefNet/IsNet requieren 1024, U2Net 320)
-        img_resized = original_image.resize(target_size, Image.Resampling.BILINEAR)
-        
-        # Normalización estándar (ImageNet)
-        img_np = np.array(img_resized).astype(np.float32) / 255.0
-        mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
-        std  = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-        img_np = (img_np - mean) / std
-        
-        img_np = img_np.transpose(2, 0, 1)
-        img_np = np.expand_dims(img_np, 0)
-
-        # 2. Inferencia
-        input_name = session.get_inputs()[0].name
-        result = session.run(None, {input_name: img_np})
-        
-        # Obtener máscara (Batch, 1, H, W) -> (H, W)
-        # Algunos modelos devuelven una lista, tomamos el primer tensor
-        raw_mask = result[0][0, 0]
-
-        # 3. Postprocesamiento Inteligente (CORRECCIÓN BIREFNET)
-        
-        # Detectar si necesitamos Sigmoide:
-        # Si los valores salen del rango [0, 1] (ej: -5 a +5), son Logits.
-        min_val, max_val = raw_mask.min(), raw_mask.max()
-        
-        if min_val < -1.0 or max_val > 1.5:
-            # Aplicar Sigmoide: 1 / (1 + e^-x)
-            # Esto convierte los "fantasmas" en negro/blanco puro
-            mask = 1 / (1 + np.exp(-raw_mask))
-        else:
-            # Ya son probabilidades, usar tal cual
-            mask = raw_mask
-
-        # Normalización final para asegurar rango 0-255 sólido
-        mask = (mask - mask.min()) / (mask.max() - mask.min() + 1e-8)
-        mask = (mask * 255).astype(np.uint8)
-        
-        # 4. Redimensionar y Aplicar
-        mask_img = Image.fromarray(mask, mode='L')
-        mask_img = mask_img.resize((orig_w, orig_h), Image.Resampling.LANCZOS)
-
-        final_image = pil_image.convert("RGBA")
-        final_image.putalpha(mask_img)
-        
-        return final_image
-        
-    def remove_background(self, pil_image, model_filename="u2netp.onnx", progress_callback=None, use_gpu=True):
-        """
-        Elimina el fondo.
-        Args:
-            use_gpu (bool): True = GPU (DirectML Anti-Freeze), False = CPU (Full Performance)
-        """
-        
-        from main import MODELS_DIR
-        import onnxruntime as ort 
-        
-        # --- BLOQUE DE ALTA RESOLUCIÓN (RMBG 2.0 e InSPyReNet) ---
-        high_res_names = [
-            "bria-rmbg-2.0.onnx", "model.onnx", "model_bnb4.onnx", "model_fp16.onnx", 
-            "model_int8.onnx", "model_quantized.onnx", "model_q4.onnx",
-            "model_q4f16.onnx", "model_uint8.onnx",
-            "inspyrenet_ultra.onnx", "inspyrenet_ultra_fp16.onnx"
-        ]
-        
-        # Rutas posibles para modelos de alta resolución
-        possible_paths = [
-            os.path.join(MODELS_DIR, "rmbg2", model_filename),
-            os.path.join(MODELS_DIR, "inspyrenet", model_filename)
-        ]
-        
-        target_model_path = None
-        for p in possible_paths:
-            if os.path.exists(p):
-                target_model_path = p
-                break
-
-        if model_filename in high_res_names or target_model_path:
-            if not target_model_path:
-                raise RuntimeError(f"El modelo de fondo no está instalado: {model_filename}")
-            return self._process_high_res_onnx(pil_image, target_model_path, use_gpu=use_gpu)
-
-        # --- CARGA LAZY DE REMBG ---
-        if not self._load_rembg_lazy(progress_callback):
-            raise RuntimeError("No se pudo cargar el motor de eliminación de fondo.")
-
-        try:
-            # 1. Definir clave de caché única (Nombre + GPU/CPU)
-            session_key = f"{model_filename}_{'gpu' if use_gpu else 'cpu'}"
-
-            # 2. Cargar sesión ONNX si no existe
-            if session_key not in self.rembg_sessions:
-                # Construir ruta completa
-                full_model_path = os.path.join(REMBG_MODELS_DIR, model_filename)
-                
-                # Si no está en la carpeta REMBG, buscar en la raíz de models (fallback)
-                if not os.path.exists(full_model_path):
-                    full_model_path = os.path.join(MODELS_DIR, "rembg", model_filename)
-                
-                if not os.path.exists(full_model_path):
-                    raise RuntimeError(f"No se encontró el modelo de fondo {model_filename}.")
-
-                hw_label = 'GPU' if use_gpu else 'CPU'
-                print(f"DEBUG: Cargando Manualmente {model_filename} en [{hw_label}]")
-                
-                sess_opts = ort.SessionOptions()
-
-                if use_gpu:
-                    # CONFIG GPU (DirectML Anti-Freeze)
-                    providers = ['DmlExecutionProvider', 'CPUExecutionProvider']
-                    sess_opts.enable_mem_pattern = False 
-                    sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
-                    sess_opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-                    sess_opts.inter_op_num_threads = 1 
-                    sess_opts.intra_op_num_threads = 1
-                else:
-                    # CONFIG CPU (Máxima Velocidad)
-                    providers = ['CPUExecutionProvider']
-                    sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-                    sess_opts.execution_mode = ort.ExecutionMode.ORT_PARALLEL
-                
-                # Cargamos la sesión "cruda" de ONNX Runtime
-                self.rembg_sessions[session_key] = ort.InferenceSession(
-                    full_model_path, 
-                    providers=providers, 
-                    sess_options=sess_opts
-                )
-            
-            # 3. Obtener sesión
-            session = self.rembg_sessions[session_key]
-            
-            # 4. Determinar resolución (CORREGIDO SEGÚN LOGS)
-            model_lower = model_filename.lower()
-            
-            # Reglas basadas en tus errores:
-            # - BiRefNet: SIEMPRE 1024
-            # - IsNet (General/Anime): SIEMPRE 1024 (El log dice Expected: 1024)
-            # - U2Net (Standard/Human/P): 320
-            
-            if "birefnet" in model_lower:
-                size = (1024, 1024)
-            elif "isnet" in model_lower: # <-- CAMBIO CLAVE: IsNet a 1024
-                size = (1024, 1024)
-            elif "u2net" in model_lower:
-                size = (320, 320)
-            else:
-                # Ante la duda, hoy en día los modelos modernos usan 1024
-                size = (1024, 1024) 
-            
-            # 5. Ejecutar inferencia MANUAL
-            try:
-                output_image = self._process_onnx_manual(pil_image, session, target_size=size)
-                return output_image
-
-            except Exception as run_error:
-                # Convertir el error a string de forma segura (evita el UnicodeDecodeError)
-                error_msg = repr(run_error)
-
-                # Detectar si fue un fallo de GPU (DirectML)
-                if use_gpu and ("DmlFusedNode" in error_msg or "887A0007" in error_msg or "Non-zero status" in error_msg):
-                    print(f"⚠️ ADVERTENCIA: La GPU falló o se agotó el tiempo. Reintentando con CPU...")
-                    
-                    # 🔥 FALLBACK: Llamada recursiva forzando CPU
-                    # Esto cargará una sesión nueva solo en CPU y procesará la imagen
-                    return self.remove_background(pil_image, model_filename, progress_callback, use_gpu=False)
-                
-                # Si no es error de GPU o ya estamos en CPU, lanzar el error hacia abajo
-                raise run_error
-            
-        except Exception as e:
-            # ✅ LOG SEGURO: Usamos 'repr(e)' en lugar de 'e' directamente
-            # Esto imprime el objeto error crudo y evita el crash por tildes/caracteres raros
-            print(f"ERROR CRÍTICO al procesar IA ({model_filename}): {repr(e)}")
-            raise RuntimeError(f"El modelo de fondo falló: {e}") from e
-    
-    def _apply_alpha_postprocess(self, pil_image, smooth_px=0, expand_px=0):
-        """
-        Aplica post-procesado al canal alfa de una imagen RGBA:
-          - smooth_px: radio de GaussianBlur sobre el alpha (suaviza bordes).
-          - expand_px: positivo = expande (dilata), negativo = contrae (erosiona).
-        Solo usa Pillow, sin dependencias extra.
-        """
-        from PIL import ImageFilter
-        try:
-            if pil_image.mode != "RGBA":
-                pil_image = pil_image.convert("RGBA")
-
-            r, g, b, alpha = pil_image.split()
-
-            # 1. Expandir / Contraer (morfología con MaxFilter / MinFilter)
-            if expand_px != 0:
-                # Pillow solo acepta tamaño impar
-                size = abs(expand_px) * 2 + 1
-                if expand_px > 0:
-                    alpha = alpha.filter(ImageFilter.MaxFilter(size))
-                else:
-                    alpha = alpha.filter(ImageFilter.MinFilter(size))
-
-            # 2. Suavizado (Gaussian blur del canal alfa)
-            if smooth_px > 0:
-                alpha = alpha.filter(ImageFilter.GaussianBlur(radius=smooth_px))
-
-            pil_image = Image.merge("RGBA", (r, g, b, alpha))
-            return pil_image
-
-        except Exception as e:
-            print(f"ADVERTENCIA: Error en post-procesado de bordes: {e}")
-            return pil_image
-
-    def convert_file(self, input_path, output_path, options, page_number=None, progress_callback=None, cancellation_event=None):
-        """
-        Convierte un archivo de imagen al formato especificado.
-        
-        Args:
-            input_path (str): Ruta del archivo de entrada
-            output_path (str): Ruta del archivo de salida
-            page_number (int, optional): La página específica a procesar
-            options (dict): Diccionario con opciones de conversión:
-                - format: str - Formato de salida ("PNG", "JPG", "WEBP", etc.)
-                - png_transparency: bool
-                - png_compression: int (0-9)
-                - jpg_quality: int (1-100)
-                - jpg_subsampling: str
-                - jpg_progressive: bool
-                - webp_lossless: bool
-                - webp_quality: int (1-100)
-                - webp_transparency: bool
-                - webp_metadata: bool
-                - pdf_combine: bool (manejado fuera)
-                - tiff_compression: str
-                - tiff_transparency: bool
-                - ico_sizes: list[int]
-                - bmp_rle: bool
-                - resize_enabled: bool (si está activo el escalado)
-                - resize_width: int (ancho objetivo)
-                - resize_height: int (alto objetivo)
-                - resize_maintain_aspect: bool (mantener proporción)
-                - interpolation_method: str (método de interpolación para raster)
-                - canvas_enabled: bool (si está activo el canvas)
-                - canvas_width: int (ancho del canvas)
-                - canvas_height: int (alto del canvas)
-                - canvas_margin: int (margen interno en píxeles)
-                - canvas_position: str (posición del contenido)
-                - canvas_overflow_mode: str (qué hacer si imagen > espacio disponible)
-        
-        Returns:
-            bool: True si la conversión fue exitosa
-        """
-        try:
-            # Reporte inicial: Inicio (0-10%)
-            if progress_callback: progress_callback(5)
-
-            input_ext = os.path.splitext(input_path)[1].lower()
-            output_format = options.get("format", "PNG").upper()
-            
-            resize_enabled = options.get("resize_enabled", False)
-            target_size = None
-            maintain_aspect = True
-            
-            if resize_enabled:
-                target_width = options.get("resize_width")
-                target_height = options.get("resize_height")
-                maintain_aspect = options.get("resize_maintain_aspect", True)
-                
-                if target_width and target_height:
-                    target_size = (int(target_width), int(target_height))
-            
-            # 1. Cargar imagen
-            if cancellation_event and cancellation_event.is_set(): raise UserCancelledError("Cancelado por usuario") # ✅ CHEQUEO
-            
-            pil_image = self._load_image(input_path, input_ext, target_size, maintain_aspect, options, page_number=page_number)
-            
-            if not pil_image:
-                raise Exception(f"No se pudo cargar la imagen desde {input_path}")
-            
-            # Reporte: Cargado (30%)
-            if progress_callback: progress_callback(30)
-            
-            if cancellation_event and cancellation_event.is_set(): raise UserCancelledError("Cancelado por usuario") # ✅ CHEQUEO
-
-            # 2. Resize raster
-            if resize_enabled and target_size and input_ext not in self.VECTOR_FORMATS:
-                pil_image = self._resize_raster_image(pil_image, target_size, maintain_aspect, options)
-            
-            # Reporte: Resize listo (40%)
-            if progress_callback: progress_callback(40)
-
-            if cancellation_event and cancellation_event.is_set(): raise UserCancelledError("Cancelado por usuario") # ✅ CHEQUEO
-
-            # 2.5 Eliminar fondo con IA
-            if options.get("rembg_enabled", False):
-                model_name = options.get("rembg_model", "u2netp")
-                
-                # NUEVO: Leer opción de GPU (Default: True)
-                use_gpu = options.get("rembg_gpu", True)
-                
-                print(f"INFO: Eliminando fondo con IA ({model_name} en {'GPU' if use_gpu else 'CPU'})...")
-                
-                # Reporte con texto para la UI
-                if progress_callback: 
-                    progress_callback(45, f"Preparando IA ({'GPU' if use_gpu else 'CPU'})...")
-                
-                # Pasamos el callback y la opción use_gpu
-                pil_image = self.remove_background(pil_image, model_name, progress_callback, use_gpu=use_gpu)
-
-                # Post-procesado de bordes (suavizado + expandir/contraer)
-                edge_smooth = options.get("rembg_edge_smooth", 0)
-                edge_expand = options.get("rembg_edge_expand", 0)
-                if edge_smooth != 0 or edge_expand != 0:
-                    pil_image = self._apply_alpha_postprocess(pil_image, edge_smooth, edge_expand)
-                
-                # Reporte: IA Terminada (80%)
-                if progress_callback: progress_callback(80)
-            
-            if cancellation_event and cancellation_event.is_set(): raise UserCancelledError("Cancelado por usuario") # ✅ CHEQUEO
-
-            # --- 2.6 REESCALADO CON IA (NUEVO BLOQUE) ---
-            if options.get("upscale_enabled", False):
-                print("INFO: Iniciando reescalado con IA...")
-                if progress_callback: progress_callback(50, f"Reescalando ({options['upscale_engine']})...")
-                
-                # ✅ VÍA RÁPIDA: Si no hay ediciones previas y el archivo es local, pasar ruta directa
-                input_path_override = None
-                input_ext = os.path.splitext(input_path)[1].lower()
-                if not options.get("rembg_enabled", False) and input_ext in (".jpg", ".jpeg", ".png"):
-                    input_path_override = input_path
-                
-                pil_image = self._upscale_image_ai(pil_image, options, cancellation_event, input_path_override, progress_callback)
-                
-                if progress_callback: progress_callback(60)
-
-            if cancellation_event and cancellation_event.is_set(): raise UserCancelledError("Cancelado por usuario") # ✅ CHEQUEO
-            
-            # 3. Canvas
-            canvas_enabled = options.get("canvas_enabled", False)
-            if canvas_enabled:
-                canvas_option = options.get("canvas_option", "Sin ajuste")
-                if canvas_option != "Sin ajuste":
-                    pil_image = self._apply_canvas_by_option(pil_image, canvas_option, options)
-
-            # 4. Fondo
-            background_enabled = options.get("background_enabled", False)
-            if background_enabled:
-                pil_image = self._apply_background(pil_image, options)
-            
-            # Reporte: Preparando guardado (85%)
-            if progress_callback: progress_callback(85)
-            
-            # 5. Guardar (Conversión final)
-            if output_format == "NO CONVERTIR":
-                input_ext = os.path.splitext(input_path)[1].lower()
-                if input_ext in self.RASTER_FORMATS:
-                    if input_ext in (".jpg", ".jpeg"): self._save_as_jpg(pil_image, output_path, options)
-                    elif input_ext == ".png": self._save_as_png(pil_image, output_path, options)
-                    elif input_ext == ".webp": self._save_as_webp(pil_image, output_path, options)
-                    elif input_ext in (".tiff", ".tif"): self._save_as_tiff(pil_image, output_path, options)
-                    elif input_ext == ".bmp": self._save_as_bmp(pil_image, output_path, options)
-                    else: pil_image.save(output_path)
-                else:
-                    self._save_as_png(pil_image, output_path, options)
-            
-            elif output_format == "PNG": self._save_as_png(pil_image, output_path, options)
-            elif output_format in ["JPG", "JPEG"]: self._save_as_jpg(pil_image, output_path, options)
-            elif output_format == "WEBP": self._save_as_webp(pil_image, output_path, options)
-            elif output_format == "AVIF": self._save_as_avif(pil_image, output_path, options)
-            elif output_format == "PDF": self._save_as_pdf(pil_image, output_path, options)
-            elif output_format == "TIFF": self._save_as_tiff(pil_image, output_path, options)
-            elif output_format == "ICO": self._save_as_ico(pil_image, output_path, options)
-            elif output_format == "BMP": self._save_as_bmp(pil_image, output_path, options)
-            else:
-                raise Exception(f"Formato de salida no soportado: {output_format}")
-            
-            # Reporte: Finalizado (100%)
-            if progress_callback: progress_callback(100)
-            
-            return True
-            
-        except UserCancelledError:
-            print(f"INFO: Conversión cancelada para {input_path}")
-            return False # Retorna falso para detener
-        except Exception as e:
-            print(f"ERROR: Fallo la conversión de {input_path}: {e}")
-            raise RuntimeError(str(e)) from e
-        
-    def _load_raw_with_rawpy(self, filepath):
-        """
-        Revela archivos RAW usando rawpy (LibRaw).
-        ✅ CORREGIDO: Gamma y espacio de color correctos para PNG.
-        """
-        try:
-            import rawpy
-            import numpy as np
-            
-            print(f"INFO: Revelando RAW de alta calidad: {os.path.basename(filepath)}")
-            
-            with rawpy.imread(filepath) as raw:
-                # 🎨 Configuración CORREGIDA (sRGB + Gamma 2.2)
-                rgb = raw.postprocess(
-                    use_camera_wb=True,           # Balance de blancos original
-                    half_size=False,              # Resolución completa
-                    no_auto_bright=False,         # ✅ Auto brillo activado
-                    output_bps=8,                 # ✅ 8 bits (suficiente para PNG)
-                    output_color=rawpy.ColorSpace.sRGB,  # ✅ sRGB (estándar web/PNG)
-                    demosaic_algorithm=rawpy.DemosaicAlgorithm.AHD,  # Balance calidad/velocidad
-                    use_auto_wb=False,            # No cambiar WB
-                    gamma=(2.222, 4.5),           # ✅ Gamma sRGB estándar
-                    bright=1.0,                   # Brillo 100%
-                    highlight_mode=rawpy.HighlightMode.Blend  # ✅ Blend highlights (más natural)
-                )
-            
-            # Convertir a PIL
-            img = Image.fromarray(rgb)
-            
-            # 🔄 Aplicar rotación EXIF
-            try:
-                from PIL import ImageOps
-                img = ImageOps.exif_transpose(img)
-            except:
-                pass
-            
-            print(f"✅ RAW revelado: {img.size[0]}x{img.size[1]} píxeles")
-            return img
-            
-        except ImportError:
-            raise Exception(
-                "❌ rawpy no está instalado.\n\n"
-                "Ejecuta en tu terminal:\n"
-                "pip install rawpy imageio\n\n"
-                "O descarga desde: https://pypi.org/project/rawpy/"
-            )
-        except rawpy.LibRawFileUnsupportedError:
-            raise Exception(f"Formato RAW no soportado por LibRaw: {os.path.splitext(filepath)[1]}")
-        except rawpy.LibRawIOError:
-            raise Exception("Archivo RAW corrupto o inaccesible")
-        except Exception as e:
-            raise Exception(f"Error al revelar RAW: {e}")
-    
-    def _load_image(self, filepath, ext, target_size=None, maintain_aspect=True, options=None, page_number=None):
-        """
-        Carga una imagen desde cualquier formato soportado.
-        🔧 MEJORADO: Manejo robusto de errores para SVG y PNG corruptos
-        """
-        
-        # Guardar el PATH original
-        original_path = os.environ.get('PATH', '')
-
-        # Añadir un fallback por si 'options' no se pasa
-        if options is None:
-            options = {}
-            
-        try:
-            # --- NUEVO: RAW DE CÁMARA ---
-            if ext.upper() in IMAGE_RAW_FORMATS:
-                return self._load_raw_with_rawpy(filepath) 
-
-            # --- RASTER: Carga directa con Pillow ---
-            elif ext in self.RASTER_FORMATS or ext in self.OTHER_FORMATS:
-                try:
-                    # 🔧 NUEVO: Aumentar límite de texto en PNG para archivos con muchos metadatos
-                    from PIL import PngImagePlugin
-                    PngImagePlugin.MAX_TEXT_CHUNK = 10 * (1024**2)  # 10 MB (antes era 1 MB)
-                    
-                    return Image.open(filepath)
-                except Exception as e:
-                    # Si falla por metadatos, intentar cargar sin verificación estricta
-                    print(f"ADVERTENCIA: Error al cargar {os.path.basename(filepath)}: {e}")
-                    print(f"  → Intentando carga sin verificación de metadatos...")
-                    
-                    try:
-                        img = Image.open(filepath)
-                        img.load()  # Forzar carga completa
-                        return img
-                    except Exception as e2:
-                        raise Exception(f"No se pudo cargar la imagen raster: {e2}")
-            
-            # --- SVG: Usar CairoSVG ---
-            elif ext == ".svg" and CAN_SVG:
-                
-                # 🔧 NUEVO: Pre-procesar SVG para corregir atributos inválidos
-                try:
-                    fixed_svg_path = self._fix_svg_attributes(filepath)
-                    svg_to_use = fixed_svg_path if fixed_svg_path else filepath
-                    
-                    is_no_convert = options.get("format", "PNG") == "NO CONVERTIR"
-
-                    if target_size and not is_no_convert:
-                        width, height = target_size
-                        
-                        if maintain_aspect:
-                            # Primero rasterizar sin tamaño para obtener dimensiones originales
-                            try:
-                                temp_png_data = cairosvg.svg2png(url=svg_to_use)
-                            except (ValueError, TypeError) as e:
-                                # Si CairoSVG falla, usar Inkscape como fallback
-                                print(f"DEBUG: CairoSVG falló para {os.path.basename(filepath)}: {e}")
-                                print(f"  → Usando Inkscape como fallback...")
-                                if fixed_svg_path and os.path.exists(fixed_svg_path):
-                                    try: os.remove(fixed_svg_path)
-                                    except: pass
-                                return self._convert_with_inkscape(filepath, target_size, maintain_aspect, page_number, options)
-                            
-                            temp_img = Image.open(io.BytesIO(temp_png_data))
-                            original_width, original_height = temp_img.size
-                            
-                            # Calcular tamaño manteniendo aspecto
-                            original_aspect = original_width / original_height
-                            target_aspect = width / height
-                            
-                            if original_aspect > target_aspect:
-                                final_width = width
-                                final_height = int(width / original_aspect)
-                            else:
-                                final_height = height
-                                final_width = int(height * original_aspect)
-                            
-                            # Asegurar que no exceda los límites
-                            if final_width > width:
-                                final_width = width
-                                final_height = int(width / original_aspect)
-                            if final_height > height:
-                                final_height = height
-                                final_width = int(height * original_aspect)
-                            
-                            print(f"SVG escalado: {original_width}×{original_height} → {final_width}×{final_height}")
-                            png_data = cairosvg.svg2png(url=svg_to_use, output_width=final_width, output_height=final_height)
-                        else:
-                            # Forzar dimensiones exactas
-                            png_data = cairosvg.svg2png(url=svg_to_use, output_width=width, output_height=height)
-                    else:
-                        png_data = cairosvg.svg2png(url=svg_to_use)
-                    
-                    # Limpiar archivo temporal si existe
-                    if fixed_svg_path and os.path.exists(fixed_svg_path):
-                        try: os.remove(fixed_svg_path)
-                        except: pass
-                    
-                    return Image.open(io.BytesIO(png_data))
-                    
-                except Exception as e:
-                    print(f"ERROR: Fallo completo en SVG {os.path.basename(filepath)}: {e}")
-                    print(f"  → Intentando Inkscape como último recurso...")
-                    # Limpiar archivo temporal si existe
-                    try:
-                        if fixed_svg_path and os.path.exists(fixed_svg_path):
-                            os.remove(fixed_svg_path)
-                    except: pass
-                    # Último intento con Inkscape
-                    return self._convert_with_inkscape(filepath, target_size, maintain_aspect, page_number, options)
-            
-            # --- VECTORIALES: Usar Inkscape o pdf2image ---
-            elif ext in self.VECTOR_FORMATS:
-                
-                # ✅ CAMBIO: Forzar Inkscape para .ai y .eps
-                # ✅ CAMBIO: Usar motores nativos centralizados para vectores
-                if ext in (".ai", ".eps", ".ps"): 
-                    try:
-                        # Intentar primero con Inkscape (si está habilitado y el usuario lo prefiere)
-                        if self.inkscape_service and self.inkscape_service.is_available():
-                            return self._convert_with_inkscape(filepath, target_size, maintain_aspect, page_number, options)
-                        else:
-                            raise Exception("Inkscape no disponible")
-                    except Exception:
-                        # Usar el nuevo motor nativo de respaldo (Ghostscript + Poppler)
-                        if ext in (".eps", ".ps"):
-                            return self._convert_eps_native(filepath, page_number, target_size, maintain_aspect, options)
-                        else:
-                            # .ai usualmente es un PDF internamente
-                            return self._convert_pdf_ai_native(filepath, page_number, target_size, maintain_aspect, options)
-                
-                # Para PDF estándar, usamos Poppler nativo
-                elif ext == ".pdf" and CAN_PDF:
-                    return self._convert_pdf_ai_native(filepath, page_number, target_size, maintain_aspect, options)
-            
-                else:
-                    # Fallback: Intentar con Pillow
-                    return Image.open(filepath)
-        
-        finally:
-            # Restaurar el PATH original
-            os.environ['PATH'] = original_path
-
-    # --- NUEVO MÉTODO DE RESPALDO ---
-    def _load_eps_with_pillow(self, filepath, target_size=None):
-        """Respaldo: Carga EPS calculando la escala exacta para HD/4K."""
-        try:
-            # 1. Abrir sin cargar (lazy) para leer dimensiones base (en puntos)
-            img = Image.open(filepath)
-            base_width, base_height = img.size
-            
-            # 2. Calcular escala necesaria
-            scale = 4 # Default alto
-            
-            if target_size and base_width > 0 and base_height > 0:
-                target_w, target_h = target_size
-                
-                # ¿Cuánto tengo que multiplicar el ancho base para llegar al objetivo?
-                scale_x = target_w / base_width
-                scale_y = target_h / base_height
-                
-                # Usamos el mayor para que sobre calidad (supersampling) y luego reducimos
-                # Añadimos un 20% extra (* 1.2) para antialiasing perfecto al reducir
-                required_scale = max(scale_x, scale_y) * 1.2
-                
-                # Pillow necesita un entero, mínimo 1
-                scale = int(max(1, round(required_scale)))
-                
-                # Límite de seguridad para no explotar la RAM con escalas absurdas
-                if scale > 50: scale = 50 
-
-            print(f"DEBUG: Renderizando EPS con escala x{scale} para alcanzar objetivo.")
-
-            # 3. Cargar con la escala calculada
-            img.load(scale=scale)
-            
-            if img.mode != "RGBA": img = img.convert("RGBA")
-            
-            # 4. Auto-Crop (Quitar bordes blancos)
-            bg = Image.new(img.mode, img.size, (255, 255, 255, 0))
-            diff = ImageChops.difference(img, bg)
-            bbox = diff.getbbox()
-            if bbox: img = img.crop(bbox)
-            
-            return img
-            
-        except Exception as e:
-            raise Exception(f"Fallo total (Inkscape y Pillow): {e}")
-
-    def _convert_with_inkscape(self, filepath, target_size=None, maintain_aspect=True, page_number=1, options=None):
-        if options is None: options = {}
-        """
-        Convierte usando Inkscape con estrategia de DPI Alto + Redimensionado.
-        ✅ CORREGIDO: Verifica Ghostscript antes de intentar conversión EPS/PS.
-        """
-        import subprocess
-        import tempfile
-        
-        ext = os.path.splitext(filepath)[1].lower()
-        temp_pdf_path = None  # Para limpieza en finally
-        
-        # ✅ NUEVO: Convertir EPS/PS a PDF temporal primero
-        if ext in (".eps", ".ps"):
-            if not self.gs_exe or not os.path.exists(self.gs_exe):
-                error_msg = f"Ghostscript no disponible. gs_exe={self.gs_exe}"
-                print(f"ERROR: {error_msg}")
-                raise Exception(error_msg)
-            
-            # Crear PDF temporal
-            temp_pdf = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
-            temp_pdf.close()
-            temp_pdf_path = temp_pdf.name
-            
-            try:
-                print(f"DEBUG: Convirtiendo {ext.upper()} a PDF temporal con Ghostscript...")
-                print(f"DEBUG: Usando Ghostscript: {self.gs_exe}")
-                
-                # Comando Ghostscript para EPS→PDF (conserva vectores)
-                gs_cmd = [
-                    self.gs_exe,
-                    '-dNOPAUSE',
-                    '-dBATCH',
-                    '-dSAFER',
-                    '-sDEVICE=pdfwrite',
-                    '-dEPSCrop',  # ✅ Recorta al BoundingBox del EPS
-                    f'-sOutputFile={temp_pdf_path}',
-                    filepath
-                ]
-                
-                print(f"DEBUG: Comando GS: {' '.join(gs_cmd)}")
-                
-                result = subprocess.run(
-                    gs_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=30,
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-                )
-                
-                if result.returncode != 0:
-                    stderr = result.stderr.decode('utf-8', errors='ignore')
-                    raise Exception(f"Ghostscript falló (código {result.returncode}): {stderr[:300]}")
-                
-                if not os.path.exists(temp_pdf_path):
-                    raise Exception("Ghostscript no generó archivo de salida")
-                
-                pdf_size = os.path.getsize(temp_pdf_path)
-                if pdf_size == 0:
-                    raise Exception("Ghostscript generó un PDF vacío")
-                
-                print(f"✅ PDF temporal creado: {temp_pdf_path} ({pdf_size} bytes)")
-                filepath = temp_pdf_path # Cambiar al PDF temporal para el resto del proceso
-                
-            except Exception as e:
-                print(f"ERROR en Ghostscript: {e}")
-                if os.path.exists(temp_pdf_path):
-                    try: os.remove(temp_pdf_path)
-                    except: pass
-                raise e
-        options = options or {}
-        ext = os.path.splitext(filepath)[1].lower()
-        
-        # 1. ¿Usar Inkscape Externo?
-        if self.inkscape_service and self.inkscape_service.is_available():
-            print(f"DEBUG: Usando Inkscape Externo para {ext}")
-            return self._convert_with_inkscape_external(filepath, page_number, target_size, maintain_aspect, options)
-
-        # 2. Motor Nativo (Sin Inkscape)
-        print(f"DEBUG: Usando motor nativo para {ext}")
-        
-        if ext == ".svg":
-            return self._convert_svg_native(filepath, target_size, maintain_aspect)
-        
-        elif ext in (".ai", ".pdf"):
-            return self._convert_pdf_ai_native(filepath, page_number, target_size, maintain_aspect, options)
-            
-        elif ext in (".eps", ".ps"):
-            return self._convert_eps_native(filepath, page_number, target_size, maintain_aspect, options)
-            
-        else:
-            raise Exception(f"Formato vectorial no soportado para motor nativo: {ext}")
-
-    def _convert_with_inkscape_external(self, filepath, page_number, target_size, maintain_aspect, options):
-        """Conversión usando el nuevo servicio de Inkscape."""
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
-            temp_png = tmp_file.name
-
-        try:
-            dpi = options.get("vector_dpi", 300) if os.path.splitext(filepath)[1].lower() != ".svg" else 300
-            
-            # 🚀 OPTIMIZACIÓN: Si hay una sesión activa, usar modo batch (Shell)
-            if hasattr(self.inkscape_service, '_session_process'):
-                print(f"DEBUG: [Batch] Usando sesión persistente de Inkscape para {os.path.basename(filepath)}")
-                success = self.inkscape_service.convert_batch(
-                    filepath, temp_png, page_number, dpi, target_size, maintain_aspect
-                )
-                if not success:
-                    raise Exception("Fallo en conversión por lotes de Inkscape.")
-            else:
-                # Modo normal (Uno por uno)
-                cmd = self.inkscape_service.build_command(filepath, temp_png, page_number, dpi=dpi)
-                
-                # Aplicar tamaño si es necesario
-                if target_size:
-                    w, h = target_size
-                    cmd = [c for c in cmd if not c.startswith("--export-dpi")]
-                    cmd.insert(2, f"--export-width={w}")
-                    if not maintain_aspect:
-                        cmd.insert(3, f"--export-height={h}")
-
-                env = self.inkscape_service.get_env()
-                # Añadir Ghostscript al PATH para que Inkscape pueda abrir EPS
-                if self.gs_dir:
-                    env["PATH"] = f"{self.gs_dir};{env.get('PATH', '')}"
-                    env["GS_PROG"] = self.gs_exe
-
-                subprocess.run(
-                    cmd, check=True, env=env, 
-                    cwd=self.inkscape_service.get_cwd(),
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE
-                )
-            
-            if not os.path.exists(temp_png) or os.path.getsize(temp_png) == 0:
-                raise Exception("Inkscape no generó salida.")
-                
-            img = Image.open(temp_png)
-            img.load()
-            return img
-        finally:
-            if os.path.exists(temp_png):
-                try: os.remove(temp_png)
-                except: pass
-
-    def _convert_svg_native(self, filepath, target_size, maintain_aspect):
-        """Conversión nativa de SVG usando CairoSVG."""
-        if not CAN_SVG:
-            raise Exception("CairoSVG no está instalado.")
-            
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
-            temp_png = tmp_file.name
-            
-        try:
-            render_kwargs = {}
-            if target_size:
-                w, h = target_size
-                render_kwargs['output_width'] = w
-                if not maintain_aspect:
-                    render_kwargs['output_height'] = h
-            
-            cairosvg.svg2png(url=filepath, write_to=temp_png, **render_kwargs)
-            img = Image.open(temp_png)
-            img.load()
-            return img
-        finally:
-            if os.path.exists(temp_png):
-                try: os.remove(temp_png)
-                except: pass
-
-    def _convert_pdf_ai_native(self, filepath, page_number, target_size, maintain_aspect, options, original_ext=None):
-        """Conversión nativa de PDF/AI usando Poppler con soporte real de transparencia."""
-        if not CAN_PDF or not self.poppler_path:
-            raise Exception("Poppler no está configurado.")
-            
-        ext = original_ext if original_ext else os.path.splitext(filepath)[1].lower()
-        print(f"DEBUG: [Render] Iniciando renderizado de {ext}: {os.path.basename(filepath)}")
-        
-        # 🧠 LÓGICA DE TRANSPARENCIA
-        if ext == ".pdf":
-            use_transparent = options.get("pdf_transparent", False)
-        else:
-            use_transparent = not options.get("force_background", False)
-        
-        # 📏 CÁLCULO DE DPI ÓPTIMO
-        dpi = options.get("vector_dpi", 300)
-        if target_size:
-            dpi = self._calculate_optimal_dpi(filepath, ext, target_size, maintain_aspect)
-        
-        print(f"DEBUG: [Render] Parámetros: Transparent={use_transparent}, DPI={dpi}, Size={target_size}")
-
-        images = convert_from_path(
-            filepath,
-            dpi=dpi,
-            first_page=page_number,
-            last_page=page_number,
-            poppler_path=self.poppler_path,
-            transparent=use_transparent,
-            use_pdftocairo=True 
-        )
-        
-        if not images:
-            raise Exception("Poppler no pudo renderizar el archivo.")
-            
-        img = images[0]
-        if not use_transparent:
-            bg = Image.new("RGB", img.size, (255, 255, 255))
-            if img.mode == "RGBA":
-                bg.paste(img, (0, 0), img)
-            else:
-                bg.paste(img, (0, 0))
-            img = bg
-        else:
-            img = img.convert("RGBA")
-        
-        if target_size:
-            if not maintain_aspect:
-                img = img.resize(target_size, Image.Resampling.LANCZOS)
-            else:
-                img.thumbnail(target_size, Image.Resampling.LANCZOS)
-            
-        return img
-
-    def _convert_eps_native(self, filepath, page_number, target_size, maintain_aspect, options):
-        """Conversión nativa de EPS/PS usando Ghostscript + Poppler."""
-        if not self.gs_exe:
-            raise Exception("Ghostscript no está instalado (necesario para EPS).")
-            
-        # Paso 1: Convertir EPS a PDF temporal con Ghostscript
-        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_pdf:
-            temp_pdf = tmp_pdf.name
-            
-        try:
-            gs_cmd = [
-                self.gs_exe,
-                "-q", "-dNOPAUSE", "-dBATCH", "-sDEVICE=pdfwrite",
-                "-dCompatibilityLevel=1.4", # PDF 1.4 soporta transparencia nativa
-                "-dPDFSETTINGS=/prepress",  # Máxima calidad
-                f"-sOutputFile={temp_pdf}",
-                "-dEPSCrop", # Respetar BoundingBox de EPS
-                filepath
-            ]
-            print(f"DEBUG: Ejecutando Ghostscript para EPS transparente: {' '.join(gs_cmd)}")
-            subprocess.run(gs_cmd, check=True, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-            
-            # Paso 2: Procesar ese PDF con el motor Poppler (Forzando lógica de EPS para transparencia)
-            return self._convert_pdf_ai_native(temp_pdf, page_number, target_size, maintain_aspect, options, original_ext=".eps")
-            
-        finally:
-            if os.path.exists(temp_pdf):
-                try: os.remove(temp_pdf)
-                except: pass
-
-    def _fix_svg_attributes(self, svg_path):
-        """
-        Lee un SVG y corrige atributos width/height inválidos.
-        🔧 MEJORADO: Maneja casos más complejos como height="px" sin número
-        """
-        try:
-            import re
-            import tempfile
-            
-            # Leer el contenido del SVG
-            with open(svg_path, 'r', encoding='utf-8') as f:
-                svg_content = f.read()
-            
-            # Buscar el tag <svg> y sus atributos
-            svg_tag_pattern = r'<svg([^>]*)>'
-            match = re.search(svg_tag_pattern, svg_content, re.IGNORECASE)
-            
-            if not match:
-                return None  # No se encontró el tag <svg>
-            
-            svg_attributes = match.group(1)
-            needs_fix = False
-            fixed_attributes = svg_attributes
-            
-            # 🔧 Patrones simples primero
-            simple_patterns = [
-                (r'width\s*=\s*"px"', 'width="180"'),
-                (r'width\s*=\s*""', 'width="180"'),
-                (r'width\s*=\s*"\s*px\s*"', 'width="180"'),
-                (r'height\s*=\s*"px"', 'height="180"'),
-                (r'height\s*=\s*""', 'height="180"'),
-                (r'height\s*=\s*"\s*px\s*"', 'height="180"'),
-            ]
-            
-            # Aplicar patrones simples
-            for pattern, replacement in simple_patterns:
-                if re.search(pattern, fixed_attributes, re.IGNORECASE):
-                    fixed_attributes = re.sub(pattern, replacement, fixed_attributes, flags=re.IGNORECASE)
-                    needs_fix = True
-            
-            # 🔧 Manejar "180px" → "180" (quitar solo el "px")
-            def clean_px_width(match):
-                value = match.group(0).split('"')[1]
-                value_clean = value.replace('px', '').strip()
-                return f'width="{value_clean}"'
-            
-            def clean_px_height(match):
-                value = match.group(0).split('"')[1]
-                value_clean = value.replace('px', '').strip()
-                return f'height="{value_clean}"'
-            
-            # Aplicar limpieza de "px"
-            if re.search(r'width\s*=\s*"\d+px"', fixed_attributes, re.IGNORECASE):
-                fixed_attributes = re.sub(r'width\s*=\s*"\d+px"', clean_px_width, fixed_attributes, flags=re.IGNORECASE)
-                needs_fix = True
-            
-            if re.search(r'height\s*=\s*"\d+px"', fixed_attributes, re.IGNORECASE):
-                fixed_attributes = re.sub(r'height\s*=\s*"\d+px"', clean_px_height, fixed_attributes, flags=re.IGNORECASE)
-                needs_fix = True
-            
-            if not needs_fix:
-                return None
-            
-            # Reconstruir el SVG
-            fixed_svg_content = re.sub(
-                svg_tag_pattern, 
-                f'<svg{fixed_attributes}>', 
-                svg_content, 
-                count=1, 
-                flags=re.IGNORECASE
-            )
-            
-            # Guardar en archivo temporal
-            temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.svg', delete=False, encoding='utf-8')
-            temp_file.write(fixed_svg_content)
-            temp_file.close()
-            
-            print(f"DEBUG: ✅ SVG corregido guardado: {temp_file.name}")
-            return temp_file.name
-            
-        except Exception as e:
-            print(f"ADVERTENCIA: No se pudo preprocesar el SVG: {e}")
-            return None
-
-    def _quote_path_if_needed(self, path):
-        """Envuelve la ruta en comillas si contiene espacios (solo para debugging)."""
-        if ' ' in path and not path.startswith('"'):
-            return f'"{path}"'
-        return path
-        
-    
-    # ========================================================================
-    # MÉTODOS DE GUARDADO POR FORMATO
-    # ========================================================================
-    
-    def _save_as_png(self, img, output_path, options):
-        """Guarda como PNG con opciones optimizadas para imágenes grandes."""
-        
-        # 1. Gestionar transparencia
-        if options.get("png_transparency", True) and img.mode in ("RGBA", "LA", "PA"):
-            save_img = img
-        else:
-            save_img = img.convert("RGB")
-        
-        # 2. Obtener nivel de compresión del usuario
-        compression = options.get("png_compression", 6)
-        
-        # 3. Lógica inteligente para imágenes gigantes (Upscaling)
-        width, height = save_img.size
-        total_pixels = width * height
-        is_huge_image = total_pixels > (3840 * 2160) # Más grande que 4K
-        
-        use_optimize = True
-        
-        if is_huge_image:
-            print(f"DEBUG: Imagen gigante detectada ({width}x{height}). Optimizando velocidad de guardado...")
-            # Desactivar optimización extra de Pillow (es muy lenta en 8K)
-            use_optimize = False 
-            # Si la compresión es muy alta, bajarla un poco para no congelar la app
-            if compression > 3:
-                print(f"DEBUG: Reduciendo compresión de {compression} a 3 para velocidad.")
-                compression = 3
-
-        # 4. Guardar UNA SOLA VEZ
-        # Eliminamos el bloque try/except de "regeneración" porque save_img.save ya escribe los metadatos básicos
-        # y la doble escritura es lo que mata el rendimiento.
-        try:
-            save_img.save(output_path, "PNG", compress_level=compression, optimize=use_optimize)
-            
-            # Flush explícito para asegurar escritura
-            with open(output_path, 'r+b') as f:
-                f.flush()
-                os.fsync(f.fileno())
-                
-        except Exception as e:
-            print(f"ERROR al guardar PNG: {e}")
-    
-    def _save_as_jpg(self, img, output_path, options):
-        """Guarda como JPG con opciones."""
-        # JPG no soporta transparencia
-        if img.mode in ("RGBA", "LA", "PA"):
-            # Crear fondo blanco
-            background = Image.new("RGB", img.size, (255, 255, 255))
-            if img.mode == "RGBA":
-                background.paste(img, mask=img.split()[3])
-            else:
-                background.paste(img)
-            save_img = background
-        else:
-            save_img = img.convert("RGB")
-        
-        # Opciones de calidad
-        quality = options.get("jpg_quality", 90)
-        
-        # Subsampling de croma
-        subsampling_map = {
-            "4:2:0 (Estándar)": "4:2:0",
-            "4:2:2 (Alta)": "4:2:2",
-            "4:4:4 (Máxima)": "4:4:4"
-        }
-        subsampling_str = options.get("jpg_subsampling", "4:2:0 (Estándar)")
-        subsampling = subsampling_map.get(subsampling_str, "4:2:0")
-        
-        # Progresivo
-        progressive = options.get("jpg_progressive", False)
-        
-        # 🔧 MODIFICADO: Guardar con parámetros explícitos
-        save_img.save(
-            output_path, 
-            "JPEG", 
-            quality=quality,
-            subsampling=subsampling,
-            progressive=progressive,
-            optimize=True
-        )
-        
-        # 🔧 NUEVO: Re-abrir y re-guardar para regenerar metadatos
-        try:
-            temp_img = Image.open(output_path)
-            temp_img.load()
-            temp_img.save(
-                output_path, 
-                "JPEG", 
-                quality=quality,
-                subsampling=subsampling,
-                progressive=progressive,
-                optimize=True
-            )
-            temp_img.close()
-            print(f"✅ JPG regenerado: {os.path.basename(output_path)}")
-        except Exception as e:
-            print(f"⚠️ Advertencia al regenerar JPG: {e}")
-    
-    def _save_as_webp(self, img, output_path, options):
-        """Guarda como WEBP con opciones."""
-        # Mantener transparencia si está activado
-        if options.get("webp_transparency", True) and img.mode in ("RGBA", "LA", "PA"):
-            save_img = img
-        else:
-            save_img = img.convert("RGB")
-        
-        save_kwargs = {
-            "format": "WEBP",
-            "lossless": options.get("webp_lossless", False)
-        }
-        
-        # Calidad solo si no es lossless
-        if not save_kwargs["lossless"]:
-            save_kwargs["quality"] = options.get("webp_quality", 90)
-        
-        # Metadatos EXIF
-        if options.get("webp_metadata", False) and hasattr(img, 'info') and 'exif' in img.info:
-            save_kwargs["exif"] = img.info['exif']
-        
-        save_img.save(output_path, **save_kwargs)
-
-        # 🔧 NUEVO: Forzar flush al disco (Windows)
-        try:
-            with open(output_path, 'r+b') as f:
-                f.flush()
-                os.fsync(f.fileno())
-        except Exception:
-            pass  # No crítico si falla
-    
-    def _save_as_pdf(self, img, output_path, options):
-        """Guarda como PDF."""
-        # PDF requiere RGB
-        if img.mode not in ("RGB", "L"):
-            save_img = img.convert("RGB")
-        else:
-            save_img = img
-        
-        # Usar img2pdf si está disponible (más rápido y mejor calidad)
-        if CAN_IMG2PDF:
-            # Guardar imagen temporal
-            temp_png = tempfile.mktemp(suffix='.png')
-            save_img.save(temp_png, "PNG")
-            
-            try:
-                with open(output_path, "wb") as f:
-                    f.write(img2pdf.convert(temp_png))
-                os.remove(temp_png)
-            except Exception as e:
-                if os.path.exists(temp_png):
-                    os.remove(temp_png)
-                raise e
-        else:
-            # Fallback: Usar Pillow
-            save_img.save(output_path, "PDF", resolution=100.0)
-
-            # 🔧 NUEVO: Forzar flush al disco (Windows)
-            try:
-                with open(output_path, 'r+b') as f:
-                    f.flush()
-                    os.fsync(f.fileno())
-            except Exception:
-                pass  # No crítico si falla
-    
-    def _save_as_tiff(self, img, output_path, options):
-        """Guarda como TIFF con opciones."""
-        # Mantener transparencia si está activado
-        if options.get("tiff_transparency", True) and img.mode in ("RGBA", "LA", "PA"):
-            save_img = img
-        else:
-            save_img = img.convert("RGB")
-        
-        # Mapeo de compresión
-        compression_map = {
-            "Ninguna": None,
-            "LZW (Recomendada)": "tiff_lzw",
-            "Deflate (ZIP)": "tiff_deflate",
-            "PackBits": "packbits"
-        }
-        compression_str = options.get("tiff_compression", "LZW (Recomendada)")
-        compression = compression_map.get(compression_str)
-        
-        save_kwargs = {"format": "TIFF"}
-        if compression:
-            save_kwargs["compression"] = compression
-        
-        save_img.save(output_path, **save_kwargs)
-
-        # 🔧 NUEVO: Forzar flush al disco (Windows)
-        try:
-            with open(output_path, 'r+b') as f:
-                f.flush()
-                os.fsync(f.fileno())
-        except Exception:
-            pass  # No crítico si falla
-    
-    def _save_as_ico(self, img, output_path, options):
-        """Guarda como ICO con múltiples tamaños."""
-        # ICO requiere RGBA
-        if img.mode != "RGBA":
-            save_img = img.convert("RGBA")
-        else:
-            save_img = img
-        
-        # Obtener tamaños seleccionados
-        ico_sizes_dict = options.get("ico_sizes", {})
-        selected_sizes = [size for size, selected in ico_sizes_dict.items() if selected]
-        
-        if not selected_sizes:
-            # Por defecto: 32x32 y 256x256
-            selected_sizes = [32, 256]
-        
-        # Crear imágenes redimensionadas
-        sizes_list = [(size, size) for size in selected_sizes]
-        
-        save_img.save(output_path, "ICO", sizes=sizes_list)
-
-        # 🔧 NUEVO: Forzar flush al disco (Windows)
-        try:
-            with open(output_path, 'r+b') as f:
-                f.flush()
-                os.fsync(f.fileno())
-        except Exception:
-            pass  # No crítico si falla
-    
-    def _save_as_bmp(self, img, output_path, options):
-        """Guarda como BMP con opciones."""
-        # BMP no soporta transparencia (normalmente)
-        if img.mode in ("RGBA", "LA", "PA"):
-            save_img = img.convert("RGB")
-        else:
-            save_img = img.convert("RGB")
-        
-        # Compresión RLE (solo para BMP de 8 bits)
-        # Pillow no soporta RLE automáticamente, así que lo ignoramos
-        # (La mayoría de apps modernas no usan BMP con RLE)
-        
-        save_img.save(output_path, "BMP")
-
-        # 🔧 NUEVO: Forzar flush al disco (Windows)
-        try:
-            with open(output_path, 'r+b') as f:
-                f.flush()
-                os.fsync(f.fileno())
-        except Exception:
-            pass  # No crítico si falla
-
-    # ========================================================================
-    # MÉTODOS DE ESCALADO
-    # ========================================================================
-    
-    def _calculate_optimal_dpi(self, filepath, ext, target_size, maintain_aspect):
-        """
-        Calcula el DPI óptimo para rasterizar un vector al tamaño objetivo sondeando sus dimensiones reales.
-        """
-        target_width, target_height = target_size
-        doc_width_pts = 612  # 8.5" default
-        doc_height_pts = 792 # 11" default
-        
-        try:
-            import re # Fail-safe
-            if ext in (".pdf", ".ai"):
-                # Leer dimensiones reales del PDF
-                info = pdfinfo_from_path(filepath, poppler_path=self.poppler_path)
-                # Formato esperado de 'Page size': '200 x 300 pts'
-                page_size = info.get('Page size', '')
-                match = re.search(r'([\d.]+)\s*x\s*([\d.]+)', page_size)
-                if match:
-                    doc_width_pts = float(match.group(1))
-                    doc_height_pts = float(match.group(2))
-            
-            elif ext in (".eps", ".ps"):
-                # 1. Intentar lectura manual rápida del BoundingBox
-                found_bbox = False
-                with open(filepath, 'rb') as f:
-                    header = f.read(16384).decode('latin-1', errors='ignore')
-                    match = re.search(r'%%HiResBoundingBox:\s*([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)', header)
-                    if not match:
-                        match = re.search(r'%%BoundingBox:\s*([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)', header)
-                    
-                    if match:
-                        x1, y1, x2, y2 = map(float, match.groups())
-                        doc_width_pts = abs(x2 - x1)
-                        doc_height_pts = abs(y2 - y1)
-                        found_bbox = True
-                
-                # 2. Si falla (atend, binario, etc.), usar Ghostscript para sondear
-                if not found_bbox and self.gs_exe:
-                    print(f"DEBUG: [Render] BBox no encontrado en cabecera. Usando Ghostscript para sondear: {ext}")
-                    try:
-                        gs_cmd = [self.gs_exe, "-q", "-dBATCH", "-dNOPAUSE", "-sDEVICE=bbox", filepath]
-                        result = subprocess.run(gs_cmd, capture_output=True, text=True, 
-                                               creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-                        bbox_info = result.stderr
-                        match = re.search(r'%%HiResBoundingBox:\s*([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)', bbox_info)
-                        if match:
-                            x1, y1, x2, y2 = map(float, match.groups())
-                            doc_width_pts = abs(x2 - x1)
-                            doc_height_pts = abs(y2 - y1)
-                            print(f"DEBUG: [Render] GS detectó BBox: {doc_width_pts}x{doc_height_pts} pts")
-                    except Exception as ge:
-                        print(f"DEBUG: [Render] Ghostscript falló al sondear BBox: {ge}")
-        except Exception as e:
-            print(f"DEBUG: [Render] No se pudo obtener dimensiones reales de {ext} ({e}). Usando default 8.5x11.")
-
-        # Convertir puntos (1/72 inch) a pulgadas
-        doc_width_inches = max(0.1, doc_width_pts / 72.0)
-        doc_height_inches = max(0.1, doc_height_pts / 72.0)
-        
-        dpi_width = target_width / doc_width_inches
-        dpi_height = target_height / doc_height_inches
-        
-        if maintain_aspect:
-            optimal_dpi = min(dpi_width, dpi_height)
-        else:
-            optimal_dpi = max(dpi_width, dpi_height)
-        
-        # Limitar DPI (Ghostscript/Poppler pueden fallar con DPIs absurdos)
-        optimal_dpi = max(72, min(optimal_dpi, 4800))
-        
-        print(f"DEBUG: Vector {doc_width_pts:.0f}x{doc_height_pts:.0f} pts -> DPI óptimo: {optimal_dpi:.0f}")
-        return int(optimal_dpi)
-    
-    def _resize_raster_image(self, img, target_size, maintain_aspect, options):
-        """
-        Reescala una imagen raster usando el método de interpolación especificado.
-        """
-        from PIL import Image as PILImage
-        
-        target_width, target_height = target_size
-        original_width, original_height = img.size
-        
-        # Obtener método de interpolación
-        interp_method_name = options.get("interpolation_method", "Lanczos (Mejor Calidad)")
-        
-        # Mapear al enum de Pillow
-        method_map = {
-            "LANCZOS": PILImage.Resampling.LANCZOS,
-            "BICUBIC": PILImage.Resampling.BICUBIC,
-            "BILINEAR": PILImage.Resampling.BILINEAR,
-            "NEAREST": PILImage.Resampling.NEAREST
-        }
-        
-        # Obtener el valor del enum desde el nombre del método
-        from src.core.constants import INTERPOLATION_METHODS
-        method_key = INTERPOLATION_METHODS.get(interp_method_name, "LANCZOS")
-        resampling = method_map.get(method_key, PILImage.Resampling.LANCZOS)
-        
-        if maintain_aspect:
-            # Calcular nuevo tamaño manteniendo aspecto
-            # Usamos el MENOR lado del límite como referencia
-            original_aspect = original_width / original_height
-            target_aspect = target_width / target_height
-            
-            if original_aspect > target_aspect:
-                # Imagen más ancha que el límite → usar target_width
-                new_width = target_width
-                new_height = int(target_width / original_aspect)
-            else:
-                # Imagen más alta que el límite → usar target_height
-                new_height = target_height
-                new_width = int(target_height * original_aspect)
-            
-            # Asegurar que no exceda los límites
-            if new_width > target_width:
-                new_width = target_width
-                new_height = int(target_width / original_aspect)
-            if new_height > target_height:
-                new_height = target_height
-                new_width = int(target_height * original_aspect)
-            
-            return img.resize((new_width, new_height), resampling)
-        else:
-            # Forzar dimensiones exactas (puede distorsionar)
-            return img.resize((target_width, target_height), resampling)
-    
-    def validate_target_size(self, target_size):
-        """
-        Valida el tamaño objetivo y retorna warnings si es necesario.
-        Returns: (is_safe, warning_message)
-        """
-        from src.core.constants import (
-            MAX_RECOMMENDED_DPI, MAX_SAFE_DIMENSION,
-            CRITICAL_DPI_THRESHOLD, CRITICAL_DIMENSION_THRESHOLD
-        )
-        
-        width, height = target_size
-        max_dimension = max(width, height)
-        
-        # Crítico (muy peligroso)
-        if max_dimension > CRITICAL_DIMENSION_THRESHOLD:
-            return (False, f"⚠️ ADVERTENCIA: Resolución muy alta ({width}×{height}).\n\n"
-                          f"Esto puede causar:\n"
-                          f"• Consumo excesivo de RAM (>4GB)\n"
-                          f"• Posible crasheo de la aplicación\n"
-                          f"• Tiempo de procesamiento muy largo\n\n"
-                          f"Recomendación: Usar máximo {CRITICAL_DIMENSION_THRESHOLD}×{CRITICAL_DIMENSION_THRESHOLD}.")
-        
-        # Alto (advertencia)
-        elif max_dimension > MAX_SAFE_DIMENSION:
-            return (True, f"⚠️ Resolución alta ({width}×{height}).\n\n"
-                         f"Puede requerir bastante RAM.\n"
-                         f"Tiempo estimado: 30s-2min por archivo.\n\n"
-                         f"¿Continuar?")
-        
-        # Seguro
-        return (True, None)
-    
-    def _apply_canvas_by_option(self, img, canvas_option, options):
-        """
-        Aplica canvas según la opción seleccionada.
-        ✅ CORREGIDO: Mantiene transparencia correctamente.
-        """
-        from PIL import Image as PILImage
-        from src.core.constants import CANVAS_PRESET_SIZES
-        
-        img_width, img_height = img.size
-        
-        # ✅ CRÍTICO: Asegurar que la imagen esté en RGBA antes de cualquier cosa
-        if img.mode != "RGBA":
-            print(f"DEBUG: Convirtiendo imagen de {img.mode} a RGBA para canvas")
-            img = img.convert("RGBA")
-        
-        # Determinar el tamaño del canvas según la opción
-        if canvas_option == "Añadir Margen Externo":
-            margin = options.get("canvas_margin", 100)
-            canvas_width = img_width + (margin * 2)
-            canvas_height = img_height + (margin * 2)
-            print(f"Margen Externo: Canvas expandido a {canvas_width}×{canvas_height} (margen: {margin}px)")
-        
-        elif canvas_option == "Añadir Margen Interno":
-            margin = options.get("canvas_margin", 100)
-            canvas_width = img_width
-            canvas_height = img_height
-            
-            new_width = max(1, img_width - (margin * 2))
-            new_height = max(1, img_height - (margin * 2))
-            
-            if new_width < img_width or new_height < img_height:
-                img = img.resize((new_width, new_height), PILImage.Resampling.LANCZOS)
-                img_width, img_height = new_width, new_height
-                print(f"Margen Interno: Imagen reducida a {new_width}×{new_height} (margen: {margin}px)")
-            else:
-                print(f"ADVERTENCIA: Margen interno ({margin}px) demasiado grande, imagen no reducida")
-        
-        elif canvas_option in CANVAS_PRESET_SIZES:
-            canvas_width, canvas_height = CANVAS_PRESET_SIZES[canvas_option]
-            print(f"Preset aplicado: Canvas {canvas_width}×{canvas_height}")
-        
-        elif canvas_option == "Personalizado...":
-            canvas_width = int(options.get("canvas_width", img_width))
-            canvas_height = int(options.get("canvas_height", img_height))
-            print(f"Canvas personalizado: {canvas_width}×{canvas_height}")
-        
-        else:
-            return img
-        
-        # 🔥 Verificar si la imagen excede el canvas (solo para presets y personalizado)
-        if canvas_option not in ["Añadir Margen Externo", "Añadir Margen Interno"]:
-            exceeds_canvas = img_width > canvas_width or img_height > canvas_height
-            
-            if exceeds_canvas:
-                overflow_mode = options.get("canvas_overflow_mode", "Centrar (puede recortar)")
-                
-                if overflow_mode == "Advertir y no procesar":
-                    raise Exception(
-                        f"La imagen ({img_width}×{img_height}) excede el canvas ({canvas_width}×{canvas_height}). "
-                        f"Activa 'Cambiar Tamaño' para escalar primero."
-                    )
-                
-                elif overflow_mode == "Reducir hasta que quepa":
-                    scale_w = canvas_width / img_width
-                    scale_h = canvas_height / img_height
-                    scale = min(scale_w, scale_h)
-                    
-                    new_w = int(img_width * scale)
-                    new_h = int(img_height * scale)
-                    
-                    img = img.resize((new_w, new_h), PILImage.Resampling.LANCZOS)
-                    img_width, img_height = new_w, new_h
-                    print(f"Imagen escalada manteniendo aspecto: {new_w}×{new_h}")
-                
-                elif overflow_mode in ["Recortar al canvas", "Centrar (puede recortar)"]:
-                    left = max(0, (img_width - canvas_width) // 2)
-                    top = max(0, (img_height - canvas_height) // 2)
-                    right = left + canvas_width
-                    bottom = top + canvas_height
-                    
-                    img = img.crop((left, top, right, bottom))
-                    img_width, img_height = img.size
-                    print(f"Imagen recortada a {img_width}×{img_height} para ajustar al canvas")
-        
-        # ✅ CORRECCIÓN CRÍTICA: Crear canvas TRANSPARENTE siempre que la imagen sea RGBA
-        print(f"DEBUG: Creando canvas RGBA transparente de {canvas_width}×{canvas_height}")
-        canvas = PILImage.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
-        
-        # Calcular posición
-        position = options.get("canvas_position", "Centro")
-        x, y = self._calculate_canvas_position(canvas_width, canvas_height, img_width, img_height, position)
-        
-        # Pegar imagen en el canvas usando el canal alpha
-        print(f"DEBUG: Pegando imagen RGBA en posición ({x}, {y})")
-        canvas.paste(img, (x, y), img)  # El tercer parámetro usa el canal alpha de img como máscara
-        
-        print(f"Canvas final: {canvas_width}×{canvas_height} con imagen {img_width}×{img_height} en posición {position}")
-        print(f"✅ Modo del canvas resultante: {canvas.mode}")
-        
-        return canvas
-
-    def _calculate_canvas_position(self, canvas_w, canvas_h, img_w, img_h, position):
-        """
-        Calcula las coordenadas X,Y para colocar la imagen en el canvas.
-        
-        Args:
-            canvas_w, canvas_h: Dimensiones del canvas
-            img_w, img_h: Dimensiones de la imagen
-            position: str - Posición deseada
-        
-        Returns:
-            (x, y): Coordenadas para pegar la imagen
-        """
-        # Mapeo de posiciones
-        position_map = {
-            "Centro": ("center", "center"),
-            "Arriba Izquierda": ("left", "top"),
-            "Arriba Centro": ("center", "top"),
-            "Arriba Derecha": ("right", "top"),
-            "Centro Izquierda": ("left", "center"),
-            "Centro Derecha": ("right", "center"),
-            "Abajo Izquierda": ("left", "bottom"),
-            "Abajo Centro": ("center", "bottom"),
-            "Abajo Derecha": ("right", "bottom")
-        }
-        
-        h_align, v_align = position_map.get(position, ("center", "center"))
-        
-        # Calcular coordenada X
-        if h_align == "left":
-            x = 0
-        elif h_align == "center":
-            x = (canvas_w - img_w) // 2
-        else:  # right
-            x = canvas_w - img_w
-        
-        # Calcular coordenada Y
-        if v_align == "top":
-            y = 0
-        elif v_align == "center":
-            y = (canvas_h - img_h) // 2
-        else:  # bottom
-            y = canvas_h - img_h
-        
-        return (x, y)
-    
-    def _apply_background(self, img, options):
-        """
-        Reemplaza el fondo transparente de una imagen con un color, degradado o imagen.
-        
-        Args:
-            img: PIL.Image - Imagen con transparencia
-            options: dict - Opciones de fondo
-        
-        Returns:
-            PIL.Image - Imagen con fondo aplicado
-        """
-        from PIL import Image as PILImage, ImageDraw
-        
-        # Si la imagen no tiene transparencia, no hacer nada
-        if img.mode not in ("RGBA", "LA", "PA"):
-            print("ADVERTENCIA: La imagen no tiene canal de transparencia, no se aplica fondo")
-            return img
-        
-        background_type = options.get("background_type", "Color Sólido")
-        width, height = img.size
-        
-        # Crear el fondo según el tipo
-        if background_type == "Color Sólido":
-            bg_color_hex = options.get("background_color", "#FFFFFF")
-            bg_color = self._hex_to_rgb(bg_color_hex)
-            background = PILImage.new("RGB", (width, height), bg_color)
-            print(f"Fondo sólido aplicado: {bg_color_hex}")
-        
-        elif background_type == "Degradado":
-            color1_hex = options.get("background_gradient_color1", "#FF0000")
-            color2_hex = options.get("background_gradient_color2", "#0000FF")
-            direction = options.get("background_gradient_direction", "Horizontal (Izq → Der)")
-            
-            background = self._create_gradient(width, height, color1_hex, color2_hex, direction)
-            print(f"Degradado aplicado: {color1_hex} → {color2_hex} ({direction})")
-        
-        elif background_type == "Imagen de Fondo":
-            bg_image_path = options.get("background_image_path")
-            
-            if not bg_image_path or not os.path.exists(bg_image_path):
-                print("ADVERTENCIA: Ruta de imagen de fondo no válida, usando blanco")
-                background = PILImage.new("RGB", (width, height), (255, 255, 255))
-            else:
-                try:
-                    bg_img = PILImage.open(bg_image_path)
-                    # Redimensionar/recortar la imagen de fondo al tamaño de la imagen
-                    background = bg_img.resize((width, height), PILImage.Resampling.LANCZOS)
-                    if background.mode != "RGB":
-                        background = background.convert("RGB")
-                    print(f"Imagen de fondo aplicada: {os.path.basename(bg_image_path)}")
-                except Exception as e:
-                    print(f"ERROR: No se pudo cargar imagen de fondo: {e}")
-                    background = PILImage.new("RGB", (width, height), (255, 255, 255))
-        
-        else:
-            # Fallback: fondo blanco
-            background = PILImage.new("RGB", (width, height), (255, 255, 255))
-        
-        # Pegar la imagen sobre el fondo usando el canal alpha como máscara
-        background.paste(img, (0, 0), img)
-        
-        return background
-
-    def _hex_to_rgb(self, hex_color):
-        """Convierte un color hexadecimal (#RRGGBB) a tupla RGB."""
-        hex_color = hex_color.lstrip('#')
-        try:
-            return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-        except:
-            print(f"ADVERTENCIA: Color hexadecimal inválido '{hex_color}', usando blanco")
-            return (255, 255, 255)
-
-    def _create_gradient(self, width, height, color1_hex, color2_hex, direction):
-        """
-        Crea un degradado entre dos colores.
-        
-        Args:
-            width, height: Dimensiones de la imagen
-            color1_hex, color2_hex: Colores en formato hexadecimal
-            direction: Dirección del degradado
-        
-        Returns:
-            PIL.Image - Imagen con degradado
-        """
-        from PIL import Image as PILImage, ImageDraw
-        
-        color1 = self._hex_to_rgb(color1_hex)
-        color2 = self._hex_to_rgb(color2_hex)
-        
-        base = PILImage.new("RGB", (width, height), color1)
-        draw = ImageDraw.Draw(base)
-        
-        if direction == "Horizontal (Izq → Der)":
-            for x in range(width):
-                ratio = x / width
-                r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-                g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-                b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-                draw.line([(x, 0), (x, height)], fill=(r, g, b))
-        
-        elif direction == "Vertical (Arr → Aba)":
-            for y in range(height):
-                ratio = y / height
-                r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-                g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-                b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-                draw.line([(0, y), (width, y)], fill=(r, g, b))
-        
-        elif direction == "Diagonal (↘)":
-            for i in range(width + height):
-                ratio = i / (width + height)
-                r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-                g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-                b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-                draw.line([(0, i), (i, 0)], fill=(r, g, b), width=2)
-        
-        elif direction == "Diagonal (↙)":
-            for i in range(width + height):
-                ratio = i / (width + height)
-                r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-                g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-                b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-                draw.line([(width, i), (width - i, 0)], fill=(r, g, b), width=2)
-        
-        elif direction == "Radial (Centro)":
-            center_x, center_y = width // 2, height // 2
-            max_radius = int(((width/2)**2 + (height/2)**2)**0.5)
-            
-            for radius in range(max_radius, 0, -1):
-                ratio = radius / max_radius
-                r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-                g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-                b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-                draw.ellipse(
-                    [(center_x - radius, center_y - radius), 
-                    (center_x + radius, center_y + radius)],
-                    fill=(r, g, b)
-                )
-        
-        return base
-    
-    # ========================================================================
-    # UTILIDADES
-    # ========================================================================
-    
-    def combine_pdfs(self, pdf_paths, output_path):
-        """
-        Combina múltiples PDFs en uno solo.
-        Requiere PyPDF2.
-        """
-        try:
-            import PyPDF2
-            
-            pdf_writer = PyPDF2.PdfWriter()
-            
-            for pdf_path in pdf_paths:
-                if not os.path.exists(pdf_path):
-                    print(f"ADVERTENCIA: {pdf_path} no existe, omitiendo")
-                    continue
-                
-                try:
-                    with open(pdf_path, "rb") as f:
-                        pdf_reader = PyPDF2.PdfReader(f)
-                        for page_num in range(len(pdf_reader.pages)):
-                            pdf_writer.add_page(pdf_reader.pages[page_num])
-                except Exception as e:
-                    print(f"ERROR: No se pudo leer {pdf_path}: {e}")
-            
-            # Guardar el PDF combinado
-            with open(output_path, "wb") as f:
-                pdf_writer.write(f)
-            
-            return True
-        
-        except ImportError:
-            print("ERROR: PyPDF2 no está instalado. No se pueden combinar PDFs.")
-            return False
-        except Exception as e:
-            print(f"ERROR: Falló la combinación de PDFs: {e}")
-            return False
-        
-    # ==================================================================
-    # --- FUNCIONES DE CONVERTIR A VIDEO
-    # ==================================================================
-
-    def _parse_video_resolution(self, options):
-        """Parsea la opción de resolución y devuelve una tupla (width, height)."""
-        res_str = options.get("video_resolution", "1920x1080 (1080p)")
-        
-        if res_str == "Personalizado...":
-            try:
-                width = int(options.get("video_custom_width", "1920"))
-                height = int(options.get("video_custom_height", "1080"))
-                return (width, height)
-            except ValueError:
-                return (1920, 1080) # Fallback
-        
-        # Parsear (ej. "1920x1080 (1080p)")
-        try:
-            width_str, height_str = res_str.split(" ")[0].split("x")
-            return (int(width_str), int(height_str))
-        except Exception:
-            return (1920, 1080) # Fallback
-
-    def _create_background_canvas(self, target_size, options):
-        """Crea un canvas de fondo con las opciones de 'Cambiar Fondo'."""
-        
-        # Si el fondo no está habilitado, devolver un canvas negro
-        if not options.get("background_enabled", False):
-            return Image.new("RGB", target_size, (0, 0, 0))
-        
-        # Reutilizar la lógica de _apply_background creando un canvas vacío
-        # y pasándolo a la función
-        empty_canvas = Image.new("RGBA", target_size, (0, 0, 0, 0))
-        
-        # _apply_background reemplazará la transparencia con el fondo elegido
-        # y lo convertirá a RGB
-        background_canvas = self._apply_background(empty_canvas, options)
-        
-        return background_canvas
-
-    def _apply_video_fit_mode(self, fg_image, target_size, fit_mode):
-        """
-        Escala la imagen (fg_image) según el modo de ajuste para
-        encajar en el target_size (ej. 1920x1080).
-        """
-        from PIL import Image as PILImage
-        
-        img_w, img_h = fg_image.size
-        target_w, target_h = target_size
-        
-        if fit_mode == "Mantener Tamaño Original":
-            # No hacer nada, devolver la imagen tal cual
-            return fg_image
-        
-        elif fit_mode == "Ajustar al Fotograma (Barras)":
-            # Modo "Contain" (disminuir)
-            ratio = min(target_w / img_w, target_h / img_h)
-            
-            # Solo escalar si la imagen es más grande que el contenedor
-            if ratio < 1.0:
-                new_w = int(img_w * ratio)
-                new_h = int(img_h * ratio)
-                return fg_image.resize((new_w, new_h), PILImage.Resampling.LANCZOS)
-            else:
-                return fg_image # La imagen ya cabe, no escalar
-
-        elif fit_mode == "Ajustar al Marco (Recortar)":
-            # Modo "Cover" (aumentar)
-            img_aspect = img_w / img_h
-            target_aspect = target_w / target_h
-            
-            if img_aspect > target_aspect:
-                # Imagen más ancha: ajustar a la altura del target
-                new_h = target_h
-                new_w = int(new_h * img_aspect)
-            else:
-                # Imagen más alta: ajustar al ancho del target
-                new_w = target_w
-                new_h = int(new_w / img_aspect)
-
-            # Escalar
-            scaled_img = fg_image.resize((new_w, new_h), PILImage.Resampling.LANCZOS)
-            
-            # Recortar desde el centro
-            left = (new_w - target_w) / 2
-            top = (new_h - target_h) / 2
-            right = (new_w + target_w) / 2
-            bottom = (new_h + target_h) / 2
-            
-            return scaled_img.crop((left, top, right, bottom))
-        
-        return fg_image # Fallback
-
-    def _composite_images(self, bg_canvas, fg_image):
-        """
-        Pega la imagen (fg_image) en el centro del lienzo (bg_canvas).
-        """
-        canvas_w, canvas_h = bg_canvas.size
-        img_w, img_h = fg_image.size
-        
-        # Calcular posición central
-        x = (canvas_w - img_w) // 2
-        y = (canvas_h - img_h) // 2
-        
-        # Pegar usando máscara si la imagen tiene transparencia
-        if fg_image.mode in ("RGBA", "LA", "PA"):
-            bg_canvas.paste(fg_image, (x, y), fg_image)
-        else:
-            bg_canvas.paste(fg_image, (x, y))
-            
-        return bg_canvas
-
-    def _build_ffmpeg_video_options(self, options, input_fps):
-        """Construye el comando de FFmpeg basado en las opciones de la UI."""
-        
-        video_format = options.get("format")
-        output_fps = options.get("video_fps", "30")
-        
-        # Opciones base de FFmpeg
-        # -r {input_fps} : FPS de entrada (imágenes)
-        # -i ... : Input (los frames)
-        # -r {output_fps} : FPS de salida (video)
-        # -y : Sobrescribir
-        
-        pre_params = ['-r', str(input_fps)]
-        
-        # Parámetros post-input
-        final_params = ['-r', str(output_fps)]
-        
-        # Aplicar códec según el formato
-        if video_format == ".mp4 (H.264)":
-            final_params.extend(['-c:v', 'libx264', '-pix_fmt', 'yuv420p'])
-        
-        elif video_format == ".mov (ProRes)":
-            # Usar un preset de ProRes rápido y de calidad
-            final_params.extend(['-c:v', 'prores_ks', '-profile:v', '3', '-pix_fmt', 'yuv422p10le'])
-        
-        elif video_format == ".webm (VP9)":
-            final_params.extend(['-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '30'])
-        
-        elif video_format == ".gif (Animado)":
-            # Filtro complejo para crear una paleta de GIF de alta calidad
-            final_params.extend([
-                '-filter_complex', 
-                "[0:v] split [a][b];[a] palettegen [p];[b][p] paletteuse"
-            ])
-        else:
-            # Fallback (no debería ocurrir)
-            final_params.extend(['-c:v', 'libx264', '-pix_fmt', 'yuv420p'])
-            
-        return pre_params, final_params
-
-    def create_video_from_images(self, file_data_list, output_path, options, progress_callback, cancellation_event):
-        """
-        Motor principal para convertir una lista de imágenes a un video.
-        ✅ VERSIÓN BLINDADA: Limpieza garantizada y cancelación instantánea.
-        """
-        if not self.ffmpeg_processor:
-            raise Exception("FFmpeg processor no está inicializado.")
-        
-        import tempfile
-        import shutil
-        
-        temp_frame_dir = None
-        try:
-            # --- FASE A: ESTANDARIZACIÓN DE FRAMES ---
-            
-            # 1. Crear directorio temporal para los frames
-            temp_frame_dir = tempfile.mkdtemp(prefix="xomacito_frames_")
-            print(f"INFO: Creando frames temporales en: {temp_frame_dir}")
-            
-            # 2. Obtener opciones
-            target_size = self._parse_video_resolution(options)
-            fit_mode = options.get("video_fit_mode", "Ajustar al Fotograma (Barras)")
-            total_files = len(file_data_list)
-            
-            for i, (filepath, page_num) in enumerate(file_data_list):
-                
-                # ✅ 1. CHEQUEO DE CANCELACIÓN (Dentro del bucle)
-                if cancellation_event.is_set():
-                    print("DEBUG: Cancelación detectada durante generación de frames.")
-                    raise UserCancelledError("Proceso cancelado por el usuario.")
-                
-                # --- LÓGICA DE PROGRESO ---
-                base_progress = (i / total_files) * 100
-                step_size = 100 / total_files
-                
-                current_pct = base_progress + (step_size * 0.1)
-                progress_callback("Standardizing", current_pct, f"Procesando: {os.path.basename(filepath)}")
-                
-                try:
-                    # 2.2. Crear el fondo
-                    bg_canvas = self._create_background_canvas(target_size, options)
-                    
-                    # 2.3. Cargar la imagen
-                    fg_image = self._load_image(filepath, os.path.splitext(filepath)[1].lower(), 
-                                                page_number=page_num, options=options)
-                    
-                    if not fg_image:
-                        continue
-
-                    # --- IA REMBG ---
-                    if options.get("rembg_enabled", False):
-                        # ✅ 2. CHEQUEO DE CANCELACIÓN (Antes de IA pesada)
-                        if cancellation_event.is_set(): raise UserCancelledError("Cancelado")
-
-                        current_pct = base_progress + (step_size * 0.3)
-                        model_name = options.get("rembg_model", "u2netp")
-                        use_gpu = options.get("rembg_gpu", True) # <--- NUEVO
-                        
-                        progress_callback("Standardizing", current_pct, f"🤖 IA ({'GPU' if use_gpu else 'CPU'}): {os.path.basename(filepath)}")
-                        
-                        # Adaptador de callback
-                        def temp_callback(p, m):
-                            progress_callback("Standardizing", current_pct, m)
-
-                        fg_image = self.remove_background(
-                            pil_image=fg_image, 
-                            model_filename=model_name, 
-                            progress_callback=temp_callback,
-                            use_gpu=use_gpu # <--- PASAR OPCIÓN
-                        )
-                    
-                    # ✅ 3. CHEQUEO DE CANCELACIÓN (Después de IA)
-                    if cancellation_event.is_set(): raise UserCancelledError("Cancelado")
-
-                    current_pct = base_progress + (step_size * 0.8)
-                    progress_callback("Standardizing", current_pct, f"Componiendo: {os.path.basename(filepath)}")
-                        
-                    # 2.4. Aplicar escalado
-                    scaled_fg_image = self._apply_video_fit_mode(fg_image, target_size, fit_mode)
-                    
-                    # 2.5. Componer
-                    final_frame = self._composite_images(bg_canvas, scaled_fg_image)
-                    
-                    # 2.6. Guardar
-                    frame_path = os.path.join(temp_frame_dir, f"frame_{i:06d}.png")
-                    final_frame.save(frame_path, "PNG")
-                    
-                except UserCancelledError:
-                    raise # Re-lanzar para salir del bucle inmediatamente
-                except Exception as e:
-                    print(f"ERROR: Falló frame {filepath}: {e}")
-                    continue
-            
-            # --- FASE B: CODIFICACIÓN DE VIDEO (FFMPEG) ---
-            
-            # ✅ 4. CHEQUEO DE CANCELACIÓN (Antes de FFmpeg)
-            if cancellation_event.is_set(): raise UserCancelledError("Cancelado antes de codificar.")
-
-            print("INFO: Fase A completada. Iniciando FFmpeg...")
-            
-            try:
-                output_fps = int(options.get("video_fps", "30"))
-                duration_frames = int(options.get("video_frame_duration", "3"))
-                input_fps = output_fps / duration_frames
-            except ValueError:
-                raise Exception("FPS y Duración deben ser números válidos")
-                
-            pre_params, final_params = self._build_ffmpeg_video_options(options, input_fps)
-            
-            input_pattern = os.path.join(temp_frame_dir, "frame_%06d.png")
-            
-            ffmpeg_options = {
-                "input_file": input_pattern,
-                "output_file": output_path,
-                "duration": total_files / input_fps,
-                "ffmpeg_params": final_params,
-                "pre_params": pre_params,
-                "mode": "Video+Audio"
-            }
-            
-            # 7. Ejecutar FFmpeg (Pasamos el evento de cancelación)
-            self.ffmpeg_processor.execute_recode(
-                ffmpeg_options,
-                lambda p, m: progress_callback("Encoding", p, m),
-                cancellation_event # ✅ FFmpegProcessor se encargará de matar el proceso si esto se activa
-            )
-            
-            return output_path
-        
-        except UserCancelledError as e:
-            print(f"DEBUG: Cancelación capturada en create_video_from_images: {e}")
-            raise e # Re-lanzar para la UI
-            
-        finally:
-            # ✅ LIMPIEZA GARANTIZADA
-            # Este bloque se ejecuta SIEMPRE: si termina bien, si falla, o si se cancela.
-            if temp_frame_dir and os.path.exists(temp_frame_dir):
-                try:
-                    print(f"INFO: Limpiando carpeta temporal de frames: {temp_frame_dir}")
-                    shutil.rmtree(temp_frame_dir) # Borra la carpeta y todo su contenido
-                except Exception as e:
-                    print(f"ADVERTENCIA: No se pudo eliminar carpeta temporal inmediatamente: {e}")
-                    # Intento secundario asíncrono (para Windows a veces bloquea archivos un segundo)
-                    def retry_delete():
-                        import time
-                        time.sleep(2)
-                        try:
-                            if os.path.exists(temp_frame_dir):
-                                shutil.rmtree(temp_frame_dir)
-                                print("INFO: Limpieza diferida completada.")
-                        except: pass
-                    threading.Thread(target=retry_delete, daemon=True).start()
-
-    def _save_as_avif(self, img, output_path, options):
-        """Guarda como AVIF con opciones avanzadas."""
-        # Mantener transparencia si está activado
-        if options.get("avif_transparency", True) and img.mode in ("RGBA", "LA", "PA"):
-            save_img = img
-        else:
-            save_img = img.convert("RGB")
-        
-        save_kwargs = {
-            "format": "AVIF",
-            "lossless": options.get("avif_lossless", False),
-            "speed": options.get("avif_speed", 6)
-        }
-        
-        # Calidad solo si no es lossless
-        if not save_kwargs["lossless"]:
-            save_kwargs["quality"] = options.get("avif_quality", 80)
-        
-        save_img.save(output_path, **save_kwargs)
-
-        # Flush para asegurar escritura en disco
-        try:
-            with open(output_path, 'r+b') as f:
-                f.flush()
-                os.fsync(f.fileno())
-        except Exception:
-            pass
-    
-    def _upscale_image_ai(self, img, options, cancellation_event=None, input_path_override=None, progress_callback=None):
-        """
-        Ejecuta Real-ESRGAN o Waifu2x nativamente.
-        Versión blindada contra errores de variables no definidas.
-        """
-        import subprocess
-        import tempfile
-        import multiprocessing
-        import queue
-        import threading
-        import re
-        import time
-        
-        # 1. Inicializar variables para evitar errores en 'finally'
-        temp_input_path = None
-        temp_output_path = None
-        needs_input_cleanup = True
-        
-        try:
-            # ✅ VÍA RÁPIDA: Usar archivo original si no se requiere pre-procesamiento
-            if input_path_override and os.path.exists(input_path_override):
-                temp_input_path = input_path_override
-                needs_input_cleanup = False
-            
-            engine = options.get("upscale_engine")
-            friendly_model = options.get("upscale_model_friendly")
-            
-            if "SRMD" in engine:
-                model_info = SRMD_MODELS.get(friendly_model, {})
-                internal_model_name = model_info.get("model", "models-srmd")
-            elif engine == "Upscayl":
-                from src.core.constants import UPSCAYL_MODELS_MAP
-                rev_map = {v: k for k, v in UPSCAYL_MODELS_MAP.items()}
-                internal_model_name = rev_map.get(friendly_model, friendly_model)
-            else:
-                model_info = WAIFU2X_MODELS.get(friendly_model, {})
-                internal_model_name = model_info.get("model", "models-cunet")
-
-            scale = options.get("upscale_scale", "2")
-            tile_size = options.get("upscale_tile", "0") or "0"
-            
-            denoise = options.get("upscale_denoise", "0")
-            use_tta = options.get("upscale_tta", False)
-            
-            # PNG evita introducir una segunda compresión antes de la mejora.
-            ext_temp = ".png"
-            
-            # 2. Crear archivos temporales si no tenemos override
-            if not temp_input_path:
-                with tempfile.NamedTemporaryFile(suffix=ext_temp, delete=False) as temp_in:
-                    temp_input_path = temp_in.name
-                
-                img.save(temp_input_path, "PNG")
-
-            # El output SIEMPRE será PNG (lo decide el ejecutable)
-            temp_output_path = os.path.splitext(temp_input_path)[0] + "_out.png"
-            
-            # --- MEJORA 3: Calcular Hilos de Tubería (Pipeline) ---
-            # Formato NCNN: "load:proc:save"
-            concurrency = options.get("upscale_concurrency", "Automático")
-            
-            if concurrency == "Seguro (Estabilidad)":
-                threads_arg = "1:1:1"
-            elif concurrency == "Equilibrado":
-                threads_arg = "1:2:1"
-            elif concurrency == "Máximo (Potente)":
-                threads_arg = "2:4:2"
-            else:
-                # Automático: Calcular según CPU
-                cpu_count = multiprocessing.cpu_count()
-                if cpu_count >= 8:
-                    threads_arg = "2:4:2"
-                elif cpu_count >= 4:
-                    threads_arg = "1:2:2"
-                else:
-                    threads_arg = "1:1:1"
-
-            models_root = os.path.join(BIN_DIR, "models", "upscaling")
-            cmd = []
-            
-            if "SRMD" in engine: # <-- MODIFICADO
-                exe_path = os.path.join(models_root, "srmd", "srmd-ncnn-vulkan.exe")
-                full_model_path = os.path.join(models_root, "srmd", internal_model_name)
-                
-                cmd = [
-                    exe_path,
-                    "-i", temp_input_path,
-                    "-o", temp_output_path,
-                    "-m", full_model_path,
-                    "-n", denoise, # Usa el valor del menú (-1 a 3)
-                    "-s", scale,
-                    "-t", tile_size,
-                    "-f", "png",
-                    "-j", threads_arg
-                ]
-                if use_tta: cmd.append("-x")
-                    
-            elif engine == "Waifu2x":
-                exe_path = os.path.join(models_root, "waifu2x", "waifu2x-ncnn-vulkan.exe")
-                full_model_path = os.path.join(models_root, "waifu2x", internal_model_name)
-                
-                cmd = [
-                    exe_path,
-                    "-i", temp_input_path,
-                    "-o", temp_output_path,
-                    "-m", full_model_path,
-                    "-n", denoise,
-                    "-s", scale,
-                    "-t", tile_size,
-                    "-f", "png",
-                    "-j", threads_arg
-                ]
-                if use_tta: cmd.append("-x")
-                
-            elif engine == "Upscayl":
-                exe_path = os.path.join(models_root, "upscayl", "upscayl-bin.exe")
-                full_model_path = os.path.join(models_root, "upscayl", "models")
-                
-                cmd = [
-                    exe_path,
-                    "-i", temp_input_path,
-                    "-o", temp_output_path,
-                    "-n", internal_model_name,
-                    "-m", full_model_path,
-                    "-s", scale,
-                    "-f", "png",
-                    "-j", threads_arg
-                ]
-                
-                # --- NUEVO: Detectar escala nativa del modelo (-z) ---
-                import re
-                match = re.search(r"[xX]([2-3])", internal_model_name)
-                if match:
-                    cmd.extend(["-z", match.group(1)])
-                    
-                if tile_size and tile_size != "0":
-                    cmd.extend(["-t", tile_size])
-                if use_tta: cmd.append("-x")
-
-            # 3. Ejecutar
-            if not os.path.exists(exe_path):
-                raise RuntimeError(
-                    "El motor de mejora no está instalado. Abre Configuración > Dependencias "
-                    "e instala Upscayl."
-                )
-
-            print(f"DEBUG: Ejecutando Upscale ({engine}): {' '.join(cmd)}")
-            creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            
-            # ✅ CAMBIO: Usar Popen para poder cancelar y leer la salida en tiempo real
-            # Añadimos encoding utf-8 y errors='replace' para evitar UnicodeDecodeError
-            process = subprocess.Popen(
-                cmd, 
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE, 
-                text=True,
-                encoding='utf-8',
-                errors='replace',
-                creationflags=creationflags
-            )
-            
-            # --- NUEVO: Leer stderr en un hilo para no bloquear el buffer de Windows y obtener progreso ---
-            def enqueue_output(out, q):
-                for line in iter(out.readline, ''):
-                    q.put(line)
-                out.close()
-
-            q = queue.Queue()
-            t = threading.Thread(target=enqueue_output, args=(process.stderr, q))
-            t.daemon = True
-            t.start()
-            
-            last_update_time = 0
-            
-            # Bucle de espera que vigila el botón de cancelar y lee el progreso
-            while process.poll() is None:
-                if cancellation_event and cancellation_event.is_set():
-                    print("DEBUG: Cancelación detectada durante Upscaling. Matando proceso...")
-                    process.kill()
-                    raise UserCancelledError("Reescalado cancelado por usuario")
-                
-                try:
-                    # Leer líneas sin bloquear
-                    line = q.get_nowait()
-                    
-                    # Buscar el porcentaje (ej: 12,50% o 12.50%)
-                    match = re.search(r"(\d+)[.,](\d+)%", line)
-                    if match:
-                        pct = float(match.group(1) + "." + match.group(2))
-                        
-                        # Limitar la actualización a 4 veces por segundo (0.25s) para balancear
-                        current_time = time.time()
-                        if current_time - last_update_time >= 0.25 or pct >= 100.0:
-                            last_update_time = current_time
-                            
-                            # Imprimir en consola de Xomacito y VS Code
-                            print(f"Progreso Upscayl: {pct:.1f}%")
-                            
-                            if progress_callback:
-                                # Mapear el 0-100% interno de upscayl al 50-60% de la barra global
-                                scaled_pct = 50 + (pct / 10.0)
-                                progress_callback(scaled_pct, f"Reescalando ({engine}): {pct:.1f}%")
-                            
-                except queue.Empty:
-                    # Si no hay texto nuevo, esperar un poco para no saturar CPU
-                    time.sleep(0.05)
-            
-            # Verificar resultado
-            if process.returncode != 0 or not os.path.exists(temp_output_path):
-                # Leer cualquier error restante
-                remaining_stderr = ""
-                while not q.empty():
-                    remaining_stderr += q.get_nowait()
-                raise RuntimeError(
-                    "El motor de mejora no pudo procesar la imagen. "
-                    + (remaining_stderr[-500:] if remaining_stderr else "Revisa el controlador Vulkan de tu GPU.")
-                )
-
-            # 4. Cargar resultado
-            upscaled_img = Image.open(temp_output_path)
-            upscaled_img.load()
-            
-            print(f"INFO: Reescalado finalizado. Tamaño: {upscaled_img.size}")
-            return upscaled_img
-
-        except UserCancelledError:
-            raise
-        except Exception as e:
-            print(f"ERROR CRÍTICO en reescalado: {e}")
-            raise
-            
-        finally:
-            # Limpieza SEGURA: Solo si nosotros creamos el temporal
-            if needs_input_cleanup and temp_input_path and os.path.exists(temp_input_path):
-                try: os.remove(temp_input_path) 
-                except: pass
-                
-            if temp_output_path and os.path.exists(temp_output_path):
-                try: os.remove(temp_output_path) 
-                except: pass
+# Generated by scripts/obfuscate_python_tree.py. Do not edit by hand.
+from __future__ import annotations
+
+import base64 as _base64
+import marshal as _marshal
+import zlib as _zlib
+
+_PAYLOAD = (
+    "c-"
+    "q9h30PZKnjosHeP7Um5CX)G!0ccQHaP6y1qk2`$5sj53l<g<xsq%k!l}vh^dr^j4pjAPL#65&ch_`q$2B2c)nBOodR|fGbeC)Ey0"
+    "YYwqGG;rdOTl$nfJXJD&_h*&zbMdJLg<2SNMWSYU&Mfj_y6@Kl{1=`M2|*|HNVZ3F#l~H%~AQ=Ozc|;FyauM*m`C82aUoanUbtjE"
+    "8>tV|?^07!#mh;g}Hoa$TZn@t7Ecd3i3$v~)~5EgO@ecRqNRkIAPMV~T0zm=eVaT&ijHn0i_>rkTzd%fL7i7%OyXr*&hxY5kZUK#"
+    "9f-AWrJanl_D@rnASgr_Ez#lw0P?na&-"
+    "{jpxE#d1HA1+QME&9HwNf1iY1UIlUZQ^#>eW{SKGz{aD!?R>&bTi#VhL<PeV;xE#WWOWwiaqr<ttd87L}XO?$?a~(kv`4e0KT|ZU"
+    ";pe;BymIrba5(SAIQ~jK0{@#iI;+!m4XECZnP87ez!4==+G3x^56<jQMW0L;8jxlTAw~c;Q$WjEUOoRN_2}rBvV;DJL#bT;{_f@a"
+    "MK0}NU<Ta;*uySL{bM5^-"
+    "XX?(|P7ii<pBjnDMuty!#b2zvn6CeHdvCXGxP4@_d)U@9IDEQ&bR?#wWBUh&&Wt7_H3`sji71d?)X_g+>*^nlsfW8ycl5>!MlsUV"
+    "GiZm#;c;IhNS|$j^i11k?7k~8%?v)_bWeCvQKLQnbD%5jU1z(8N4p0)``cSAr2wkVIc=XLN-"
+    "b`W#p(9?>@GX*sj>`sEMCGg<H5;$x80U_`A*VeCmmOu*F0WJ707zXQe}67fSB=u<_h{@K`{yX=_2jdV^Z|kdBp?Lu~^0#FF|(N-"
+    "44R#BJggK^pO6myIa(0caolwv%Ro6gx7cPwgq>3XFP7_xQjSy>Gt~kxYJ|72@5LP4H`M=cY-"
+    "!rCj4%P)8n?ganN$7+d{Z3(;lCPw4lQ5KG0}O**w=;<?nrF6r9tOb)Y-D$DkAS+Uvac9k<198S3f*wZW>U@7?xVT!h<acQ98lH-R"
+    "i_5V9aR5J3RsfC0o%jr0Bh1BikD2ONMFYH$H~6XHVfCIW9F@FvD<aWVLn;1Uok#p`e>c$4AvxD5QtK?!p3tH2c?Rf#v?O7Nxvc~#"
+    "(7jW^<I@T<W!AT<Ne0HGG7X+fM0*MT=Zt_Pt3H-In`&jg_nH-az=&jO(dH-Ru4&jz6xH-j(-"
+    "&jDdBo(sY}JP(8x+ycUUJRgJwcmW6t@j?(5;YA=U#*0B%f|r1>6fXr~8D0iLD{cj0IbIIJ3cLb@hwwunti&rpSOt1j1=?6W$F&}g"
+    "De2WhFExVn&w;^|TEO3FG>>4;9gGP9uTC%#U=0vn%gcVk;`PjUNS__d&fmIx&KVbop74;<cAv+KN&y+bl#zDaUhTEJoVXnpXYtIy"
+    "RRdt{*X-_jkm#*K&;t%WV`||u4^HhUn%V#s;MkIh0WNsMl5afl#^ofj8F=F*-"
+    "kk6)S#E$cCEFVhzQlzPHem|dCSv4NKAV%w@@bOwV(c()alXk-VLG>rk%JMB!#+roDSYrIO}+`hTe97_5Er??&b7eDH~|Q!V5Epai"
+    "gH0Pty&O*RG2T>qJR**sS<B<9IIqtzOa9wXRyW6d&T4Rc^#y4#%FPP9CjC&IUnKhflso<;_ur1@iM_7&TxZSg|oct`|TbYsU8}!x"
+    "SZ2YP?EjMDtXGUnsHBpaB61qsQ`oo{JBny&w#k`=^60ib52Zv7w|LBubKp*pvr#DIbjvRyf{qqUV|k7{P&axP$38arsD(P87~e(-"
+    "=uvWmR|=#r^7?SWpM|K>H7!3hA=dEs(rM7aKLuDd$ez`YXsnNb!Yp)+4d3J(BMcvOd5&l<1vGv$33S8&!IhF#Hx<TXFM}tjgvICS"
+    "3Bc-"
+    "lg&$SPBHbw#5CxUZHDwX2(Q;e#^fY1Jw9oh_TYXO5mVA{UXTXXzc-d?1KR~|Lj!J`OpR$wIO(<FP7?hRvqVfVLpt5Qm~z*yraar-"
+    "IXaknR}7B!F_JU9q@xOq009DsVBJ11Spe5;Aq<K@U=_vqUcxm&7Q>hl7?i>w9m)&80So>2G#eCJ4GXPCTbRv}Kpj;xb1|{a=5#xK"
+    "Hrsq=I$o(tBpik1y$ymdbE4+5MSfVE6}8mB-<-"
+    "tnj*yd+Pp9Ns;BPjFDJqK;9uF2C4;8it#US<#+0y8rUX03AZyx>1(QUbg(lu@Jzc2fqY-"
+    "54S=zb{gc?{w*&WGg}K<2!w7%C^4+eQE8w8CH0Z-pF5YqYopz7+fmcp1c!je)Tb#Rb2CpNa!xe9htnS{mm<v?Ss9lBrYNy-"
+    "~{o=1ay+@t=j85<MFiz;Fx)d)Yg2_%B+*JG|d1KQGmSN!|i?5+J8P#};@2ZWrg$4bU_GbIO&ll*>;bJ}>r0VSoop0(8=X;0v^n9}"
+    "pyn<^|ywXo--~l1`tDfpUfEh#S--oZvdR7zh480`{jjzRc$^atKqfbD~0yPo78tWUp~S#DEkBMCoM%0$Z{mx*?hq(Z4AI+bW%J?C"
+    "=9TlZJHX0DivaCtTMEOPRw?&JaGkZQSWTWFh_F37`yXRg4EBVlpOL;Z8zCDWCLSce)QZIH~|#{H?x@egg;x{*uk0Rr3X1-"
+    "5qCo)3JRD)q}?t%X}>hOxlhB9#Nyb^u9uPt=xfud2{#h@Zhjz9Ci#6kBsasmH~j4xE?RSeuU3)9gp!5y5&!KK!1e9tP?<zm7sw!N"
+    "%yRSnDGHzY88`pC}!O5C1~`lnDGEK3n*BKNxd;K7!5n=BtWqf9v4mk<cebEVv-"
+    "5J%SGqG2(LJW>nvnFM1kdSEJ}9cGj_~<0j{I}fzaCyUoXksHkxipRwZxA7W*HoGj58OMK|Tk@|6qgg7t+>BBbux-"
+    "W?lKx9*PfZJY_IkM4;0Im*S;pGY~zK5Vh?k*V|(j!@CKB;3~OZ#FGA-"
+    "E3QKTPt~}wMGldKjHB8jVr?KqLR0JZ}+}^>h`G(!=@or^umf{J3HrA(`wVLw$-"
+    "+E>%;7ZZF4?V)U!3Wb(Ja@4x2}!h1T_Es<0t!ZuqqXl(HiLl{`^%6d3@ohUGm`ZO*6LD&r>{F6bS^yEPk{4IY)z5SBM?YjZx^5rB"
+    "lJ-"
+    "U=`VuXR|u6r3Lxw)4Tyy)r!v+ms;uKq2X>;(cIHc3F8JSOwtO!Ni<`1cnvUgdb<>+0T~qudq3;FG=L#3}!Wekx~g@3=r<(CvXE|%"
+    "LPzmu)sycW3r?<F8EgYjBk~P*imDOarKGQzGNPwUSWXu%$E#s;|(78lF{#VEUoPH+~ViwPT~QH|IZS%IsEH)`yex90bl>5owT^@f"
+    "Xo^v0ju<Fy9JRMfHrq|EDk@-"
+    "oIz6E<#Yf#tSVW=Fabz>x7{*ILQ38VfnaI(zGEr#Smx}I6||4XYryT+LzW)9%Znf<>@L^6@1#l^7@aSt3CVsps02{@^QhYC1QXHU"
+    "ZYdjvt+G~CRm~qwhoV^x2m)&KSZ4eL$l<e-IOvz(4cK1DZvsFs%#7$c|6vf&D5P`v-"
+    "XD+lcY><p+_N8)7#|eKj^6tYAiX@6QZy!|Eta17d^%(QK=;T{_i%gHAPo*%f`D2qRsmTCzkG;f$m0;N2vAB));|sT9mGak`83MW0"
+    "BUcN1SFje-~!jU-Eo!dgZX+OD&WVl3Bn{XH9#14+(uJ@F8lo4eBN%fvI~HOh5Q+fPox~VIwCU%WoAlN7S(1x7Aq)aOIUpLBbj-"
+    "J%U9?>Qs=J~QDsC}J+UK{NV0w<H%2YRi(O%P4gml3iHxJm`GkWh^dG8qJ3R3F*%LWOoee+bEc7X#xL<p}kjfYc%Lli$#?RuPIi1$"
+    "HVc!^`GMdBk7MKP<^Q@=dYS6TANa{F$DQm|#e=TX_{d=s9_XAAQf$@GIRkr8wevl)F&sJsoG2Rc33BYq2F(piV>VL=C`%@>6F+Lg"
+    "0Ctz@7EYOLM=`FxrF=bfn&}<|{f@Fg{8P0d{7q9@fAJ+)Bd%jgLUvtViPLOu^DNYm99@1%tE8hjyFChO3_)C8X^!McPR?TbTn<t$"
+    "SF2MO*u!g-"
+    "fb4)|SB9aBttAD^MB&~_{8RNMKcTC`L5q1)6@Q#?s;c>YD>t^Mm^+^uGCB#MRkY0rv1Z%T9lZ?o`W!Ex%2I7xlAt%r}d?ZsvWVsJ"
+    "yH1;q4mSeprQr;RYZw-~SQN_op<Cmz6%VD`K3RbH;FDTE8$cuyW;;_8*H-"
+    "N&<h>E3eN?(`$v7Bs#lr@iyvW{_ShJOlscF++$8^`HO7})@(mB&KWaZ^;?9CweBc&Xh1P_yhX0zlOzVEDKQu-Dva-hu$*_#`ReLs"
+    "G=L&mx&pu#}z@m6F^5&&`Ls0WSF_7tpaurhQ7yvS_s|Jr>|nK+DF*0#KX#m!M}ULBtp{A*4`oS%6P+ak(4A6=0v@Er<hRFy4k|^I"
+    "pS9Pk>7r5WEt=s}>|+2j=2xT!VU*5s-"
+    "jT`%OXGek{V(F8P8qAf3wIhjW6hkmEXBKgnH?<J^EOCDL&7KrFT(2PNdO^(Y_@$nF{vqr%?yfcO~Xjq;PTl8IVuWFn6_;hYfA0R?"
+    "G0xq^`=E1-"
+    "C0Cs!{hZYbu2^e<y4H~GK9+{uSXq7vZ*7F^*b9E2B;t@I{%?{D1z8F*9jvl%<UH^eottCN;wd4TesBwY4sC!h~tL4JT*d<5JKX}L"
+    "r^CAE9U6!eBexb1*k#(QG2q|}0N#RUF3H{pv(=(x!l|7cvKLc-NPFR1dk-Lq)Ri($4H4*<k?jv4>Fym#nKb(fO_sOa>m7_W2a%)q"
+    ">UH+ca2YI(|sOu{@5?CvpL*R-p9mT>qXRX;>}t~nv8t^>KBiM_*(NoL~D-k2PsDw_v!171Ira>bGB2tf;@{6>faXA*-"
+    "Q7e(H?GwTFnF<*YJeR!aMpf`<-"
+    "NCMNO1Zpjy4l+P52_Jb9c9}nIce>F?#CTpG856iX*Fl5Dgc}EZmG27Kf;KQ1w8Eeb1`v72WN6&{Zl80Sh$%;CL_0{gKbAqyg$>|+"
+    "$e93~?2f7X-4g@}I4dF!oT5*xN}3iC#rsb}R2`F|7Ter*P=Uw~_#!YjbW`Ig6HXVAct-"
+    "q>EROGOSBbe8_saDc4^TTXNn&Wd<d>3^jgrA9F}S6e77Q9#mPFeAQm|`(VS%{`3;kmZQ95#tT>IwH*N-l}x-"
+    "NJqs{+JJL|YcrmQmK0u=Z#))4U_(nDTFBuV$}Z+UN~s9a}sRHRRm9x_ou5V%--"
+    "qG%WW1R>)D5ZI_m>xBSJck<w$q(qp00wn%Aju(bESC|o+UYN9SUsPj05JE^l%izl|TvTtRsX5KQdn%AZ_N;g|VSv`v<9y3_0^02n"
+    "@QD*j|oYIw3>)3lucZ#<Jl(mO4^)8-_s!VG|k%Gn`_@`?8P+Rn2Mcr!dreLY#LtXJ2PE~boo!B~d-$#v}rAE$C=f<c*7sI-jcK9m"
+    "IDePCe%BZC<VyO#S>Oz)=rTz~ybECyasn!vyXmmvqZ929hd1!2S1fq(-"
+    "Bk22)qmibQ!KRZ@W5K#}%elkj965#khQmE#Sn7)CN`t!6by-l?@I=Vbn^p$bPpluKng%J;P+0fkuf-g-"
+    "?$akCjxisQf}r+oT^42T*?M`)L77fObSEj@$ww;fXFDR8_|yyag7@m$_1zNA-%BLj<-EVoP<9vd{=QfMp3}tj$=&-81+-"
+    "iY?$j>0Yr<b_K@i}+1%=!^utV^{4k180iVzB=*<>|fM_ECzLI5iQ`<W<RdV)(*T-lVAWrtJjM-_m&`3%xfFs0gO{{dVY*ngzB4D3"
+    "G=TpkeHk~O=FK`aJh6(BZ65eTMqEG=T)du(z>u57k82P6UUT_s}=<FiSzj_s2MClTzj*i;S+4Wden1K4L}Q@PJVK&8lnd_e(H^I7"
+    "t%Q@i3+5lgR2SVlHMQ7HrbDJx5hlZxS~3O0$~)S<n}eq1vTP~3uwz2r$iiTpXnUcy~%vR&#ubL$R}TN6+P)bn6X1`=&ieg1x+T-"
+    "7Y&tq0#zlA=NVtYs-"
+    "%g=5L~r~q|TzmM`CgX?3e;aP}<43M*lr48IbMnL6E)u0V%=~D1awAOS19d4WlcwnlTm4Y`Wa_%uME&Gg%&R3XRTgO;(>+r0*rew?"
+    "X0X^HQ1$3ceg8Q76+qTcj)$j2&WhdKd2pFc?S!&iZ@Qz`G1E|Ul231+GkjcPw=0IjTRq5+arsbrk1u|db;@pMI8<`ABGuOYxq%^y"
+    "yAPI#yRA-"
+    "!)a6&Q94B@!<?FpyDP7{<264dVUL2;7T<MKNY6;(ETx}(=pS5<S!((fJ_nj0nt2%j}YeEPkJvKt&2IByxIi5o;`kpvDN-"
+    "3h&ZZB1RnEDS7j7B^HFLz0lL0g(!z&=h@2Gri<_NP9p5D>;V9EkIwA7a<8+7N_(&6JngxG+hbW-"
+    "wxY9On9pxg?VwFcd5lfUV=qj20_m#X+tFq_jcUjehd}PB-DTZGaArGo)_-"
+    "$CZ&<Tm}!;%$K#VfzV?6KGFAVF<CA~Z`A4pQ{_Ml!cd(cM_sz`^04iq;Kl&dBe|~&&?&FeL@!g*tpZxjH(BJWoVcS23b99G``hkL"
+    "v{|6$MPk}P{aI|B5(1dosH7V5st!2y*%S5zT=Bv9CG${m_@W7tCJqgMcQTj+Oi1c(IgS9XwaQmlc=E%te5lT~#NfI?ChT?NbFOpY"
+    "aoD;_B;-n~`=@B^!=r*@Krbv?GaIj<Y!QoNcQ2TKEsZ-sjVoD;Bh<FHc3el!<O<|1hb<PtpA?OVFC6$OC9foYljLYesjEOt?PxTL"
+    "Uw-3hzc9OKu#e{Y*9Ojs4!sW61>g!?>AK+-"
+    "bGafGylM%BsV9IS^ad~4>K$Y8^?is(&8{;FYmj~$U7~kP?&Hy&X>GmCoNuX&CU9RX<`#|T|;7Cjia@bunSM0Q`Paa>lw3N>nS1im"
+    "pT{bk5qz4YoG>qiBXGkcaBWKXyUAb;^*~bYN>4kA$LY<D2w=t!MbWS?m_IM#NA$+%8kN*P7+c`aHqlW~K3E_)-"
+    "2CNOj?uL8?9+RSe(X>1qI={;Yc@OW^m>7nj)XA7^B2@uRq#K_h(sz^VhJ>=(cEve)1-8Hj`I7nK-GWJ0uphxn{)S77Cp$37CG1!7"
+    "++WFy0gakl_AHtFD4k3$s#tB@&@YL%)q2YK!j^GMdcW{z<G+~v@nmG+a&X`>WpjoGrl`|bDT6Dlo_=J`i<ql|=BkjnW=Zmq*7PX9"
+    "iE19CEJI8E(fT7x{SS3DpyGlflm)y*8=IH<!@9a?bzP+Tg<$myk?PaI>eDdp(4+dpk^0_XeeZoKb$ODy_9|81`x_3Yp`E+LkEjcS"
+    ">cX{?L3Pa|gDGOL1`XErilE`}VlV7fX(XpAm{Yax59Ks24n%V*A~`j|oSN4M7JHU@06?}iVyX_BsyF0+M?~5Nf^7qlwsXO@b0O3D"
+    "#gic2V7z&L`TWY&kiI;kuMO&JHwxY_f3G~GZ`~3E_1%lG44vWTk>w)~%(a^t-#2~Fv~(n-"
+    "?ON=L0$$|V=*~w5^NMeIdd(ZumoN52_1QNsEnixzd%NX!OGsaZ$}^ZF`r@Fzc+I}9S#L+NQGMpk%gdM7dgAYhp^9Wx1hXnaS(WSd"
+    "U{*~et1+0>2skUf`R2vti)*@d=|&G#dNiaz2J&mOR`QpdS4NkQFLr^<`mB}u<r5KYQBYg7_ToA(q&*bT)(5rq8y)ZWz1J7gwk~#U"
+    "XPR%my8P;zZ=*1rd3doenwbaR*M%EGs<i3v^pWQNU~_+@`Nd%Ki=oWn#XdNkMG;d)&{VPB6Ef8UK1-"
+    "e%kz0at%bGDPFMp)XrR2GvKBmRgmoOxdY~8ePj!+rxVR^@PMlO{<M7=mn4UJHFqoIs5)Ww%5`AbN6eF-"
+    "o(@bh@>M8*j{=O=o}Ne=HPxj83}@_uqu0G`u$o1{jni;qlF<D3nk0eEb3#Uu?N05m;+4~km2AOfju8g1TlI2-"
+    "vsbcq;HPbxM(BS}$fSShZIeJE-^qGBcNB?FpRfM{Zt67HsCr_w!hiw=-"
+    "m26!MTqNru@wn*3{n7A0sj3h}L!xm?<^j5;4jU@r@RMvB8V-pK)EC)GrSZQN<K*FGn6#+$@HkM}5Jdcu1R{2hn_hF+~lf0-"
+    "J@&&l;Dk$A62&i%S)h=j+hD&hR+d?*8N|v0-dH6pZKaHCkPy#*${I_3QXdY(2_B=m7u1M7y(BMkM6|k?tqJ5}-O-kO*#!-"
+    "TjRd<ud(|~WuVEwX$0TH13_y4-"
+    "e_W8Op_W0s8$#w!xh?S?wU{L+q5so#(e?DECn<Vz8?QXx_W%0Y6(2fo~LGsz*AxXkP6UftcA2EIJwl7JqcQ}WM2{wxPI;2D3@RP5"
+    "=AOM3KFnARPUxvZILLVXe+xdR{;nU-jEpOEP)1S<Bw~?<wpnna6KY+m>LSdtU{NLa+)CrM)0)sbU00}vA2?onB_$my(27^C^!T$~"
+    "esK_LtppRUE!73uYr=5VrnYPcycz~88-+~F>fWbFm@PEMibhILC4F-"
+    "RKM5jJL=>u915s<fG^tWK}Z(;D4Fn|VT<T?!Qz~HZ702d{B7ZGZt{kjd&P9jjb?V8;M9_+L5f&4av`gbsR7t%JmJqRe8c+w@QB1j"
+    "C`=$V@@+>3N#0I9)h@cvgM?fi|HBY_rfrou>8c`&Pdy)l$kyQqw2l}54-1+xylu3Qu@2?0Q6al`-"
+    "!k&5+`sl9SI*gPCEj4aAPdWP<%aoM<15z>@IG?hV3<@)%$Q+K99n&!>!pr(CM7*%QBoPB-"
+    "vfw6L9`2Df>#ujHosuvdd?9sevhH<4~xpJ*Os3}<#KGI}HH2FbI{#riR-?5OU9F(Wg-ppOjT@%LNA*qoQ(U%7Gr6Ij_JwK>FMAJB"
+    "n(x}FGGkZCEWpwQX*zF6OLYgB0Ud+*%l4OK<N6s-9-8!~<?5(!-Bkvx&bL^eArOZXqBU#4M=vUfS&aHXBehE@X`W0-"
+    "Y<5tgV&syJFbI4p7G*$++Rj)%bL}y0Sh(^EUyE(f&`?dL?I)4p+`^xPre=)Vu@cxnaj(n#jSkk)150-"
+    "QVRo$TPYTc4|SsGCl1XTrqYC3ZJNJw>Pk^cmgm38y@^6|BXbw^lRw<wNkv(bCcdJk1t|J^f@#_nKacck%ju<>+AJFqBzWXOvcN`r"
+    ">dbz#U*y(o){wGpv7C^oO04~t6x=}U=Cw9Zq&Kn#)uWpPB9qAaE{s9}VbcP{RNFm7)r@+HlZr^GCHOU9}b6a-"
+    "S%e_tfOFqMCjyCBASV8;}9aV{0ZJ^eW)vPod2X?B0o1qsG+V|*y(6kX$Zxd91T6p(n8z9g-"
+    "Hi=f;%CFghz8d<aL9~ht!_;<yL){a1FD4U)%Nu7CRj9MhA@+BN3sg@#Lrp%4uawMsi1!SN^9h;<j2_q*y|LFP*47qe-hmn7QF_kB"
+    "Kl>de1Sdp6J-"
+    "?4rbV?>o`6jdoLDwsJqqG~XrngxX~Np;~F2vQ3*sJQN%0>(}$+*dEG1mz9kdfWh3rV7stD4C}2Y?ACL3mbi8(=c)!P=XC|C07D&1"
+    "aJDZx8%&an?dU^K(n#8r|Ju}r)K~5fL!&g5>Hh?c{hupM_^gY0ok#A(z0mTICrXXpIOo1rhw)ehvebe3mI-TZf3km@SONtE_ma@I"
+    "0>w+iS>I{2Qu#FC0C{v(oKaN-"
+    "w}qiw0lA4JDQUGCaEwzSQ)jrC7=g5MU3a8Up`&{f5~FT$}3DW4{Bv?1vkLMGXY+S^KlOD1;F7g=x*o$hS9x-(a+2SacM2AS}-"
+    "u`D?%&1n9*hfyGDxf9hC$OX>wk}Yg|yL;f8@B=PjLoGbQAO$1U7;sIf*e!4y^4PELATq)aj<t`xSEje9&UYYS}&*lOt=I%6qIsO~"
+    "N8ZlANVha`x3B54EIYUzY9J${$VGDMK*%#YhaSkoy`@*J{OlFes~lTLdjIXymESyxqqEC%Ljy)*r+qIJ;Y?(v4Sh>4ln!)XyvhDS"
+    "%}=!lp7cF??e0;gjY@z{7V>cs0rqMUe)KUI+4>Gsad0pc4Flzx|wwA0b1-"
+    "O;JW#00P>bx<ak0P(|P6YTO>`aoUsgj<W{4u+(MeyDI^w^>YBO%n7}Iud8E==t0w2uG$D{=#HoantL2-"
+    "$~glq}uZot0J$#Oh|BUenxPPh|_5T+KbE!kj(rkc8MV|r<n#DEh`2KWCHY^oJAIrPA_~u0||ES$1i}@O8yW&W8~i;p=#H(s|PGMd"
+    ";p4z#Yc`bwb#_tG|j69Jnl+B#e=5%>^{HOKLnuv>FaC%ZSze_+L5DEcC;*M%To*LseRJpqr2&I64NuDD$6k8q|IVsXCU7MR%umLl"
+    "|Szpb5V=kl@gLe)6=Isu>Sqo?9)is+G4Thk?`~(GNPcR=xpX4w_vaVgOf=?yEG|nPf6Ady`+8S3N-"
+    "nccFx<Oxcn4xjc~=(P?+95(B5&X+t$%O(%%^~PC`gz-"
+    "I4&cxgabFEs0`Em|>**#WURlqy6ot$Ttvk0*8VGd2DX~w9R*gB<#2s#e%iGD^|&<vHjF3@{eE}q12uvVDP=99W0+DX2_U^B&I#r2"
+    "pcqZog_VeH*U>L@n|t+%DM#U5>6xp=JdFc2qq~<h9IB?No##*h~kZD;w&D+I0c)b<?JeCub)aF{~VT@l)1-"
+    "QL^>T=;~*wACinP#P=rp)-"
+    "zB8qZ6lzBKPEvxwrTGqEi}*ETWC%n2>3_%?d&$0d}c`cA&YmO2U)z|Dmjv(Uy1WS5eiJwMdgzWjzaZj@9Vv9o_hV%ifQfKx;rFq-"
+    "IgmEaW8GOh2$MO0v^n;Bjx1eQ{t?sChrptPhwbX-"
+    "v&I}_1CYzdE@mPEB1#fOSGt%Qs;lD*6)ZwIy4nFty~VuDuUH7e5ftjHWX0Br|w^-"
+    "PQ64GUJ4m5Q|imesHO@qPU~}2%Sr0YOO&=Mq`gGRA&;fjMN~yWRS{KuIIL=da@4#tp^USX{Ok_@946_<9_3U}=0of4?_Iw`Y;{wW"
+    "Cn(cNB;QtNCnWq2RE>`diry~0UHbN++lRu{$G37r1w%_Jz*-qiH?J>Wzj<T%#+oObd3d{|?Cr_hlW)6jyEa-juisaOO3p0}KF-Wa"
+    "hccB=)_5mgx<r*;4w-"
+    "C}&h}B77NKF|GS$$v)qTJ0zKI$cr3`1n>a)*P9E5c>(dJ{3=8<6YNTeALHsdhvFhg}P7_1&ds)K0bVOp&Ke;?}V7z&3}3FE=$@!c"
+    "gPl@B0CLldoji0TTXxuwzk@*NSUp%42Fhu@Hqrh(W|ax$}b>mZ<tp(<#q3YluakSjTA)5^u5sw|pWxXcH9_R7hirgYa!{xTnAG!`"
+    "v^AC1Bi%`1%L9SP<g+05GNr7m2e@{WY^E-"
+    "%SJE=pba>0_<=6OKY*d2F_<WxX}HB>6SqhO^g{8`hxZ=;r+W3&G=Osj;h+XEr!Ci|mJ7VVxUr^JYsVyEd3zyJ6kDOr5?=U74n`Ye"
+    "U)YhagqR$+Rq~KHJF#1%LJ=m!r=5gu@3b2`mRi2BoXt7@+Dqx9UIe-EY5lealH@429({A_@Mn%@;R2sk|3L8SPsyQ}Vvgb|f(4Q!"
+    "jLAaF5?}_+$a+$4B)iG@PGkBq#HDKQSFSY2y7f0|U=L)$&2=PmNp{V-"
+    "moaJRXcGketfm{j|b*O2_+|P5_?M<o%)qSI*_8apinywHm<KWcoPoDxhLX4M-L3s}q36<dS`kAoHQ#0BQ%I-4TwVQqQH%j-"
+    "~iloDXHGxL}@^V?$Ud3(gOSS-CWJy+D%hO}0<$w(MDg=3pfRxX*118)weFD}1&rpMF34DV!G&K&fs(Jdv{H1|y6(1tWtFH!Vng*$"
+    "kP2bl2HF4AJ%C1?dgxNc@+1_Qsx#F{HKaGcF{2^>}@iaUuc`2~bpPcZ1OGnm{^xzdNCPw?Oqilk~2%c&9xc-xb@;Y>S1o$K5OR+W"
+    "lY?w7WZ8e$wLgjFZS}7pbN#WnRDi8rb_S;~o+xyw<9;(&B1xSQ==R6FFXJjmHv}GTiC1```&4H!*3CC(;M>Kq4T%po-egC~^cI9r"
+    "AnamLaDLY@vsca|fK5AwX$RNbLnhLrOWF+_z%zfDGtwkJAOVL?kRuiJC#G5cbsXov%rw?2w)v(we)*6EvLeD?AaXjPZv0PmwWL+P"
+    "_IipJM_qm<eBuXCH^h`cSPg$!Ys+PvX((jz7woV@n$y2mom^Ng%ogQD#;dgNBhL=LgUSiNQtH$1pO6O~$bCn1D7K_>-"
+    "hftSp^!poPRnn|)@+HD^P>HrU6wJb1ozx1e|rz#l_O;xkT?lGx!IB{@-"
+    "*5$^tLh6k$BsJS>|t_+$h*C#^e#wE$4oRV9%Ra+>h>h*!e_QjW%@|VuQy*X>8{VO*fXPQ=;zjk9C3uao^+k=^vOZ=$Tyz=r_TchU"
+    "uTc=h}t!GE9Z9!|>rY~ge3Yoi?yC1P9EOpa`)_!FnYRtJMUzM+2j1;#9i(9uYP{pmG;=zz{Xi4xGq{&ugYdz~PZeSa=8w7ReSjgD"
+    "A*bl0u<mQC_HV3J1yS853>ZCII!g84WP;N%b+MK6eC_Y*2%;?PK+{>19w(;&2sXCi^_v$hD+$;d0L&Ro{YLU^_r~v^f=0a%~#^AC"
+    "!`<>jL60pewlGvA<^_=5F3!(sz4bwBvo$PmF1mb_z{LC{c5?r((1^7x9kdOm=z$Y>Ef_x8%q*Qi6u?K_<7c;c6a?%)3kOrUPSs5T"
+    "BPLYV4;4Vl5LNYrb+|SOIWID!>r^$P@tdbdk#RIYcFTlU6ct@C&2`atH)SiJW1K2L<abg{)m~zH1+%_n$mXZaaEqk4d(SejKHi;e"
+    "G`h;8wv^>!=_5YNXvCpF>wRXsF?*Ws6YZ<nq>@YgUdQdZVR((MA76&&3)Fc<rbYr*?yk(`ybOoda_0oiA?}Fl`&IW-"
+    "o%V8Ze71;09cg>7ZV{cy$p3AVuWrxXQz+?n8crK*1yn;Xm{X}X(EAm)dp$TLp<&vp+v-}?CEuS%Of5;f`g0zuUqjnVHMSvPC&Y}-"
+    "Nrj0AW7TW(sSdX#tyntfEORm9FZ`cAH<$Tsr<^jr18xXuBcxI$ae~%+w#=x$+fQ~HR1I~(<Gp&sA^5mLfwZaJK!MDzP&Z@0o)NKe"
+    "D$P7?gG5gpsZ0HlCa)>c1V!ZNd8EDUc`n}IK#C$9o5-_{VV3w=EuO2|KTKPlSdSXm4&JyOfgB;bU-"
+    "7rtZf%5c%JT=KYl?TdG3G&p&TULFb96FGr4%GtjdF}J_xIYUhS@keXS5O}xte5VGU_SZD+7FWB??8_FYc%`;#@_uc0N;?T;Q*uP{"
+    "v(j1F`1+B069pI<8U%Z(*bf^06ChHISw#W?iWCgBgq`i2gp$hax{OgnPt)!EdlW!^u<xe=}|G@M%4^%R0C+w6b?U@PNTrHqjN%^j"
+    "sah>kja2=h46SAvj1o5jFMU<Us975$lT3QqjLhHUFQUj`!huh{uZ(%PRNr07B=C0koNtCm|43k;pB}zJK%&z2bhYceKbzA88Z~y0"
+    "*=;4T3al`@I(R*`P@`Rai4K%IpgBn=Vhhc%%$a=fqtso{^@aow3IpBzC#xJn4}%5yiNf={@(3Lq%mV0gs>;I1L=*R&sRc@+TjDay"
+    "POW>0FiWh(mmUyJI+fV1Da*0hp@#0x&q#M;scuOfu*cqXrQ;?kfq?n5c)aS-"
+    "7y4y37@0N%2M2nd(uYR#X|#q$6SjA>h$&iba<v`NZK;J1x$(0QdU#h%vS2u%p_E?0VaDc4p>`RTT`<asMkN9u;WJ^+XF1&F~fO{*"
+    "t40?C!EdY@p@eVaDS)+HW0xcXowKxGy#3q`RscSBt8KLa@^^T_rg*(ZFdt>P<AolCrCS6BcOM?^x<b8CIok&#yTAyWC#Za$>sF=E"
+    "`mY0!~!-xJ!2zXdyhAL_8@TvJkcSqGp@h1JCN82d~1Z)ffSk6y$iYS#C=!d(_wczu6Qh-"
+    "@hJipuurBdgmdzWFOkdTJ5VNg`q~Hnx7p#h>toD=k8p#}9jvq&4~Z10Y^5L-*^I|UYt+DuU-"
+    "97d7g;ua?~czyOQDibv?3PST#|M#h-53%VRv7%dk-"
+    "*>G~hl(JUfi|L9#tNkO#^(Z6^U1jAw%{=nN7(d5(N|&D{I;ECJnj?Og&bd5o`VOBsAksIHL}E0_`|`?`r2-"
+    "~sq@!sWS+lzZ_~UiRO+W4U5?fXM`77~g@~Ag%_};bAzcwLZK33==*-"
+    ">E5*i!TD%O`aE*k(;S?F@76*<j{x4(7V@zmA;N^N!yuZD@c?Ru-W-{qOwYh5boZG00H9k1#>$Qv*w^g5o_5a*(FRzn7QfdIw-YE#"
+    "Wo%sY1<#raB+qt%0rrA*`Z1J|eT+O8jlf_OH5s{Ym?6(XrDY!Nq$zG9f;8KngsL1W!O53kzLbFgA9`H+7*d1tsv&e{A7w(I{~ngE"
+    "iF=N~K|^VYDUt-I#na-`kB5-%);|N$M{>~Si<oYsXctTg1QTx+Yyp(ZK2;3IlOR}GOqnVQtXsm$Bcc3-"
+    "gxXsY(q|u|6K%@$&oQP*EH$)|&r3&~fS#H1gO53uk<#5Jz(0oO3{T|)gO<+00VuMDo}YKsLmH9E0}0OvkdR0tvrt5g2R7~)|HM!?"
+    "2;t@(<F}vf?*VJ4t0%@E?e77P{hfm`UdQR7d6xYje0Fi~y3lCkV;ov}Kt7osFs7STM|}On&B0UF4lU4H$K~0*$Uz-XxyYD-aq<sI"
+    "(xFrzY5d2LfZRVbLy$2ZbUi9`dTn09M{1CAopw`2A2dVq^J>~0I=;eb<QPw{OsLGs|AJPAEirGj|4_R#mKhg($ERj|E<QT|mQF}b"
+    "3|WO#`8Kcp8p!Ik0cwKr21uKjBKZb)amFj$Q5mpcKaBC=3j+lDnPnD-GvA;uS!CG(XCiSdP@1A=V=@MXN<tsoBy=81yW+^8=P16>"
+    "5Z3^K8<Ws^!I;Ms@vJm@A^#i9hs<VFyO2dp9=D5#W0?3GjbUgDc~|myqKxrb#$V`fF{Vv58zEg1`cUCOn;i@WTr8o{c>V!GdD0EK"
+    "(?!f@?{*}`Nc_K`8sj4YIxIMV^>8IsAE_+Cg8Gg2aKYinM$;|PswiSC3mVJTO(A2$#*0B?Q^eRBG`5C}#~1sf=E7SiS5K~sH;O~%"
+    "BN203(A*X>zp!}vQBKjVi>ntYYx8DfD5rgKAZp58JQ>X`SRDLFl@rY?x%JBGE9-5cyp|<-)KdDk?6z!uFl0Hlq=*(+-"
+    ">$e_K~?qK=Z6YTFR4D#=G{KMU0AXf2o*Mb*Rfd{I^0JU^e>(KwUDDOph}KJN{$Chj)zOy!~GYjm%O2VAJyr5WHcw*y>VencHc%_C"
+    "MfR>%2*aMzPi}|k=DFz$fF9nw#K$jQI;1&hG9xQ3`@+1z3&JYG<~GX-"
+    ">Yy4mwUTn!@AWF={y?*|LV?0&6bF{F=%ewaBgMa_fWQpka-fR=?_#S)Y@de`O53BtQ=qO4y)>-"
+    "^Z>5sY>L77ElHt`LBXwx)rz&N8x0}TktNY%Xj{>=DcuNcH3VNg|6>7l*+KQ<6n=#=IK%2GXdqAwU7d`t5B}iX_qwU!bJWrE)cKdF"
+    "@=IaeW#rK}Vy+9C>o%G<r>GMbDZ)jW>q6$~CFsutOwrZVt5kXG=F6en_9a;~w|G~CHg_%mfwpk%l@0rY(x#}TC}L?1T3R=q_p_<9"
+    "_K;<KsUNi=Skkn~4VN4}NbjlaL+eCX)c_4g49CLi)(^EsDF5d4{a$Jm51t~ZlM~d$6m{%sxWonWl~z#d!fkWzt=`q%i1|>^d}w_P"
+    "ti?@D(0nvvZV#H<L*~vUNi;L}<}1sutR3Iz4rjJ(&QYg`;Bg{a-azR}AHk`M55y$Zdx5&>-"
+    "r;aw#yYqFS>$wbp?ylx!FmA(DQ($*2o`%{d2hZHvYY@5Tx(f7^*~#L2JBeSa%}U$eFb&ya>!y^>W8K)*0-"
+    "~7XH%8!TaBUoeoCJEp(;PhY+=aUvuj<!;mcW5K2TL1U?8;SHGafWAGE-upwUbVRn!>FY~1ign)-"
+    "rGefP7dQ5$8y^2;V?G^=23;z8D-"
+    "bv#maJXm#nOLG4xb>8;NsxQHm$p=}L>%K^Jd$78F%X<GJHD>>1^*BhON}7UMO`Ez%^T}ZI$@~4(xp4}=`pah59_2j*<(Ud^RjpR7"
+    "XFoJGKGGQ@V9kJa>)goRoP4P3d8El*D}JCUUDrjdEkSF`X7konYGmx8^<osHR0lP+8x4{Au3&xF)&*+lB6SIWSWm#Dk_VbH=m_sv"
+    "upADuj5_nu!}3e}r|ezP7s<n(@)%;Cj;+?MYRUpn3Q_8j<aBn13ywU}W`6oumCy9^IJNN-"
+    "mC+HFcYdff#$7;Gp``ka6C1}i$*ue?E$s_-J0tfS-nH7du7xs6*4rt0B~sQ_(aPG_M%&I{oQGKESq1N*Nesh+lCxsoFU11zoaXRV"
+    "kx<qi=B2p~;>KME@lrk?ao!g=;(#%XteHk1Tvp?hBy=M@;>&6_gY$6#jt<ALI@il!6Z;<2B@ifAgo^>Zkp-URAnIMoJJQ5)W1I{B"
+    "OR0N&NhKQF@q<^BYPkg=8gr>jJ*`;~fsqlhsvU$Wc*cy#0zx(g0Db87Ee<Z<BV7?sSEe8NfTlaO94~gA3k9JV`0ouoVOozI^R^`o"
+    "?aLS<QaR{t#j{S0Uc+AHvbos-IjYlgsGqa0s`pit#QTya2<EaK)Oe<)np6&7IRi?&AZ9>i>=rZQ+y(IsF++r_^?#XppmZ2o2isFO"
+    "#|*chOZa9X?bm1KEM=#h<HPpr45Oca`o_NjY|ij-cW-|eyb{7bJ#Dwlr8sRU(R2X@l|G9KT?-"
+    "<11F*uo51!5!(@YB82v{eqKH<g0f%qF7@ZdckixI0dS^3xB{BLjn1NK7v0BXhy{~SM(dfY0FDc~su2Q(zM+pdqtBv<UN2_*4~Dcv"
+    "5M-S6|*#!19sOXFnp_>4Dc?u*(S%fN|gz|%V&HoI%mLpps|reiW#F3Ju{6-"
+    ">hJ#)R>bka@BTJ|bBJV8+FWvK^f9`r+3N#|rj|L_LHIS`3>-"
+    "G6Fx;>m{Wnet2~DpT7A<e9)gg4p1ePCcN?hKHlfI0IC`C=B^g$jB_Rq=Za@X9Fx-"
+    "{l@3CVpY|DvSpOEw6`ya$+frRUGdJU`@{p6&Go%NU>#IgNtLKXo3?^(fleI)L2YM~ESmq1b<C1g;1}EA-"
+    "0|jvwcnZNmAOr1r18uNncg1^8LSVp7X2k@kGWv9Ix@Q@35y>K))6m{LCSw>k#iX5ZhDN|5BLG7-"
+    "+}jb;bj2sDJvmpr_P(x|qAxKi$mfip!$km&P?<b2yp5{FAlFaKIuqhkkC&iLwEB})>?XRuJ%A}W<MskB7Ys%GawJj(^DAh8{z2LY"
+    "jD%+P#E^?Y+}$zAAl*jCm*JI5JaTdzu*uVtsCJrjk}x@^#BpKTyR-ee4Z4Q3q0xHwxG)RQ*Wq#huhY&ErB#xaU&)QXlIOxJE_BU*"
+    "SMdGP@0CVcP6S&{+&>a(8Ks)fP#I^#@^g<ghMVSP^U9TwrgVp+P-"
+    "LvvKQd(9^elU#1trnk!f0VxG|v*vFNx&W2J>qp`G<q~hohy3BBgCX=q#}#SlSV_6h}=Z(d=9R94R~;EIb@3JQgfGwxj1{mi&ez%g"
+    "k8f{fhvU{lvo28gEuFSFaTUYGAQ*N61&`|AV?LYRHWkDuaf~bw|ihx5RrQM)tlXYu>kKZ_jREw_jPC-l*LedH?)-"
+    "=Qr)|UEDaml|^No49ibNwT8tL|I!G`Mveb$=Me3>`m-"
+    "le<h5ETQEq2s?{ImVF6=ivfmXT05h#>9a*kRbQB?<3)t_)M34s9^D!224jvw{@pf}Pr8tfXS&Rhz0U8Zbb3U=A4&T-"
+    "1@2xZ`u9FMAW^g&>lu>)l^L#ty--j3)XOwxi11FY#rCuKeo%4nwK&7bY?K*Cex9r?9(ewU8(17W+d3*-"
+    "GTHwV1@@K`4Fd#|ko&mUldE~)4Pp$I-JxLq3F2Py%4*0tC67<vC7Q1)nf|DY9s=QLwBX@WiqBV)GDuhM5aO@?kqzRYz3Y5^W}-"
+    "A}ona+Gk5Lly;|Lt6zz`?m|nj?u?*xdB!eCf7J#B}!AW8WS9rAgaqHo|Y`Y8~ua<aq4~~U((G78`bnh+K9`bN_Yt)-"
+    "}fbtV1l;|bX>7?zd9D=0XfMH$lX`~TTlc9tn(qq6^Z%4m9Qpg5<)%=D7~Ksc*s4B3OXSqqY{oUslJ~oXQ@|lSH*CWvF|wek}CJ9B"
+    "Wx}-o-w|LZZul<a9^Wc&;_&s9dhiUM-C5V$Y@0$Fd)-!O+dAf$xuYA0(uCMEZgW-"
+    "2h<Bj280?w2pABVfy{skm8E`OSpj1}9fy2QnJJ1G&{SG<>{thn9YbY0cs2qmOUzKIKWFSg3ypX6Nwc0TclC2~fRReeVfY;Ln*~-"
+    "@17iiV9VxEe?|?R`XIxfPw;v?N`JL8M)-"
+    "z@Yp9ed%v0{Mlfv?gCe#g)^_`<U=WCwfvROdd%VP$(5uVB!yG$2fwpB=OZ3`319CO3d*BO{Y4Umu5AcQ0$*LR9<buls*89+Vsqa*"
+    "hYMF%yG(`R0Oz@ui8Lvu5-6=h*=_EZJr1lJl%_Gd!Ae(EcNr^M!k_3c!a-"
+    ";|IMZHzWrgtzBcFU63)>f;1r8#li6wWH)3f4vwxX?I3xQZ}lY|1)w`#@1%{c`u8}x8U|-"
+    "BCy)J3xF_e}xW_G`d3`sJ9*cv1qo04yo*i{q?-"
+    "KWoFDGY#Ij4V>Hu8qw<H%<+*Y&IaKjQuWm1Cba))%0J4mSaeUk=*PeGohe+i>8W=76~O^OTwD$-"
+    "#0Yr8j2(n@s5qI*`viKSnF~9e%s(WxtakllFH>Ha;bS*}3(nZ(B}xpBRK!8@0eA{lt{VLVCviURuA5jyoqVkAN5T&OsSYlH2#D?u"
+    "FnFwU742I0K2(UCJT%B;r<wT>eR?+sWaqaprSa4s)TSaL7i1RDy-"
+    "&KZ2OyfBM6(Ca$e=C#)FI$uhwCA{)Y_ql38ZmB$Njiz?dB@_|-"
+    "0w^&H{<&gh34E`$&_!w$2&riDiW=`@lh~!PjaX$jI!n`Eeyfd_jEOF~J7?f%H^gmQV!^S9K=7fbpi{-"
+    "a)WbWPkEnF+804tAt5o4S-kLzjUZ?v9vJ||5(53Rvmgb!KSz|#G-"
+    "Y@?OlBy`>GG_;m*_(`t^v<y@X_5LKp4J7n)GjB*{aWm~??r>8uBpe!RF_P27M1=bq7#%lK{*%x{83`Fc@)Uf68xUEOl(GyVDa+~h"
+    "^S06M^P{%TzB2<S=~H!l&kW&C9jaqUfA~<a5fgQ`57<CAV_MsUbJpg)Hfgi_e57;S?<2f1u>(#Jh>VFqPzM$I(zAA#pLWI@lZ?*I"
+    "(2vN|0`!CnPu<51iEBt{nMvYe))?36iHSPqK*{}sv=B&x#jO?4ZKpB06KehKP8T%y08L61L(D+O1U_e4+0fw6?o7m^jtq76SWWb?"
+    "!9F-7JZM4jH>h}6QPK(ktbm07UnD>pO2~=GlQ0{XsEaAVa1b~e5M)jug-<?@&F>{*3eZfqC()3YfL>L?xM7jPM@-"
+    "K^;|CkGSB#0#D|85)aym?BP$l2vIa3jF^MZsyLHsrDQJBsxpI~McC+hQ>_OTI2xJ=N3Ue23XC0*!4{sk0pts~ojCrVCM_ATkE^p<"
+    "i}xpr-"
+    "x3>oVd6+1$XT)TKYYA`PL?(o~WlIlmQj5p_ApZlX%!nsh`6V1$yWYz>TYc`Cb%$A)1k5f?nM#q~cUO%yP?SVXZ=Q@v*p<m%gj1@u"
+    "fPgAk(-M}M<`-0$Kb>9wGtvQ4JXI)*ip<`(vtgC&TZMoI5+Ol>flwG|uwY#iARF?2-Ie*!-BkaO7ek@vSrB6O?UI`WVE)9HG-"
+    "+nuHYj)|xqoRtpPu@PcA>J$w6}_-E5G)#AI{i^*!JXD<S^cVFMX+-"
+    "1qwMk>z9greyIpf6Qu9Kv=7p`XaLv$~;)#w^R{8e)?fLH_AHkcKLUkuYrKeW<qHR6jpZ?x-"
+    "(0p`dV0{n_O?B($tHG*)mBHwt+Krw&11qN=<yCFuJjiQ{R@JY`wyWzl8aIyz>raHLPu`Y4s%~79Z&%fBlz_Op6QQb;YtVn7rDFZe"
+    "gS@(DbF9guc@^su5AqtKEIA*W^VbG8+NipYt%5BZ)pdqCGe%vUpvEStNhdXRjdEV63TDIRx$V;GNNH2Bv}yAMb>>UdOdwpku-f-"
+    "T$SJEy#g9=_GvU&gSNk3pRzwQxgN5~*(r{ttiul(;j<Mu!!Mmk*O5d%zQ?;2JF7MmU$-"
+    "8x7^}^bXaL!>+jyWIB*|)~up1M5+RzXQiDEsKnS!~zj9Zg>c&<SBCWvU5kYj(JD{Q~wVJ1>%5^B}usV>HruBG`B$(s(Y|crM&{Az"
+    "D}(DQpWCwr$Qrvjc*fBq`r3p~ApUd3qgBN;!pxs6$<$f^N#(y`$q8vQ~P&dg<R@kHWGK2eS`v%x-1hze-"
+    ")4qFmlkwr@whs{l#7GxP!!Kih>vJ1yyvpFVN&(4{U?u#z7`rwr_p;WOu`^B3R^G$wch4f5VF8rGfN;S2O<u<hK!TT`o3>&8%S-"
+    "3l*i%)TXF6@Nn-%`5nZbmu&8ca7(G9CPs}91P_wrOF5HllO6|Y$TLBN*PC?U=*bMzdKskq|ctTaEhzHE1?QoKH-SKYJY4grpmfL8"
+    "2-_@ADoMHp9yxKq0U|ob%Pc3CF)D#lmn;6394iwY?<7KkON`M(1(S!-yMH{^1aFT-"
+    "S4@#E{6|~Zd)tf&AOAd(e}{V@oBWE=1$ksXlVs4y52ehEd`v^)oax3s{jd?wR4|vIQi||oiB0Id-"
+    "B<ihYOqZ+0H1&$twPH{%23bXe=e*)877EV|hBP8{FaZ^!XoVTknp)J9%gFUH2XL=H+nJDQGXzzuLd%4x1bQpQz5V+V%8N+IsL%w)"
+    "lDo>wG&eV7nVRg2DED_M{4px)7~ZXq1p$i&o~*VByitKB)M=Onu2iy*wK#oC})gc5-*Eo-"
+    "A~kc4{5lDMx%A2hD*U<1Xl8SkGrWMd{H`z1;w#|7FR!49*WMW*D~SpO$fcSf>Eb_c%?%O`Lm241*1v50qUR@Nz#-KU~eZ-"
+    "%tvke_WjbfPTVlIaA5`sagiZ>^u<jGo=oMKbJ`cYk5D{H4h%*{iCvEP{IAj1`NdfV<R7={z4%cv<iM<P!1Leeo-WV&sH9Q{KX*wf"
+    "cZr&55hF4h7a*5Ub|_ylo!m=zgW)=)?x6up8H~xAlR4%o*yVN0Q5k`2Mu~qDuB<2c<{NJJKVr~P%DJbO_DR^yb!1POffIia(J|s8"
+    "?M2?bGVi}+9(LuXMyL3aty#cRKUhPEEd4$a@dH6l?CTiykDv?@chdnJ$!D4&k-dCo+By<6Uoq@E9J3YfjEDl%f%TI4PJn^r>k-"
+    "Pf&j-BgaIyjI>5)dNK)Dt5X7H416%|J9gc_s31{EpfB-#7Q`eC|C)`P?H4n;F7i1~7%#3SG_zZU?vZN%CyGyz(3<z-"
+    "nY5^A)EC^Ev$8jONdK(v|-"
+    "QLM#bzdU9D^7z^vmJkrJ7(dr9V2HPj^{DPn$7(oYw7Hxj!PL1HTRcE@c{45a25U>hnGs!57wj6%$0y-"
+    "QMqZdD3vddVX>jwC5w_TsBWkj)&z?Aqr*_~?}AJY&5d>sjX>4C!%u7UUG_K|WFcnl4qx2%xUZ|a;bhgva7Yl-"
+    "I9ZSWesi359QWTLUs4q3#fG6b5i))iAS&JCPLw%2Z=?$Z724hNfaOaZ2B`vEod6jS)6S^*w2SIg0IQwPr&%kX#|K!^vLquk7k6l4"
+    "g)T+ZwCeZ*mT+VJodkmr6VS%Sh=Ccy(p--4+{ATKjck8$=S2KMzL*FQ&Ew;q*%;qJdS>W5`P3=CfMy90sV_x0l+zTo3_Zt<cLOk0"
+    "oG|ZAK3xHv5HgpZO+3uOlLs&Roh0NIU`&iVJ{jY~*2MU*5wrqY%|e#bdT2dOctaisu}d>(Oy-MN$@5)MUjpme+fHku`Bq6c_BbQ+"
+    "X8CgY%6X*qjh0xUx8<O`aPh<nBr5fW#qN((rj_~i_OIXAsMx~(x;k216I2&0iC4;?p=sgTSkP3xB#N2})-DE3HA^C}_ZAedom-y_"
+    "<saVE2J??CDFJbpW&TFz8uqQm_1sY5k&wALWNcXyK$p*1D|KIOStD2cNF9D;Q@<&qj-"
+    "R74&WGg}K)OQxX5Z_5D~*eNVR=5}8D?LfT{-"
+    "+fmA|fiH~UWZ#@Ued*jhcP0Q4hkIcuf<){)gCYa?%;zkQynZVzcX7CW}JIrRO5>)Q44khT`y#gTdQ*z&QjwJmmisM5ysbiLKKH1Y"
+    "^4t!bAg7#JO-FFwA7ZF(tlXDFkKl6N6}ad+bOiLUIfT+Ro%lCBos2c^ocM&1XF0`Tk*vTX`n5xN&QslLTAoZ|wB6#YUE(MeP^C1e"
+    "p1N)B+=dtZMfINBI+-ZiKS{ghpeOIn}P3N|#(ey2skt8f|4XNQ1D3~W%T)BS?oew}<tl%MiE{TjxF25u}U9v9-"
+    "GyG%bPGPe687)k;e8%kf0fNeX~CNN_AA$90!nz_+2a?1AZb(-H=IlF=xSK=yk|1K0Va|76<7;Huwrk4-"
+    "ajYQ6FEXm!&r*Z(A_gUDsX0}*d$5<UKV~6XJk_?tv@NB9Z!?C-Dq(2C_T^6y4R?&uk6r{449kQK<$1`!`-"
+    "K>;Hh19CSP3(1mS<4P6aSm=arFrgs4f_JCU&8Q6o~k+Lz-3nKS0=hI1Vf|BEIpS|dTLGNp<9|Q$cIaQnpvh~0SgFbF)tV6K-"
+    "}~D#xwy|-`Hd;dpw)+BdOpmWc05v-"
+    "HZ}_J@u?g06skPpHc#hFu%*9XG#&{#b|`Jdn!v99t1`pd`aB<MAN})r?D=|(R{%6rsleIxA7<-"
+    "4l@|U;mCrT(Yu0xdKV7;9ac1%mogM)Gs6uq)VBfkYjO1(e2Ocdz!TVY)Hl=&;<SubNYEtZStwa7=)L0c`n(R(Ipa&0c2`*@y*6T&"
+    "Xq^|uh3-h^-E)T<6MFp<6VBO~5GP!OkC@jbbOg}*0qJuRkS?7su-"
+    "Gj_T|E{kRP~VY>sT1oL8U-;JZD^cz({SeJe5@91A{~DXGXf8iYoDr_R-G1dGIjO-qSt&R8#5g>OR}w+1)yWPh2ORJ_5o6Vz?8Kkx"
+    "vzs-"
+    "a(`|fR>7_^V(zsr|Eh|K=GJ`e8NF@(fO==&?g`6@%zv(L6R{MyvPnlC>$h#4xdf9?33Q70>5vf@<>eRoOF9g;tm!QBCU`Y=}MS`8"
+    "P}7PIqrQ2cTRdN<ln=im4~2Gr)(D}823qd=o)}O<BtKITx0?#ApLGMy4UQEd*Al>v*M<;=>raJMgbf0lxr!Q7g@%kINv&NNM4kfH"
+    "rz?>Vz(xzdzL=RjJS$<OF9(oaobJ1Mx@Vo=g_A*^AcK;`MQJ!?KNopOgcf!((P#Jt20vtwOFh<F{#%-"
+    "p0IR9f_Z2|%CL)t=BD(KOZaur{-"
+    "cxEddD&b?9&83N{<9N2bV!i;BY~c)|I4^205Nacj@ql`iHt>>dxWr_R((Jz@Y71|3KH^xtNqh2caGCF2+^JW`HFRUl7}ZF43`Lag"
+    "7K`!1O$JeF{9Q2nNyaVrWXBmV(xZkdv^G38;9}>}GwCHUu4qL@JR#hp&GD11B=Kr4<<X1g#v2B4gV`TucbQV8=9$?(U(RFNUC~-"
+    "H6lCuqhyDy~8-f4$s_W$lAF-hMdjI$X|0*ma%wzZG5G7hs%@5;RQXWUx_mxE7fmKzCIaI<_49yE3+YG*}5jEtcWOUgUZ^FvVM^lH"
+    "JWKng=(q#fh-"
+    "?#2}i$r^jqV|yRrMWdt>zdi|<_wm$XN7U)a+9DEkN5TMEiNuq4@5>sLf;l9g8|Lq%A9XxostCJ7nJDRnt?+grah8_BE-"
+    "X4Y+%+}DRQ2N(OIa^0H)uMdRf=BT;o*6G#Li>G(^l?o&BfqZCv<lPH*F1&Mb{WR5lkutm#R$oF1^&4I9pM3A+Mk{4#534(N#2kIr"
+    "&6CR~qq@APE(iT9h0lh<wbN_IDP4V3XWr3BOc_hUCkBqjKp896JKycQ(+8NQL&vBJP)=J|ef&{Y>5A!A?rLsSXNqPQ-"
+    "#Wf}Jn>`B-EQyvQRWXa?|1z$Z>>C1(E6aDl{$OwiA)Gf-BELNCi>FAb?kxG8qF!Zb!qidB&Rl*Q@c^RRYv91hH_3W^=z98sgjPZ!"
+    ";#L>VCN{+afUi`p1NS8zJybDoVq|z=O?J5$&l#^rMtrP8$BJ)Y=C)-"
+    "212GmN;mj8JLgu@Y7=bRdTS`Vc?n+Y16^Mtpx%(FkJ9y_!;ZBZl^c0m+^r*9<@b9j!)RE2CYoKgBnC~^n!Z}OGQ23-"
+    "e(rjJOF<oxSsutNYon3kmSAy9q_{U&+#4?L-"
+    "=?`$?WTarXba1aBY)gYL2c8fc&p<6E7VI@scBzG>!;*?z?@2yl)7d^yCI;Ihr{BgM>6G7$yZuYo{FHhV!dzU>elg)c7&3TJW{Ba2"
+    "7`*il!Nct&1@(YhDYN<S{EgErGX^#AEk!iX}pluNy(j{POX{B9im<wrH0N>=Ch%UbCmqtr%#$Vx|~lqg7{jiT7P-"
+    "nK^f}8>iTW1{$|s1)6KT!wzbNzwq`pk`&QO!)>>;gtM-"
+    "v0b4m2+4v(YHU+Id%m#0hiCDCU)GEmS{FC^dYX}il$6>xr5AUWN}`&mWh>1N)~jr!Bo+@Du+;d3?jbc5jMwPN_(EC4Wju*m2drTw"
+    "L*&>H$~(t%ndl0>pe@fJilAO4p*PbJ~}E~n3M0U~@AdlRd;5V0;9>=)9*b76_L09Hu6AWo5O0oGGzxFqQ`@B+hW)$=ZH%KRK>=ve"
+    "Dzb$E%rDgs2R7+TjP-"
+    "E~R=k|oSr!myK*r8)j&D?4ZJvhT{1jv=K19yuJhrIszo1JW+en+gYalH=fBGQ^q3JhoG5NzxU2LmyBqbKfxXL1_S9%4W|6ne4b_U"
+    "&?tU->csP8nWZ^UC`{kEZkQP%z9xtS<fE-"
+    "7PNI%vaTpCu1mB8UUCIkT5bFSAl6Hda6L?Yj>WPRHw2V>^r~{7(+0`Yd~7V<{;78}6DtaP-"
+    "WSSdCnrkIdBJmX*YB4bH^$j)RtsQXk};e*yk9AhVP|9V7-A>Y@6<;_N>jsT-JgQQ02}%2Y0M?=8-"
+    "GAEVh#}J;4Ubxb7;10BxT3<x!d=uh+!vs;PxeIPOyea7SV)^sF+St;)fpzK(+gcYtW*MyylFbYfLZ+Rmh=B5BVn;ygd`KmpMq%Pm"
+    "}yMe8x$xK>}25i{I;=xZBZxG-YFUvBU0jT)C9sEdV6#HVU@H>qB?zFzSq(pg|c9t+OE9Y0g^U@jREuN4u0uHWZq+f!55+D=Udv$b"
+    "nSCwn1O(^QvSNQZlrD48;!f>SQdfZfJdq9VG`K1wIHnB<dZp4Gj<Wj#>qP!MH*=uEuzT`&x|WxQ>%6Se)=iY&W_ihiO`tVC85|ug"
+    "aQBQ}*A&68C(vaXZMtjOdEp3yr^M&Z9DEDW*se=;LrCX;w%v?svLy=sFEDzksju*-"
+    "4)lQt*I_b$g*%6y#=Xpw(nWlAl712I7rSBJ9myVhKL$udu|mrAP;a6g`j;O4HmRrX}5?3-"
+    "Bg@HGzy=f=h8vlHWzc==D1gtH%QjOANan!>+_I2l+iLuKn3tDMP|VJzsSoP9@2P{TIlxyn?P@f2`0)6lFn0*@ke_A69hla4<>neI"
+    "vYMdtrHDvF~4a;C)AUNRqSNaQOY+_j)4@UBQN~t@ELVf%`898(xewoC`Lb3pHGzE;$}FIF?FpRxDSnxYj$v88wvCwb=Ot`psDKMK"
+    "TWsGY?T!FN9U?hy)x7kDiT;UJQ<2jEv&JQJf;CL!)kL#6uZo!s?f!rd;|)^oXf7Xley4#mbd+*~Z9b#n!98;c>GwmPDTb9w!e`;4"
+    "g+u!<23qUKWx~Uv?TXGzSgMn`K*l_peg6amvsfGB}oa(Ah^`G`nQEYpH$d<!FiZm!^R=&4%WE^Lyq^_ru!LU$3Q1152GCi0U$Lo>"
+    ")Gy^77i?M*BuRRnQdH9r-Z399p+XSEXyURN0YD%_fg3ITkjyqC4N|itB@h`jDY<iT8-"
+    "+<D$jZw=dqlxORF&vr+$k(|b*uhqvlN^*vNwFICXD)VU%AtP~9cUL?x{kJYA|%4H>Jz>05O8--"
+    "qC;AN!|V`I?R7&10((_GSbTi!qZ-tpgx_?nC-a(MZBf{HE+Yb)-O?_R%i{oPmZyt+9Xs_whr{-"
+    "F9a^d@6z4H?=fb=xlWn_LC8U2mL-"
+    "Y7LJWR|H)Nt4g=^nKv&iUs#!as4oMQxVr3LE@EI!{2DHl|NcoiCwmb4bf<x%$yw!p_C&x@XY85#)2Q0K%73~8fXbeFp_j20#fehh"
+    "zw5M|<ZwPv8csCuKPcwI(Aq5qQ9n`ZPc(CXQYtu6EBZ-"
+    ";0LC<PPqYet%CVem<Neg4KY5t{(?$$FALgEH5&iUt5Im<{$RbS8_eZ$tCm_8tA1_7MGj?0SenLx}i}UXC85{ug^T4uGEeMdG2LY1"
+    "<aB`3(g(l5vLWm0y-Nf?>0EH{WMTkyHas#X?8VR6U1-SSd+<@>~*q>m`OaE9c4N~43;PvO)eJKP<%6%-"
+    "Gj|o=#T)?0ZQkSln_Jd@n5Z?G2^DG5}D)`)ON_nUNRKbDUv?o;{^_TCW3XtRqUDkpuujw5-"
+    "VI*FKq@hWZahAjTY4pM<#PVk_BsN4g;9?}uwfQ`EI94Tj5sORpc5jcD;L~N6y(qPBqU{Q8O;T3L+7DrH4~f!9WL06idfiS=ddYu)"
+    "2|r41Khm`Ahu(PZA_4kd8&68Smjk{>FBCO@ne(4j26Q;OC6sZLk{><b-lLM_M9sO2r$1DgqL~HD{3UFuHd<4=q*!qW)s-"
+    "J+mcTo;POnu5b#;&Bx`^Byl$$B}z?yNRFDM__Qaq3kZ2u0}E*~}mwhS7xeQqoV>AO3MPBHKM?b^<4&JSz#ojUG4v7l2Ux~JoI8U^"
+    ">VEnQi>dq?$M8vX}r3_O3J;dbdoA83W(Iqf)i^3LbK<)tGtQXXIxSO6p^U_){NAqkL&yZUz$N^qYilvofkZX@LdL~lU@ul;M(JV$"
+    "`QIPw$_;expCOu%ZO1(0b{Gb?uQ1tm^F$)Wy`9ZG`#f84zbcpKM!CyK%Q{RRP&APK%ifNxSyl6vteQWiytq-"
+    "4pGOhW`nK_WqF07@bZ+G(0?p{%>6nzRCA=L$-"
+    "5KSMX#8@P`zNVj)GTlPjx`!xfBE@4Eum(KO=HoJFQI(F8n{M~Qw`JWj819C_?Nw?jtAH%`SIcLr}bLM~k&);93%bXGvV8m||r#(%"
+    "A)f5?Jf{Zl-3b3ZRl-N?L3JTC@#9TqMI3G11hqH1y?nzzh`<ib_a^Z-1?^w%v$8wjhkoHE9`p)KZ$#M}vB<3qFTe-yioI4sSQOae"
+    "PXAsbpoIz^}mno=VA)xEGF2_=AC>Io79eQ3R*YmQQnF76sGeM!R9+l(*9TMd7cyZeE?HntY<-"
+    "sumUK(}(xb1@H#|Y0+Fn4^*?c_vHUsLBmW=A<OGdnxwCb8|1wivl>q}w?KC0QWP9%thm2%MSX*&PSfoA6A|k$BGmxisL&2%EGQ-G"
+    "w{^RmQK5MlZ$@SlEP>)_~n4_dI`JT01dAj<d5?l79%LLCBqRuteI-"
+    "Q%*R^2Y094esabK7`oY(4g|#Yww@CM2Lh6M+lVLNJ}~MK(=w5K!bAE1YZ9_<PC1!V5?*y$!Rky}4R}1LhyEEH1Qgi8ng$&Fl^qz)"
+    "lFQf_8);kcb)e6JjlO_51KDqYC9i<I1OuzinASLj(yRnZi>C!+jK3q=#Bu6X=M+`}05eDL)h}gz2f;xwEt<vAXy7MELOdV22#2r3"
+    "Et&t)-1J4S(=+8zJw>`yW`lAdm<SulG%z)+xuR!Qj6-"
+    "L9cxxwb!v3z>C|=TA{N%P)u)MIQJ+R9!6U;6jcCD5+Jt}R&yM0Gezn@a>|Dd$?=F}hazax25!bGcBlFdgSwj`PdSDQx?%_GU?Qz5"
+    "})sfyCJ#Vg~c_{DehU;<k0JelY`New@j>^w&uK2NDHtVo}yjb&iU$Ur`J#7`wlyKfGyWw1F9FIOik`l-"
+    "_X5Jb9Y3SPZ(^GdirDoCp9LxT4e1u1>Os=gtiZ-"
+    "`!s3*zS<HYN4Xg}OhapWj5a9euciF=CuLPhGe~o%c}c%PZ0=AL=SnN@GfEK+H(0pgdJrvRYW1C`58$O{%!;6OB|a4~aiA^0YLs)0"
+    "5QqQp(;nwQ=#}O%Hmqru4C{0J{wCj#R#3ziW>UC3X8lT`882VM?pNExjcT8^RNj@%OZ~Yq{Sm+Uk_vc(Z#=Z^DxHL{eWJ>i$4c@V"
+    ")_cr||aWTbCon_uZ?F2NR74R~!2hjeW_2Ba4D{DNkz%$q`$kGu~F+QiZSF-@RJbk*Moft?N$Ib+2f9)-?K%oCI}ao{c1nB6A<hP-"
+    "tV~ak3i!81fWYRHU31l}+*#cRyg;N1Hm@uw4q5@?{C=%+YpBOv)FeIk^h7@0=KZQf_O-QzR^@OPh0y;p)Fjhqp<sU%j2DxR-"
+    "G0?;CR4WsuvVBEc>@!l1}yyl=|ruUXIM!v8CNie@*<^l-5OPt)wa^8GF3wqLqWdD`61-"
+    "KQ<(wt~6#EjQZU6C+J0Mlu^M+r^|Vv+XwGRO=gDRW^unHoMo2(|vdtPY%?sqmlL%qUF0M{D!OKEg-eO3x}@&O|>+*x@V?mQD-iCA"
+    "O!`^-+iE^aaX|H;6g0GNbl(A!0{s^2byLfakks%BYzJne-$e4W;Ry_|7~OUGreFj2!40Fjr@I7ca*%HQO6=-"
+    "GY;pk5lrx}gCJ8NDQaj9D3`>E_qhXk`cZm6e1l+ii;ZHZ>?wPe#7{eGkpDYe`ZmD{fQEfTwiY#WF}GJ>6WWhAp*4-"
+    "+)fd0~A|}DZNj(_2KN0iP1)BuUs)uI4-3{If(gJ7Iy4WBqS<@PCD{d)LTI1rCNE_AInbOv#w2qX%EFujDDELvF(puIv(gJm;4-"
+    "#|hDdWJy${*VQ+)j<0O&)!Y8aPMk&#x#iJXRKf&qa7o)VOl~`PK8|iSy&s<dsL~ul(6_s|U_JI&g-"
+    "%O1`J`fls<+v*mrA$9s|J<Wq)5G=Ih}KB!amPZ3!iFbo*mXY2L9yvPc#@Y|{$zThoUm!!wUdr)WUQS;y7i+U82chvkIz33g2t=Ax"
+    "UXSb<WA$(U(p!0VX{9cXZU6mM}=Rve)Ga`TZREX9f0U0jui!ua|QLk;6MQjsrsY|>d<^w#Ll*_aDWf8g~=V&h@<w$}OA2H7lO1L%"
+    "$SI*QXbxFaaeL+5nWW#R|ATRXrF7z>BQ_2O^mVHnL<=gkcN4!#vYpXeHtG23tU!F5zyA%tuSNerW+WZo4LG4nZqh_lfxztbV5m~W"
+    "Se^6cZ=k3py&)57K&({PspZEDe8NAsoXIAXeLJWXQ_jLi<SS4Gusn7b5L&ikzurUMVxJ2vNlzqM~sN>8;%FfrR<I*SO6tg+~fU5w"
+    "NwLI0kpR){yQI>e+Yn&h|mIXcQndYE=W2P||e?k9}ex6VNWo^2axg|Cv$uT$121etB09J@+(rt6nzzs7#8@4qz(Y8gjt6qC>cgo|"
+    "M@of)F0$8v<RC)TrT^|F3ae2l^BU~_M%8J<=6&NGL``}Nf-Q>&$q*?NBU}3#ZgMCQd;Ns}<P6m|web*-"
+    "K=bk@!q1JH_3(S2Ev4bDb;%=Vz)gD0qL(@+bw2`!;WnXgzDxl6QP(iL?b#9;_?=t#-_6D3}ZtLjIvfEW=`p-"
+    "11$uCkten3|>=U>k?{Q*5D5%$*|9Vb|?AJ(G*Xz^Eh3?ol)IXPwC@?`-"
+    "R!=Bau39xnvveI(_6$*3A`nD9D4`A5nyW@XdFv4?4Xb<ftL<OBUhd+A*+nECrX1ebQ(;`qf%#uIG>;vMCrT_p|<U=cJ_MRXung-K"
+    "vT67J-Khg^PXKZ}RjaVT8%~;T}Y-)UMZ1x5nQWt37$X#p(8EM=<HG>3u-"
+    "@(TGx_<~<#}TaHPBAH~J6}_;TIv(vQkk^0#L5$vU5lbrY2}^irRiu-tRh*ud$qJ9QQDC#J+P=q71|=j5modgWp1LhO|%5|Kjn)fK"
+    "O{2#_5V-CM<5{0ENSv@;M#uzCNJ+@XtMLk;M{clN-u-1{GDI_ZInmqA|+8LWp1Xl&G>Bu4EZ0js}6mu0po^mkiIGe8uElV=-"
+    "{VC<1=$!Klu|FHnymg(2=J&D)d#jun33$3$$jHIjtFZvID)ufZ3CX9NH%5oTLjovj^()V3Sx7M_5vzQxAfg3pLPgbEwmN(oM7RU>"
+    "`~gF^;m>=LRiUT0U^(_|R}~cjrhi`5!S1jc@KE=J(SgY=a{IS0cmqhciNf!@!^#XAoz|k27A`X<{O+fXj5!E`M5sv1pvQ9Jn5k{~"
+    "6=|Yyj_(dEIW84_<OwOM}_4ZfblUpzoO$d}#@DmR2wy|1>DJ{to)E4z25QcsQAE$gsBs_Mpd(-v(~v8Cuvl&nawdUV%4Zp-"
+    "K5Pw(=k$v;0VD`jN62B0>umFGU2=$rarm#D%MB;^nE*vO5z?6R%xbR3I5cRkJSTl{JQjQpS?SuG<5*2EsGZ7vo*u8~pBI(s(q~`+"
+    ">odG8eCvRN(X~y4Ri$9Y<?9G>|H5pp@31i6v#~(9pV(=h*i%o<LQd&{i!<!o?|rb+Pq!+pV_nv(%0~asKyI-&MV5=u6c!M94R;-"
+    "Mto_jJ-(pj8Y(kcoOG5D>auXV^zvlb!%W<f|~i6QlM)7nOvZ10W9Rg5D73jRACd<(z)FF{R3|uSkatJRXQTAZ|u3dhpIii+(-"
+    ">yq%KdbUcR2Ve0`<z2Bo#7thPnjn#Pi;+zjw8UEd#kYj8y~%&OeEe25x#QB&U4srkgz{7PjYQ~3jf6^$JUL*+FQ{u|=E;*_>5r7x"
+    "h&HB^B;N-&~VfjL!RxjlVr`V)n?TumuU*7dx?U18~}WoN>&Gj3QuO^u#K($k7%3Qe2R^y<*fA<EjYqHJV-tSC!x-"
+    "0$AF?0f3(s;Rw4D1HBmasW*t_)t*F@=pi&=uLeDFYvQZj`7iqKt>A-"
+    "_P;*7tXmdP`kobK?_+}*XRok4@pXd6tKf*57uFpi1ovvu*;~d#==ip=s~-J%m*|9F-zP*z6q4_YrEsp69cdDL-"
+    ">g1TEBJn`2%YCiPlAl}v>y|G7b4o%c%&JTZelwU?-"
+    "RTDIM*vC&OrhZXhERA*L!WwJ$20uA^0Q%9FJHg&(xID2Py5~Yw@_f?hJCj&t~_{OfhN=m;2(}<Rs#e9F16$fGNF$ApbpWw{Fd7#e"
+    "IDIZDj(+ug=Z*-"
+    "E_Vv&%_vf=QwxUhL4M@)Q{ows=;&|yw<C3c7*+RUS4`R>RTz>nKBhD`WGj{or@imvNWYJgcS6yDdZA8+iAU}fP2@>iI1cXO)Qt+H"
+    "-yj$g2aN*tJ`YV%!-"
+    "D>EuJG{rRWwRv6e#{iiJlp5<<m62}a3~2Bj_uAYClT5SuLz%E;OrZiY*W(Jo}zuqtN<T_SNuj)WK`ji=12p$dv{-"
+    "V9dQuuF;YyoH>`UOp1AL_zs|ZAO$qf{2QBSI5%aLeR5jTM;H}+~v%3qS#IVV)a)K|K<e#dHqI_W?r8aXbSQK8YOEc42(B5TcFV|C"
+    "|^>}>*>ENfyOv@7}S7x3#MfZ8upNtwHI4?z;fnf;1NAYGy(rcpKTISA0mDwt=*Vucl4eB8=BJmW1VUKiB4>bN^3Uc+5IUj6c2ClC"
+    "0?MM;SUCA2*XLwq?2|E^}ELb_t0i1J7DvwaWvY7m>z+4@R}R(N{~7O^qv`3qOq~DkNgvYNe-BW)^N>@(*cZ37c$6-"
+    "0i(@n+er^D+g>BaOhk;1I@95?DbQr5rObr5p9sjhi^nrTcg`v1@gz(kVo#JbW?&X2gSLrbexoGIvmjAs&UcB%8Wc_V=Dp)-"
+    "G3@2u8JZtq>|)rORgv?x#QFCC%}&9ZO>zbb%wnWP4DvBHi@1d;A4bZ%G&jj)7fdU`aF!Va`6Qd2VGBc9Ax!(m9CqyVf`1Ft%ud5!"
+    "NO?-"
+    "bs~tBxD6=EFYemsa=P;l;PbGGrN|}pp_OF?Xa2~MTNwXu=4^EAxx3Ao~LRIXHolF+&4FNtzVfh`^lIo@^Bnn+inXTb#w_XY<Q<kc"
+    "z0&%w?)tb3Dr2If(VNx@>W6#Dr;}h{SRPPj}pI%XV*NSbSV{4kC@X0T~jNLKY;&t&7s_!|f;M|J#JYrZD73*@DtQkVa25%0A>mqa"
+    "UbJWOKXmCaO0?p)HK|Rzt)_HtYb@XIPtGg|^CHboCF=MOJ-LWiLUMpJBR(&c$B|e2>AHe}YvS2eMWX-"
+    "sHwb7PnC8cj%RW>D*O&I2)`H2sF-QU)fcenB0Zr;`1Ab3zEMduG1MBRHN4_XCqz6T%MWIaWKclhcali(eb2%YC`0@(nc0<3>T<eS"
+    "TA1iPvyXTaiw=0Q6urwJ<?pN&XAck4oI{HaDnmNUK`)!HVeoeuuFFV2xXv<V5fkCcZ{k_8dotW?|a31}k{JS|{oL7XwBy)Hmo6L)"
+    "!)OP%wz2}(F)yQR6HBJiQ%Y)9kLX3L;0jME<oZ98a#lm+G3SSDtLSP8b>VE8Q05yke}Hgx}&c=FTGK61V{E@Mu|#%0vv3M|U?JAc"
+    "EPFF+fdZNmnady<J`gDb!rTmk);wZWMKCG6ep=!yK@t&x=R8BYmvg~)hE{0Ytf{afsg!Akf3)8{~57VT<pZEvRkw89_suS4*2m{o"
+    "koX72?%nip*aj(`%Eve`SQ{7%Q52A4tq+U$c5?%qK3*pb$3ND@z4`LI=P$O+#^iowR^5T+$eXOJ|StCUu-"
+    "%90w?!km$b8;2nyQ5ymhu#`Oq{vJR1TIBEJui83Yn4W`|4V}A)E=EEnfP>P}+t&uaj=zSpA7}Tqi+Nib?WUQNt@G0zZMUn*Ssph="
+    "cq?UiB3Ppwn|99TU-"
+    "0=!(gtPA;XpoZFSBgBm!T=wBi7XS8}wcVZWyobySa}t*CiBn9~PG4(9PY^%5U56*<(Y=!k*C4e8+~ORjn<dwM7iko!@S|*Y>TB*w"
+    "uRnk?{APwtX#k6TBSE<s4g~p$L0DOh<>4`sR=XATAv#Yh|iz$43%ju{@+%morI7sU3T%wqwbn!H_0ZP`z5<NEA4tP4T_Sf^NKn<~"
+    "G$+$$}1iNv3-"
+    "hZK)}xIi=L6jKwKSCH!Y9TvzdA1)uOFGWohuEj#qsY`q=06^PU&&5d+SHQFFw8DdVbWw0P+DN9*v;J?BWR9#hss;kuNTAs?pL}25"
+    "+&wgM3ZSy_zs-rF8Ks#{K(MQ=q5`9lO@Czn)&>>u~EnXfsQ2GO_%7Y2zLA*&Gdg6oc{XtXb-"
+    "rgGCyEU>tso>pab)P`+9|R(F&g}@l>z`B@a*4Kh63aUiT-ni1By!1MI6l)BHP9ZEsR6<b?KaO@Qk83)tY^Ux61iQ9v?0-"
+    "k;Ic<ugD_fx+fr3XKU)LO=7Z2A=c3mWga?(PUGru60+V)wtIMw=Fo{2>z@&qJSpt)8lfb0o6qp2Xe_of}CG>$(_AUXL$@8~~v<@<"
+    "7=ZiS3twVy{%yE&a8J}+o(cwM^A49LFrI{<F9q5@7mttr*S)8SFbZrLY-"
+    "I*48yc08NA>?c$wdnrw&GN**18P^t&m+D%eum`g;mp8iNbWre7s<tB7VRTI{}|_Z5C?pc9QCB>W)aX$>sE9VdVUlLr!q@886luH+"
+    "Owi)iH(2f(wmp4uG5J<r?(ISN)S!K`s^V@u`C@Qi3DajB3nwHwm97WNV6kVT@NutvC?IIvbrbqOjwpsR%9Qv_;OUVqG<f%z44vP;"
+    "+3689`;eE&#s<+K7sx__I#?M8oQ$HNmR6=n&O1AY)xtkNr4_NUP(w>BIh1STh_%QneMU9^s96JVuthAy|2^)4bwgG0XY2Idz3v2-"
+    "UI%w?n8nHd!%rFNYo>hydxB#^LM29sF3xT1@9CP=*Ugl()?{%d;)*i+uBADQR4$?%Rv{BH&{`nTtor<*9ewghf9yL!E-H-"
+    "B#56*5?F+Qzg+|i>!X*zzpQ+&hVA^$*fB8kk}Y*Xh=IQ^&v~b97>8oRI7+r9ZMpuGa+0?4&qdlcjB;MG$un(%leBd#NPY!>IT0%>"
+    "%IBWXpyZ2$OR^w&Ny5%ovVj0gwjschECE&qw0TOXp1wvzKQV3n&5SEE4lF`!IW{i+9ab(~zj&OKp`T1@)U$^j1OWT^W~Sx<*9lY3"
+    "3=@lyN)?cxU|{e_D|!NL))7x%0SgL?hW-Lat$L;>Tfup&J>&01dyVCMz%Z%JQdx&|O9G37kXU*aDT_Cy$!pp6Di+s-"
+    "2dHapK3f{zpHS4KSd<jg)lmP>Q33OZ=Ca!_-"
+    "+DPZv0~nxW#hv3NbicWc3mh@Sst4T!*vmV(p10BBXoOXM9OHoedN}W*N@y8S{jP>C#}0zjC(#6pnD%8(kHtm3)|n*R<5go$;;?WO"
+    "rS71gea%VM7KAWG&LZ~sdL11OnYA)cx)`V-G8e;eDcnjr8BQRw_>y-"
+    "%83cA&hcq6Y9Dt1$R~iP2vFBppeYdU2@QZ9>C%d^2IHiB1|}WLlTVGAW-"
+    "^uOT$qUVs!UIOFQA!yOAoa7t<q{ld*2q6pmRixdrN^D_v(Qf!#P8ZB{UuG)d=1(?&*~a-j$2c`MY{iZ?WWEvjCNRw-_HwWxch6cO"
+    "3*ea?|Q}h<{o(G~*Zix^O}CbOsYqFcDW7Rwio+KxKLeP<N1`pacSQvTUJvOSVv&Wea6&Ejx>LLX4(jTiThWx}1(oGA`8x2kqS8Pd"
+    "zW%M3qFF{dlufNtC5Z+I+TfbfB+qBU|YAOiXOW79LMa@$IR=^|TV7x!e;FIgysmB2o9E$L|Aq{x}k3=e*7*x?|5hYqJl#(X-"
+    "rM7h(e)0aXuO!DfGM;DjSBJ%Orqp=xO@ZjP<|-OtbD`jG>rF~LtDfA{1Y`NpSni<yW@E^bl7dMGWAvoC-"
+    "=jvw8~XJ{U0d}Z;r{3ML+UjxPaDeqU}C#5`#HC0}hDyd6ZDn62lu;{GJiq89}_Q7P)@jTHvS<oI*teMLq1yq4Oq<|0#$1cPysuIc"
+    "_|CG$)TL+ch2HxB9UELDF+XtoS{DDN&t(81b3gBFej|N$HnczVwfsWh+=>H|QV-^`WC2n?+*vKv-g2F|B_#Ph1<R{wBou-HPs`yp"
+    "OxB$Zp$yugAiH~?i78Kv&zoHcK7Nq!^)F%W_*-1Va2%#nePb8+n@q^+CJ}NIo<z?tMx2~9vBy-"
+    "t)aUMITVBM9lND?GHRBcO=whxbxZx?jVB1uyCmqn7K7$`=tAXyM!=P{r$;_I7y80V#%1I4q1N}459G8%Z2MXLt7hcKy{##ymuk^E"
+    "`%JExrw-kk9@(v~@yXM6?&2Ks&qs@9+K;5%0^9(MRTBX}xUv;)V0i9Cp7@_imUqS%^_sI!kBb9u)7ShJXx`rK3QalhM@R%g!WGHE"
+    "$objpJ$3??gzd<`E>S8UrdQs{}`<LdhvFOQL0y!J>@l3}FwB+a!9BZUeSmES2|Dvq3sRU`{{ht#Rv-"
+    "K)C?61xYIyPsJtJahM8WLMPkgBxF~q6*K1)QQ3~A81O}N^OzK@Y&FDRK5A&Uz-"
+    "j_{EPnZ=<iNZrh_3lI;=^xG%<<nj>$u+6=}z>Mon<BfB3kVS9F&6ho7l=1&2OWW-fEmmoA_$GI_UF{FYG&$7)4)f$(jKvb%=&wqa"
+    "LyvEYG3iq0Pti@K{M4{QQBufoR~S@%xCgH{3^xhc*t@e~Wx=MhhJPcMVMcoF9pFUS)@C9FH_5G<fnvTeWiZQ&`nA?SWh21L6J10v"
+    "41UUUtf*wT6dx)<hymHl#?y?ATM1%GMc?3YG=WY%pzvWwHR58)%b#p6(-ZxUD7+qRO?QNw4jB6a-"
+    "t+haw_t|H!Bx?Npr!P_D!I)7U&>M~2-HVEL{jE_aKt{sB6s|j=*7jfYfyd$ESe7u{9Am0FDo6)W%<H7zl1<WqmhtSHO%h~RN0N=-"
+    "9f6ZAy@qQ$Eiq%rV2Ub|h37?W<^OZs6B0>HcYv)sPT1@4eQk+YkT1T;|j&zam{uUas66Znq4VP*`mD@Sl+UeamWeXQ0@5(0i=ENz"
+    "`x^(xm&M`RVgL@7PK@EEje1<Jc8uLq%ojEuaznnD#+gLy|_0J0-"
+    "Zel^VpkFZLER{ihP#civ&1~+TA*jo{Cv}+?R2#uHgDT&Tf}FSp<PX_NcfnnmZ4t#Gq+DnSW|zfP=qd^lli~$qF8vK>wgRKe<TClQ"
+    "IR`lN3KTQJpQYR326zdV;J!5*GhzywxR3-"
+    "E3buKt1$l4k<UjA5V$FOBc2O(E_!nhtM>T&I*3nfJl(?!Paa48;g?V?S8}1ebMZrRxXsQ@-"
+    "yhZrT8WfT$e^a(k#X)Pfe2G_?YcKx}>p44EwM$$z+0;|Hvbj;&QI8$331M9LZ!M~U{^p^2wB%aLT;+_xxtQJQYV$1mX4dm;LGvby"
+    "zHq_(lKGWy(tq<3BD34EE?8LYlw-I3il7A@E7@-"
+    "Yw`Y0D^2%S*e_0*^b#pg(d1;0*yaBkG_na88J@}(poK%(uK*vx97;ItA%V3^^-JId9v-"
+    "y~8z8SB}O(Px7`D`u^66k%jHyt2cxLF}U9v7N_k43;lt{!*raeOVtSa%Q@n;{@Ofwo#3#`eZR2WI=Z^RC7Vb&m7CS_q8E{G@{u0P"
+    "qlJ0O(8e$%`J|VF)pqa{4{qh8FVcu)qH=&`5W6b-!oW?dt-"
+    "2yT?1(HFKjq(^dm+yY8vyfrHi6zfS$pz{!nZ8eOOz9E$7(mtF8!z^=T`i|%nZ>1^akCqTa%dd4B?@#AbbG6W_ERM~6-"
+    "I1LoU2s;F6^|*7^KS#R9=p@8xp&xK1AYOQ`f&=2?$Oz+!_~4Il57A?=H=@us>-"
+    "XVE>P<B^=L<j!h3O^JMxbqDEmp|G%tb%=VsI=T3}A8>9$)ClPKe7r;hdZD+x9i?zR}Xs_#eNv1pj>Z&?Nl@3?Ke!KloZM>rpi|^V"
+    "rk$0uBfon<wUgpu%Wu4F}l^zuo32q=O)U51_F^us-SMjQiq@(~sjTXeRR$INZbG7N8pv<9H??`G4{<;FAp;5!T^snDtUt&yMqs{U"
+    "MJ@KISN8#aesvalUHcV8;en*UUH_wlszYl2*e{I*bK=)1v@;X<7zoD>PXCf2QGBU=feu1@Z(N1unUr=!K;DH(JvCdG!B{R`j<O2X"
+    "SM}{j>}Uk6|M%f07QpNNaP?_jt!IA*ofz>H>2~=9={|sm|nZ%A^ifu)tJ&rM&I32j@8P_qZ`kxByyy0zA1?z&L5vv?ipLA?4z9%2"
+    "FIsr3$Sf^}4WL<|BTjG^I59#hHYr`a`olYFQSp9zK~kd~(G+yeM3=+V1o(^<#0^x_eQUvXqDUcVtU4s$zfKleF|NiqZzl<0?nA`r"
+    "CE)>SE4sH72Xt76%_!*G6}LyW?I*?CQ4;Cac?j_xPI57}h+})vT3NEXu)jV2|`9O^C;r>uM2?Us8JK^wQ}_?`s*@d&hD=hP@wL>`"
+    "Pgz!(EUwl-e;xdHqT2++y$h#kQ2q5#hffyDOt=uTayzq|F}|ePFgecGTZL73=-"
+    "Zu{V$X(eb3Cdr2MUhr1&DNY`U~U9>Bvzjx$Y%CHI*iw?&s?mhc0YgnDCc7)}hnow6hD&koxBCa>CeB%mEWI9cGuTs+_Rpf(Yq<p3"
+    "69FeNn0gx<Ff9&kC;^7$e`~+1#85Tb-uY05PZfQ)s?5BoLKi)Dn{u2RF;U~i4wW``T2Ja4rWvp?`Qsj$CTQDp_!+YG&{Kuxa=zGf"
+    "VD*v52*>Gg(I6aCe|8ad&j2|0*Q}V52;Xza^rjK2G)BLUT;p303<y2MQ^1|{Ab?P+rteZMLK}}qyDz2<pr#?~htYu+eWH8o~sM?n"
+    "-Zlk1@$JVllAo6_7m8fn{T01Cd;hND#Rqjj}cZOssQw3GMCt=zXl7FBmdR$Zz_C$-"
+    "4MZ0c3^I`Tp^b8WY%thgf*T*AhMv|qwk_Ed%iVvl#MRj-"
+    "~IzpAU#B{NP%av4XAJun`IzLHWx<Z|sqSVtXQtxB5?mCj1GD=$Z=@<dC53Av`Pj)f+bk7lwEhUs~6f(??o}o(5u3DZ;Sf0Zfb<Yu"
+    ">G3n)e1a>JJd^rB_6g4~wBOiU1dUlr5UtLv_2_=c$i+scr-)Zy({p&96(RSY3#a-"
+    "&7GQm5JD)i%BbvN&50q+Mg(NTls2Wlz0^n(J~(Y=Bnl&O!l3VzTaf-"
+    "9{exUyFO=k2m*$^?HQ&_7co_=_SDI?odrMHzwd6+Rv20uTYy#DWMh_x!9Xl-M#)DFowl0tJAWndeZ-"
+    "1v)3^RAO+IRDSM~>d#%0D}-G1x^O{(W<fk9o0cyq0TPXCbU`@_;!YJ*aF$Vh{!!-"
+    "=nFR%;Hz*CtFk7v`@hEVn4Qhf~I;tcnUeK{X>%>6~X3sP1zuv12O4uRfK?y1$VwKPZQ5(1|?bF&qf`^1D`Ls3(PJ~ijP(Q&BX2oj"
+    "=iQ+7W#+hHvA)R}k&G-(xnLML&UWoC)VHh;S%fbntesIq}Lu06Uyy({K%#?E+$5FU_v+i-vgl8P$FY+VO?-"
+    "AI8G;PdQ@nhqW+ka`s6)+!jddCA0ku~VPjM$NG44Lh6ID|Axn51i<`xN@0yoG-"
+    "q@9iA!9T_FTivkyLsL01zC)IzG<xjFOW26T(Sx}h-V=LK$VHYx-"
+    "1;!*}!aivg*hXCI69dQa4x3{%NFN*^pGI0w4~ZGenAbV&PRp4ehylXS$zHhPp2yw^8AsnaXyzI;BlEhiXP5#wrI~{5V>ykm`B!e-"
+    "{2{C*;2xu293AjcD@I%Y3)p$!=Te@mc5O#XX7{gc0AJRGv?inuYu3fQ(rSpxq#TE+&gYUP=O}3r7}IR4=Guh0md>}6GMDB3M0au8"
+    "_*KiUgk{%;yC2C!1@e&m=USfZK+06RYHCcF8mXqv<+h}0FeFcz%5Fb@>-oshm~^$dJJH;|+WbtS`I)5Y7~W-"
+    "2hsqkFFDFV5hK5pBd-OoUx-T@irYVh-Jkm6-S?!Cm$0fFiHKs|FA4--Sz9okt)FF-n?PMx+)pjUpJ-jGe2Ss3b|07LJYEzv>c}i0"
+    "l9(<&6q)KWx)m$?a+-|?s9-fcZQl-"
+    "0Nfux~}Qg#8FjTv7LMlVpM9r5RqhJH%fPlxHT4f<Jlu`l!Th(CXtzaW?vEC{ECcq1S(8v#r6hCWzU+<`Pmr-jx5*~h_gBCL53<FG"
+    "doK1#kWo8UuUyr2M=Re)0ftE~L%BDg=Va46@3>`(tR{^a2M-"
+    "XzJ+BcTHc35X<IcamPTYH>Iv5<;@jP>n1K0vWY@?KZo|H|BFrxa%{O(D&i<p{3}^Ckzf@+A!F8W^A~(duVX5_jpfl&lr+D(t5ZE$"
+    ">7F%2GHe^fuZB+g6`pg(Sh#HV^Csjv>y?H{-I+%X>0C!rflwR9|kwhIJ>ih%ZIU(5KX$K=jM@c=7$(Fuw%@96S~$Ym-qVofU@XD#"
+    "BSV)Xdu}x|H&7=0lDyebJK_%-"
+    "as?JWON(u9JJXF?mE)tz(r2X_#n}qZ5(}vm)y7nBCJmI*^krY5|<kFKoT>!$pp7gd)!|1Na)X$lboE9%d_49xE9XMMgla*4bVxD{"
+    "~mR8lui&w50O18dPH-ln8BRD<A5Z|Zqh^AE+PVfBkWMm8|6$-"
+    "+&+*OAV^?mv#+6b+C!&W$e>Ef<!^tl8v<#)b58P*gFkxQA*RVGM8=YSILyJ}8lREiG8kEZvQ?p6$eL=}d1EXq>~bJwrH$9{G6nQ#"
+    "It?^Xx=j?2tI!xwz;9rK#HVtBO#U$s9oFT%!YVq*?6IXd+#A`GwA9k6$_lCCy^j=oQ;6p;Ir31neEs1?>g2Q3i8Jdw(OIG$)$Dkd"
+    "pxO{$d6s(a8g=$Mb^XS=LSzjPsDSZBII7T5%TpIqB~6c1O(~;=veKbyUGZ!2OY1zr5yFm+#YpB67;Di%RSVv(*3F^5$_x$pOK~0z"
+    "5fX4NnBpTkf@ugBE5u?j<($!5;0sX8N;5CwE(w$-"
+    "FZDdZ8RL|5OCrF|j&;LrK>??>pB*zLMbu8}k^{pNpkt^cdB5eX9x5=(uo5F0sj%Kv{dE>#-"
+    "Xh_Zg4+>(_V0hbXT$T*GjiEMwXFWg+1R;xWh9(sltBez{?IR<D5ylt9W3)MG+$hp%8H;8F=awd=y%IDOe_I4!FPZ)FFHuMgyu!bJ"
+    "ult`R#`p1Z(zSs?{ttK1bY=|pE3S5UOTe9xi{wKo{d-"
+    "S9YQlsXDRN_CHmQ7?hArhYgZ1u|Eaaix!o{Zi`_HJ7CqwwLICPr;Wc8BAVHrlgT3(v;e&5R5|rZ*bX8D=?kcx<c9E-"
+    "?B|fNKRy<Nmo)tihpHABXa_h6~>oOK<wc2IFHD`lpS7yWyc}D!m*<wHt$v#iVni+9WmnRbFS@$Fx?isdNar&U)S6p$Z=7tql4#-"
+    "((q=pT1ehH1V0<9z$>uVuk=HWX*Uksnst}(9+dLJBROhL5nFdZlenotQi1Dpshv~43QQ4lmwuqn~Dl#w-"
+    "_O4eJf%CqI<%2ac&Gc==Ih~7eosGQ)tc4XsdEnBRy8kaq19SZU|QNK}Jz!e4yGe~WC3`GmYto}KIMW}zZ!D4i*%ga`6xm?2;p<5I"
+    "zMk|8Ic}uZct7om{2G;B}1`E;n<(xCrgq|dSDu$Z{382mSTxcg|j}WWny#}Bi?#Ty#>IJq5yd8j{!5%^2_~3Lob4(|MICc*W5BDA"
+    "!U@+8ZppQHVaT;!D9C5b*7`j0`B`5jV>B-RDdHi%I<b3KK=^Y&#8F;RD1iMNFO1ZKiGa@qJ2N-"
+    "Nl+whUDPTCYf58&tUg>^o7)9FIo)*$dA-b}vTw2Cf*Bt&x3<0VxDW3~xY<`+ayq$k6DV-"
+    "`u^fR^O6VIDOgx7nw0*>+n%Fnhzn^|%2qZiNO%ugJfcMOq*+ECS;Gowh(p9*fLW@X!@(_JAEd2aR{y>GObHhDLv=&rF1OCfioPas"
+    "tVrZa>5Ex^e?~qCMdzedrZVVJ!B>#>TXgnG9O|%}fo0mQ}#in`PH(w>kJEq<A71K$~x5s>~n`aAIoa`q=c0%l*XC4bVx5Tei<Kob"
+    "Na!B_<t#0y^py&C@)FQD=aq0*Yf<y@x$ubYT7-RYXz|vn1^}ftsVy);W%mc5Aww(-%GH5u>!!R71aiT8%=YhCP7J*BCI<&=aKX5-"
+    "{C1#DT;Avra~J?`3MBcQ6esxtCsFPEe@$@n8e`VW#(BM522`evuE@UD>yY@6)f*O!vcidCr$tB~X`H$0Ti>WX6S;E*nu77WF+L{c"
+    "+?U(i&#6XOV;hTAZ{P&+`l$8UKWP(#iTlaPw{uC43(GOST92^|mL3BcNtp?*u@*qm``0?oCX+Ine0jSDdpkLCu4-5-"
+    "R&@&~lrb!U7GNFC$AKgvArsO>&U*v<)g3x{OUt`Ox&VYUohb1_cqpH~>0b#4@jJm<k*h?Xa>`NkrD03Uh%0Y<u!dPi9m-"
+    "aLU+!#0)KX847*@4zqB$id`jPB?5{V{lK&;Z>6UtuzK8M*E1)V$RM`OVVx5F=TcfY<(}}T1^$`Yw1}jicyY$>pP5dJnO3FQadcp~"
+    "vw5HODP|~I4^;r<Xvao9lyi1=YCbbV7w54lYR3CA2x0)I{{`O9<vdyKkEQKvw#ql8cclqwNl3QXp6`^2Rr#&4o!{B_=Dt`hwSS1x"
+    "pIA|zOy$AD(*m1y*CWNQl*xMg+^utwvRGx(v?tV;Dz1u(W4e3tMDfnhv6OX3bVsb^UTwm<J2d#1M#xgeURoZ0s9JuRI{gCWoTOg3"
+    "1U3o%)L$#7*HlGR>7GZbJsi#A)<T0HBEhjUJRj|goxFE6QMNZ}*%umkTxboSjL4%Cv8(qkCv0uW!uHV7HH{_Q_DE9|mB*fYWIvQa"
+    "vv)+FqssTi?W^sBiT1(O_EU-WQ^|tUi-MHBCDtBp$7!%BOMAR6UWfWAUk*|u7pUi5)CD)?zC;yx-qT*jxtVvzCSqr(18%Bd;yvvo"
+    "?s`i?)sm_`5T8!e9!n@|LdU`lc+mCH^U>q+iui>%n$KhJDF<=s=0~dL$Hk@L>vvvUdNF!1-"
+    "j*!uO&0fsj)6){@`mEBB03a*E@|seS_hcftBvlDHpcn!1MwzGfAl@&GgvVeI!eD0+vp?3XsTpK)S4*S{itLlUbH-"
+    "&Xd4L~|B0p~WvhV}sroLe=lP^<Y*Dpluu)a}9~t&PE~-"
+    "owRYyFLb1{CbJyuU09HvIbsNol=7cNrcv(&|_>pX%a29S_V6dol$76^(9koasWKvH=@CAH(wBh#T&X>IguqIA#VkyL42^m3wf-"
+    "{KKGjHo$jZCUL75S`1Sy$M@O(%QP%3%BIaQwdvZ(z<i8cde-"
+    "8PVG`{#2q~qc|LY#b$5SacmL|{6N%j?l0_#MyHoWovEAXo;sCY@b}m;hn;-HY?tWN96%D^<99c6}P&>{fOlM#=uSVLU!9-"
+    "=pGLfk0Ocr-"
+    "7_JHZk8L5pfBr5hV>k{Q%$)ax5rqveNpRhJ9_NGc~kpqd6=EXkfhkeN&>4{cG=VB97<$+|;L3n%<<Qq>I9g73u0PaImOcs3+z0v3"
+    "5$Ef}>s_2CkqmxOH-4Q<)Klo7paPZ+FN_}ocdOoEqyluT@4NpXZu?y6W?&b4I-Ec?@udeuZ$E^;ktT|>+8ahJKl*X{CX-sGuqrv!"
+    "vhXd5JPHOy0QZsc^7$QO~O#3)?Ki(C;8XsTQQR?m$X-"
+    "`V3epPu>xi}JT2|L3(B9$xB9kdNF81_cHq6^WP`1yy9hsD(BX=wEHMe5=#b#<Pa4N&SASENClC!;x5@SWl}i(@KEeQ-"
+    "s3XiZ}ZskX`A@J?323JTI(Oq5Ihx(vr`5}dKCMAj`Vo43xTz(Sh9rCgAC4d}ND|CS+ES%8HTbpQ*-UQy->z-"
+    "2QE2QjK8r<s0G#4>f2NVFER>gGx?*K=1K+PM=1hdUDB*p1K3kS@0uBXOOnKg)2NGXNG!0;A0AoA6&|W6ZI-IX0V|^tH>`bUed=)o"
+    "0EwwcC1FZYQ~YHm@4q$m;Q*O%-z8$*YptV%lv!KWS^gdeU(QhRf$h1KZr)j8ZwT9s7-"
+    "X+q?r9^4yHz*_cJF2g&hp2OsToz}k@H5+9@b-"
+    "Gc4)cj@yb*7;Xh=eW!g>pHvcS6Owx$|{4;W#qpC_DtJJlAeoB+d$yzoX1Tf&RE4<p}D4jn)%t|MjYHFXFy9|XH`%$S286uofn;#*"
+    "#(sJ1*Sn2{fjA0_Y`w)xS!ZJ3=fXLyblwgk(OqbK=$lXT7=&({pS+-"
+    "`xv_*^Zsz)m*mnIV#p`GX~{ME1TzlgZT?o#8NUrv;@H|<WdlF;AutOMXg6{z&s>+XHKj@#Q>Be5TWhMcB~{jvvNoqmnm;ngE%K0Z"
+    "-NLilSBvWs#dXnsYR}PR@iPgjB_vri;{dY7iAM@+N~^osnNk_U(nl&AqJ-hzgswc|OlWIvcCKkH;oS+XE!0VucRx}Tqw?sdlBd%z"
+    "wuG*QRO<?!+O)YcDkII65%JJHx}`O(j=o4!E&-"
+    "P#IVsFj>k6j%pxWIEkn0*js#sWmY!w7nbaBO3Zop?GxNQAdMKLN%EAqBzi|vRm4f43*uvl3+xz!yq#vU!pDn{h2QOQ9)$yOIE65g"
+    "|@XEbGYZqYNPOT|iZ#$873V!M2Em(k`RMHW;+PG@wihEYJuf-"
+    "Go0yZ?Huip4mLE@M!Ij;1_S?8j&<1$Zp)Z_x*Hb_Uf!HCgs6WG+=_0aMFaJ+rXZ%eHUERhWA--"
+    "q&PMx_G;%;0*00TlyUcxUdkooX+zCA-KK(88%ty&|NNtn~bF#&W*b0Df3so-"
+    "N^D+qSy5K=MDAI!KHF@m9W)qK{>ch`**OMnj03htlk#~wHuUYpSuTVc`oaM_9g8ree_?J+jFVYPUL%kOwUd^1K0{YF$3cJMvVZ=F"
+    "9f9YIWOit$a-{dl5_&@rY$4$e=fEIZ7l7!69dQS1mB1o7|1oAr@hOoMGKO?b{j+uqDn&<oKn<7-"
+    "0#oHLTvG1dgvLw)doKnKCM##l7}O&0!Q-"
+    "{W;y+l7tJ2lLZU5=BcowG6!5v3$I#DAYjW^sWB&PB_Z+BHyJ3cHBM<%vGDoDftRi^s1Cq)<{11)+n*#-"
+    "YA0B{@uEA2krDZ*t*OV?|wFB3{>`XV<f?I4x|7=sJ6%~RaeSPT?u0k#k=vvWR`8jl`e}?n~X1snh4|c@0*naX`zYFY%BVf#Sh}BJ"
+    "U1bB$M7>W;OSTm4Sv*MAZO{^#4*~Zw)a{$SaZ{P<MXmC@?)~8=Bnt3`A2YL&PU(>}Yr+0h?<NpPU1~!yuy5?-"
+    "R1!^(UYaTE?;=F<3-"
+    "0%=ogwC*NVril@`TD1e8F!_$V(gOp#+ZL*jGVkkE19%o<D?rnqRf<TOnZEm*sQYpoji;^S{bEdDWh_FDBP1j$Tz<$FHX`g7dn%cW"
+    "`03_8eUpXuMK>QK5xb6vh15qt5A*H>qv|7&q*5aM8~B^qFF*S%(;zQd6aw6Itgl}9>dXpTELU-"
+    "&P5d#HzgEJpp4KzzoHyV845y2*NVy+h`e}NvS=Wrfu#1*B`Iy{hpNTlnMaC-RB^?fj-"
+    "?K&rY+u<Eba{*OPPyT%{2*gO;nl0s40czcdSd+h&$?zosN#hFC`0)gpTG^D3reAua*1PRMv>%k*Y3LXoFZ`sv4Y|3I{_+H(#J3uB"
+    "fVRs&_1Dc_B2g2Kf~m6NQZ+-^VXMtffwmB@16*9%7FcMU}DMcx~LeJp53${310xLg`1}Q=UT4q--sZREPntyz|V`Gn5_Nl|q9b7;"
+    "N|X-"
+    "<I5yd|Q1_9a~tj_k#AQ;Pi_2*;GmOo%2iQqt&tMctNaexhYvPd`rGAl<A%&;NFF$3(*6~lD5UZwep%bO751#M6qkpmzSlhher~JM"
+    "^+D?OB_CzEI+?^G-"
+    "WQw&@$DJ%uT84rq$}biR!&^QL_4ASdO(3d;XaG&h<C1ukJmP*n8xmD!KPGwdYx?=*)Y@v+HVJQAOUQ&Lj(uV~vr_uqw46hMmp}xg"
+    "xDy(-czD!e4x1=2^;r#^a-"
+    "Y;@10?uP%>MMMqbR&!oy7Z&>eIQA_Ul>DbuvOtSp+?;QoidQ_MO5PVnHCG6+%9`a=Udjt<<mHjP(hb<y>p68~O4Pyp-"
+    ")Nd2Fc{hpevygn5U_-KohzZ2Ke@W^R^lS<S9>MwhSZR!fHvzm}#5TR3<;{zkU0D*?jg3t3A!K)08~WCqF84V2^4si{!^208bagpw"
+    "PMd!YZP}n-"
+    "Z+t>j=4Dj@Z`qwNA_)5aJ>nVk6v(Y|p#Th`{%pyce1Pb6VJC|sUQQeG`^0U6;JsoI^5*&fR)G2?z@p<%wKznHpkp!wX?|mKn((A$"
+    "K)-NLncOE|z#sP$*?xc%y)jE33^Z)~#B(Gsm+d55d=$QSVDEnMx4d6`f%nML7rXkpA$&G+HL8oY+%r%m4N-"
+    "Enur*=n`v)KR%KWCa4Eo5=#y`CXeq6O1_k`|Evzg7xWUC2iYq)j<G)(an&cKrv!F;<h`Oc&T_)~r+Ex-"
+    "#jL4z4&HWALzo`9hNRYc=jGnT9xs}jbl$Vk%Y2+7v@LRsZwgC%L{iw~?=`jUn|O4;{|bv_?m28wVnJ|DkA4V<O)&#frWy>F;^g2A"
+    "M|YOwR7x(-2}W-OZ_;6LQM4T+I_DZ%+Sxjd=`xgf_aN(fo9otP__-"
+    "X%b5ijR1HX^s!&^MVpiUvxPOxLCx1Nq?Dzy_WsrdUzKCbns`8zz!4a@M5WpD5Ra2RG>`*M~I+|zJ{(aPDDA0DzB!9qo!z!nwq?tV"
+    "vd^PEoy4FfL&I)2sBeln6F8GPz|mh6N39J+_zVPLM$Pm*^zFV9sY*d0l#zpzns}|5kVceCcyEjvm?W^bBn!p&|I*dg68NY#^av3^"
+    "Dk<qAPPVat0^~AE-"
+    "@R^@RcuQ=Ze;&e0AHo`i+07a}}iL3LUXVe!Cg_&FqXR@r?Z+Xs;B51|P63u_oWRV90|xz;0dWC}qlIe+4jjFPvrjXJXC2$psJzg6"
+    "!=77It<j2%7#Uop&ysnITvJwSz|bFM0=Xg~wds!Idq(@(}$V9Gba~JlhBol7LCd=^sE;a@$-uUn1J--"
+    "Jj3?fvxfNOm@Z3Y01b*MD@0uM8vQdsG=KG3FNfXKf~rX@|wsBPw+?*T$^Y^$W(4Xzn(5*b2BuD^o=ZN%sqZ4rQORo-aIXw@Jvn3f"
+    "sX7nxX6qH!`VraSZMFO=yYJ8j2@435}a{t_MiM#*nwD~?`34kO}CdE0nIRyVc{2Tp>Qw}$!mvx`rpt$4*5nA8QwcB1`B&g=k>IRb"
+    "b2S<nB`0hr#xPFTH>CX^33|&4l~V!Wu;j1+fX+Khd23bX*VsV-xu?@H7&g8^tsbQ7kU8g?tq?xUIm>x6VOD-"
+    "zvVHu4D!2tY$3tcqp=&=v-z|fT-"
+    "HHCpYxGF0zucjwZjC>9YU7*K-ne>NWQRt7FfjJ!A=sNT9CB6rZcVT%E8u9o76Rg#HkIx*EHr=gExcW-binBPvlUnFRAGW2~(Pq&^"
+    "*qF>`H1XL&7zMk+QTtQnWrc6@_<y<^0chB2_1`NTe)<;oc?LqUf>F92SSKF3BP%qo%uO6PBjfj=1hkN8Fug?M_&_lg6G!;vcV2N^"
+    "8WZqMhNZ;XRSg$hAlZRn!!_8ZVEZjCmGi?`aROE1-+(=Lw$H7*ebc5j?e-"
+    "Dr$YC!eiL;l?yP2!^{}^mgN7;W9W^xMB1sM#+Wm%i+9G(!Wa(07!DKb$Cxo3!b7Niq^iZQA+l%bVA50z<LG6^aVm0p>G_1E{-"
+    "6DYT#f8OJ&l#ePR5B?;c__)rw4}9ORVpwN7J<BXiol*GMe5<OSnBMiV^o@v6je7RMDQeb6L0C89)2b2_rfIBRWZ}*V7{^!y~E#eN"
+    "Op~X!+fu=;_$id*>D}h5Es*XD)Jb>3USRG!>nQoxFD`uDf?3QQ96KNt7H;7Iub?epm#aB%M(*S=9P7o=l}*6sIhuk)nj9?w@4_l("
+    "&?rg3?GqqM#;fiS;EM?Ubn_Wh#k?6Q&(eX>3oz-bNYQA%uGWT2XQMWP}J8u1k2jlArU0I{mr=4Pm_iPt9fvW;Xp$l%JRWTo4p+!M"
+    "J6!s|tez;&8qOw#Xb7IhU=66WlTD((Kdbg5{9R2?20IwpQhp);tt%79bl&@#aj@!^XhPA(Q7^)R7d+fr-"
+    "5l3=56Uh9zhr7a$RL8$oGd9)#R06+)QN4JqJXd0m)~OfJnElaSL!#{%uy*xtNs6RLP?7G}r7vPcy#$XK&Y2OUblIh^eTj}vFhUXs"
+    "1?_w?UwP{C!{r&w7}QL_Q~T=F~(nIf-0mc0HbaZmW0dor)s*b|3pZYU4#XJ-1M$LnO{WS;2h!~EME7-"
+    "<l@zz%T4P8V+5iFs70b%P)I@qj8%+Y~TiAe$Q=pWj_?o0;~|j^pHUU;@mWZ3$CuH)(@8;E~OI2<$t68fA*n55(<3ZXuh;>+^%l@J"
+    "wU21-FaNc?rWI@gN%e=4x_H^wB6ZQ_f7G48MuXw%Z(<w3vQOT6V%U@hr}fyV3B_kg-"
+    "1CGQ$`pg?t;hq(O`f3cxD9wAATxjln5xiU2@$av+B*oR-bHCa|5rM*|N26*e-!MLIKYTAC?9!?EC7Bn`<T#n>(0xoO(Az=1BDR?-"
+    "7>19G}=6H+1j<~M-VI#1)O%S&X1KT;O16_%|QIueDBWMN(C=o(;8C}4AzJ~kKLzJBZa?U!!76uGowZhCAi3=c-"
+    "_(IRSRKUFlaVmz8MTGxeQT`%#tuq1pbDohqOfM?<{BBo1K*R59XPE_xXIg{1<!t%%VhWq2O+SS&sL~B>Fu{&w+`5BKWJVu23Q`Q}"
+    ";)~1BDDJEZSKAdPiylhD{AAQgI%trz!@Tmw|{KdKodi9Bw&Q-T7sk1{m-"
+    "l}M4E(?)vMOz6Od8@#;&+@4m>e2myEOnq%C!nvORNoovkG02#mx;KKD(YS}_9Tow0F;65KlxOeY2vdFHARpowh$X!POd12-"
+    "#1urCLiXSu_N9Y-%05YttbyaHdt`(*up11kS)I0DeWody`@lg+xc&qI}P1d(c5)W^yBTFYINfPq3_WM9vGm|1FNXJTK1q^g6=-"
+    "B%X*Ze2Q9iDiRc}^2;F^0B0^W*Q3~K(BkHk8-ZA2H3qBSbdv$_$TBLAnQ}-"
+    "$b?<z&;oLk+0K7(5N6rlD6J|K)@6+j1D@xMh)R+{nbb|QFcEmqbbcEZ)55ZnS~;MybE&f&o&hYf_YOct#%gH_4uOLjYDUCVA5@MJ"
+    "`yg<B&Jqr1{=aEX<3@R6Qyl0LVS9m<2_F>;~G^XLMTzZaYgXtRbrPb_ydrnT2RF89n>F1<rQ*V5M7e50j#U$e~)$5{vY5|9!-"
+    "U2=TR=bxEoob82BHf_ke!}#6{p{|4P`2w0e&psi<jS?BRIS>vVBHCJug965~$<Hu&Dw9_SLq$kX*DwNl&a5h<;h@mPw4A|#Lg$+j"
+    "?4-?z+M!7r+cd;Yj`iH-egK5*PqDAun!XUc<EheSs<k(%?+Z!R6nd(_{zze8=ZjQT5bS(}wi@n_Pb96qNlPDMP7!zeEDio}a9Nxz"
+    "Ig%{w2j;aTd~NY%O1ooSE|l3)Rds+;6st^D?TKAYRJE;E9ZFOkS{5X$dJ@X=(7<8<SX0?oj(@W|D*uBa%CL)4?)t?iDxR?vvNKe@"
+    "Z?1&w3{{_fqGqsJZSNb(0FlS`1RH#o+Pbv7w~QTKWxThwvM#IO?P3CsWwNe1!P~V2I_B}9S#+KM4g3G1kK`$zvd{dKRG5Mw;Sy#v"
+    "aU;B^loo-`FKg!zY-Lpm=17S!C>%k{Ca^!Fy<#F*vJMBJxdCtA8J1&9Hqr?DK-4sne8Bg^I-"
+    "HEzD|f&t41W`xJcabS&86=%)2lfblaJS}(mg%v&jf3vb!;aSe90%uELVE57G^XSn@R@kTj(}6mHaU**i$?Pk4$TR^~IYnQpHU%(~"
+    "4#<+B$Hm_fwH)VueXV2c_(Q4Xfn#{H^&&L9{qFl{9yUl&D@w`Kq-wVQr1=Up6PL0{~g2u~Aan<|z6s&2Q#!jH2HLd<oG?2BZmG!v"
+    ")M9K*tmd7<1JH7TUBVC<29TP)f)5vT}mTTq3NE>R~0v5Cvs<F}p06H5@I=zNg^Mq#Be56*!((`T2mF*f2qO479W7@1VZW5y?u3YN"
+    "wUX;NHjpB1sn%tiCCN%KUy~KqPkW<*0<>zhCbc)HrS$)b|o5j#`0wo%^lD_j%dhI($F(ThEO^460`gs3gpp?{S8C>D)_fp`n)sO3"
+    "Jz1+b0<B7e^*;6|j;Rpd=iJ=f?i&*%sX1apz_9J=4DWET{^b-F>;ymfhDJT(PPc@naB&3c9nwhqfWoGYMgIPf9v-"
+    "fq#87{+US<m9W{noFwV=Imjjq-"
+    "_0sB=p@Hy=)@y9K$6x4%Qm7a{b3$t63g)jg5wwjrL;6N5tzK7pB_IBQlnL|ufyT%aQG6m^RM9W=kW7YI4oi*0Nl;#&_@~?NsfcsT"
+    "-ci^>$9KpwBHsZDQ#k0iRkSz)0sdOx5H6>slNjX<s`DPYHQ}Q+Y7fAZYo2f&|Ip-o{$!Wq>J`7g@H1IUUkh-"
+    "92#0vnW(~jk5v0UMEjsLvO8h1NA0mwiQ4w0u_M$ANJOSZ-<Myc5l4EL29uUrwE5=!N-"
+    "?>cMA5m(OR*cPdygje9$no#oY*^@G>=f)5!91K4So_tr>zy1Modd3p`$5lRpbVe8vr7ShBR8U*fNbDO;{U~mZn=GoL_sx)kU~kRB"
+    "@+lsVrI@Get||mesaniMC^_ZKH{{(PZH%?4n~T3il_BRZ${gaD;kN21|Hf!cZBxn$X)r-"
+    "6?eUOu|$h)g_Fzq25$MarjcAU`Mn(VX6!Dtr<#gAG&pj9m`}mNGT7lY0M$bX4O)5TVLUAomT+UWdYhy`CHxv`Yk{-"
+    "85{br!A=qsB1)J0Ek(7tQZVtaq1}=@`BIP%G!oG*KFf)hz`$$UlxAUi14R)8PGrAqh?nIiCQK*~9RUKCp(&5s8$cf`_~+q$luaOB"
+    "&iJJwo*)<PiX8!EjNqNENB$JPps&H<wfs*r7sSDV!K1@Dhaf<M$tLgH?7g?KL?x0Cd|%3J^`$j;o?m*N`FK+7Zwjq2bwOB^P?bc="
+    "6UxdEky4r1Kf!g+`09b12PkWELeZR3nqD2cITY@XT#c4TCZd;ClzV}dD5Rv8brDZhz`nbpY*^D+(4Ea|O_;^#+EyCONpf41VCA4#"
+    "5W0jcc`B=zn&dBt^6m&(chE{jJOb>-=Af8sB~2n3@f++s=px95gLiSsQ|d{#s3&_$J^2>(6x-"
+    "E<K#WN~N4;NaR1S6E5Fl;&$+>wt2!CdpK{~ee^-a&ZCjrBX!H3?+FQbp?)IcMhe^thi^;ut<zq2{OZy*E8#_8EzHhX_#>z-"
+    "W>hwzE8VZ8lXS~BIicmrK|B5j!U+!&jf_NOKDbJupYHqQoBjngyNZ1xl6%&^<%aEQrIXdGb@jJ;!5d;xg_I-"
+    "l@Nxlu#JPV&Fv#HzS<>ugK&lslkkyzag@ZL^;~(Uz$nkfSGFo4wI+ZMH2SY`6$jo6*TQIYE95_tlM)o(Y@1(~D8L905%OdIH!U;S"
+    "-y3-w5nI*W7;Xg3UKO<?-9jIWL^Mc%cLRLA=J4+wX^L-"
+    "nMhI=+eat=uhVAoX?F21eOe3*f#3Efj9|Qo+vBxcxUJQc+!;2{9$W$T22FI<2&+M65M?edx1*f5Ps&@X8E>w?Bbkf$~87I0dJ1kX"
+    "&G1kK<!2fvUS-"
+    "#Kud^BB1B6W&L6TbX|4|`Gf~>bQCHHmGbCTv^327rcSmHe9jDM11lWLuC9jW1YG0e7%#BEVK;*;{KKMxCNGUC=%CdyA?2+y0it?H"
+    "D9XxGOct547p`<nIl{|G(c<hm?el1sOd`0P6FJ+f1hEf+EscKnmfr4z^!Y*Y(rKpmIN2-"
+    "QwV<~NUN;|MF5|pby;R#e4)N57+M8*o)U4xCCxwknMR*@lOA0op2+rr<r{dW0pSAf?i*Y@aB<j7EtxP1}F&rTs?g#QY@T<#Klxk3"
+    "h+|HPb$8HD$<3ZySruq^~PD>lTe@VF9*u>1`r+!mSqc(a^MCg&NrAY<8QSpI^G{0k<A4Uprb0tq*w?Gj6q1*{RsSl~A1%{GZI5=g"
+    "|r7_u$}2tx}h04Br2g*vDTs$I&AU(A<neBMo=OLf!cQs-"
+    "<KT*)~&<EIpPaY%x^1RrHw)}>%>8`7XMTp&q`r}U$8yMEBA!ntCmzLoWA3<~aRv*|vxL9LH?<>40ZSLezmbs@j<l=q`xy$J*BO~8"
+    "B`bMw8$lT5B$5)s`NWy~&1wv0ae-U@?ylJ6?=5-"
+    "xyMvi_QHQJ8y+AzMf|!FQE>NxEP_?}`hc2?SC@P=CLaHJ`uwER}JrO4~o)szhUOaE?L3@&-"
+    "1dQgxidw=oC#^^`s}Y`%80!c`uWyDDB2x+=e(`vwYvrprwnPb+X$<yi7XKKQ!-"
+    "67yP<n^zXiu(K2Juo9$juQi9Oc9X*2^3+;&uKG>23WF9VVN4O4+ufWR$f7)?gW?72uQbDrxpXnX5+vHl==3x}Yp~eW<Z6Chyim%$"
+    "-(23y(W_Fl`UzLdm!v@vYYp*lR*;=f>0KLF@3J|p%h?GZU9B7UqMPNHJGQG&@J8^z8**0j3EmfZem?7pb-~PfPBo7D-"
+    "GNit<XgoBkiuqB@XAs8EH9Z&E2}*v!O}Oo8ggrlRi6F)?!4#k+?YfsR3558)MXc<E@l1$*||H&@g~Y#mixOi@Ah)%)?YzxJR>}g("
+    "Xi*sl-IjG8+#WtBW`0;3+UZ1{#x&T_Sb#)kc9JpoLRoUX_l|^vgWnD7^*m{02rKsbS|@`$2;ypynY5B#LJ+afoTo$XEI@t5AH&^j"
+    "n9US5SYo%2h}^>J3KP*;48;%UB?EF_jL9^fU9SE*5eL1ZIh^FuOGnJoVIzeV2rynIPlmr!Rvo;*Xw4X^kGK?Mr@-"
+    "2*L<j}EO!RaxF>@NM>|ubwKtH!H}3Hx(F4g8NXl{$X)%&GCOkI+RRhQShH^M&bO9UWai1Y^iX6bjORMu0dgR}N?sR_+r>vXZZ#us"
+    "Z49GP{Vq|2P9x~@8K|iE1P<{gUe<m|*^n3tGMiT0rZw>=u(|~>_K?GEdpviDKNtY+!@lFPmbX_No5yg(T4nFyDM(QF*V3N|Z?o7j"
+    "zJMllsL*yvj{;zO=v=yUspqg2~^UdG44RqS<<Tbc)4i4|~HXx9L#BBhf0KTN(<KITC{7r$2xS5CeIFGt<oRmNks=pwx-"
+    "6#n{8!??$jL(q}06sQ5?kA6e+#sYQyyy_Gv<l`NAUvkP!V@^S(bs~u{xI)>oS9}+Lb;f)y!x+!bf=+%qu#eRL}%hJKJ0wYdK}9-"
+    "s8<mf;t$~fT_LAIeLyEV`sty7svGo9G<Y6*`C|OO#?pf3JuVWqb@J~ZMB2E?AqJPD{cZv!*{Qd|62Q8I@fjCRYd|&z>gi?I=k&R4"
+    "oi<tshb7Z!8^8+~)*`*g8yg$RpMf^*V~kLknE>b!EH4bR_7AWeff4FEF@nCLp1Is&yXXeEOZ0&}_)~xo^f4jJGroYDZloHGs&N*r"
+    "D8*@Lx~_B1<(YAa({e^`_e{Cdij1fZKctz*rd5nwO^fOzh>TcK$h~YVIDQZ>8@`JO@^Z^&1QtzN+Utc0@=nq#M}SujDHkyBC_f-j"
+    "x_`<!ebMDS7-"
+    ";*Y7fPn;`%)&N7_E^+Nn<n+Z;3mTC5OMj!>c6ojxecWKn}@S^p>*JA@?n}+X7vA9$PGDEccXW8aq;Ls_yYlyIme9gC*K-"
+    "8|Q6MCgOREGoPD_aPg*i3&0s~o7xt0jK8!u<jrh-vg9VGiR~tz6Qq^pCpnM)t)zYIGW&|~crKJOP|2E5p#A7;aFZT7C2eN?J0xkL"
+    "-!tt_i+odV_v{9*v9y?+_LFWVa#BD-w!5_0cWKV=nM$iM1z<i64--L}AumeO?I-"
+    "8QTyFFnci_M;y=d6g{|hXf0ea#5$WocISntS}<dK%wRqK3VVfEv(@;ld;uHSiS>7}T5rR+e;w&M-eT@^aF9e8Z3rgl8@p6%GWh-"
+    "W+a3(zE0-xWT=C`aLrP807f6Th=i03cJeDK9N{Io;DU-not~b{jhV9PBpWw711L+HH<<vL+kR{|B(E6vNy}rmwhQ+GuyYpYStq0@"
+    "w#n=Jw7ZqJdf@^*HY@FOz3&e-"
+    "<I&Z*T@+xT}GK8?OBo9R3U3Sck&_UM72R&h3RSpwTGZ<8!FLfH{hGRqPj71b1ZqOW>r3h(TIBiciscKojD3RMO@LHISk)7y5SSMB"
+    "ce<!<e2|5}8qA--Q2!b*TOszjF%HFdvS@pmV^j;>{I;IK~h=F-anRA}#az-LrI7x4(yi*upWD*(gXQbWy`t6Eh~3w1U=K;`Nu7)5"
+    "{P$9)jZ%`QP9%nhfb=7!mUSgN8BPB%n<dO><E#0Ln#!r0FZ8u_Q~NphCdBJJKp(Vw-"
+    "_2dSM%M&BKQe(;tCltMw76`J5lb^RV=L5l#OL{2X~&<Ep0Wk*4agzL>Itix8#k`@f~;A4yGXg(V^NI{z8IY={6`O=I}XYDq()q=D"
+    "LfWTm7(bR2v6?TeRE`}!&Uz={&gg2iR4MSBuOdt%p<MTbJqq|BwDm8B|oQoBc!=2M}5fIRdjiyA`Dd|0<D_I$Fg=VM+sp(;seYZi"
+    "%wp=Pl^d<h&3cdQ!f6NdT~LnAmP7M)o!o_$<YPc;DSB4s>@id0la&fP7Gbti0l7gZ^1S)?vuZCI48mDWY)<2&!YoG3lCsCZvn9%+"
+    "hoEZ6@f`NQjfetmUlEHN}jy>KZx<e`pVrVd|O(N3)kck4>lY*nkag9+O~#AX~x+C~=#&?C^bvZh2?Q%w4272m7*Zp~`@(M0>vhx?"
+    "N4kW4Jm{_JY|g+%*>WcyfZf6v3obpg-T{4tNPJxeV1e<bEvt5OzQPBncf*1KYEUn_1{E#8$V-nCM^XXW4t>g4(4!3)&B3u`-"
+    "e#^#rIzWH)u$C0oiRbBtaxx43LCCk!e^*~sjs&L@ca#!NJk`;%;k`FA7Xj8o7p(Am@l^8usU7n#vW~o`<ivQZG|HXv=#ZM7GLG<!"
+    "JqW`QT#)5yG|1ta;f?s~(1pFBwPVztD@d}6eKNk~)Lts{`vaeRQB`VueI~r4UyHkxFsj9kl8Lz7SW1gt0C@fvq@+`Hh=H`UCdBxn"
+    "i(thmWxn%oUYS-Ddil$gw-"
+    "1p|8L`C=FGw&O#BQvoVm#0@oPp^)iON^dd9YsBLQSRyFsFxa<p?YRlj91YEYwA{a98T;wyli>cL7jOaxx=|Qgf3UstXAwxRP2ivE"
+    ")OLuMi(KUTt(Fz=DTK$^Wa?;FJFCVSe|@1N*x?dmX9nRO&QCW5c=n0roT4sU4M~)m9>6?&(l_{YU~M(eMM8d(%M7yx{|GKs^0w}_"
+    "^uvaQFg8iMXDhJk^!0DD85@9Jr}P^GAV%`S5!wP-?(!33f0>Gurj&hc(P(>Q3Lp~WeMxPMH%`u?DeZPM-nwh9!jW_&n0WlC6ra6q"
+    "haNT*3vsimX6#xwsb67O0^9ntw%$HkjJP#RaTp_)<hi%>&{epL#ouCvQ&Shl9Z}L$JdQKm2Op8o=}#rDw`9^=9ISdN7}<FZN(=Np"
+    "-R23<QdC8((|;X->i6}=5Ea!jdvSkr7IPO*ZFGQ5beO*|FD$mKSLFrT`@kFG8Ww)yfqkUe9zdjF5y*n5}}uV@yR%W-"
+    "XXaB7Nv}ZkIgoK)F{Dqn`4%kJYEq$8Skcw4zCzHe{8g35RH=0J}G59_t0Ys$|&1lvfwzSJq|v6L&RsFAW{r&#EMKWo~OoMpq_V9M"
+    "Hg3$<3ATlOx2%gd8ShO4MmSF8&`~dtHxsq<FQra@r3dCXX|FD``IUE^tQl@*of)N5Ow0@Lm#CdSy7Ir^oGz8>_}|<>?8HBGzY)Hq"
+    "y2R|`2>9scq*UxzJsXp8{M)K?Ysvqo#x{e{CA}U`th!;SB-xB!0bRj{(|TjGVuOle`f{y@mIXEp*sFwRp^JbqQBau8&ZgVC=#RVK"
+    "U9d&l^<#aaBeUS*#$qe<MTS%iM^s9?rJ;HDxz9N=$vYoowNuN0_{nIAYl-}xkYfYn3pK77-"
+    "<qD4wem<3Llja==@QsY@}B5sHSbCT9UMh(3NDh2wh3m!a283T$;9g3!dgYNkS4jJ|`?8j}!!n1)*2R?FGTg3?p=jws;cD1A2=Rth"
+    "_BQ`RjrO5d^b?Il^b!q6P~T5S3K}3&e+P4Pq`&jS0eoN_~^~Hw0$KWvoCOO<tgln2XiUDQ|L&HfOR#F_-VzM&K9%fC$mQtY97OrZ"
+    "5_9R`I6a<b|!xs)=*~`;j>(Nwe%Tw$9T7eb~!1YcY3Tb9zCS<7-UooYy=PV=T0?`BCgrLdOeBai%6*WNOBTczvI*FD=KveY0-"
+    "2i&W9xCt!Fd?Z7;V=<E1gi3?txb542u^W+mKQwB|I(cw6G2u>To?_{I(m@Ea^+`7?9>~mgok2!r~(CVka;jHl(yRg#mYRAnE%3K@"
+    "mSy8ma#=mpv%}Z3*>BOGX|9@%M9@Ey9=I^zAu?+^lG5CcsPxCNuNP&=mA%qYffsiHvLLIJ?nh-"
+    "m=w)3EN8jVIPy2@^0IwL@xRbboQP)((>f2>5dt1S(x6lwpt#<Vzwv{b4z)$TtIWR=-uc4p5x*Dr`6Gl{_8J@?%2p7-"
+    ";9zw>>5h4O==n+heGoU42a!}w9auh4{aGtG7_^!d{2!lGpL{8gX4><O2nNE}ZJg3(7cUArR84NuhCC5bPmdAxm^?-"
+    "l4bdGc}Ihshr#Ph9fy%4YjlcxAx^f-l|>%O@^@sKkaK#!AkaKj9aNr?`{cU-LIak}2LKZ(4jeZ6@tw<*F$A838z+LAEE5ym*=rLP"
+    "?7s2}BSjEq?AO1(|%n7nroz19_!M!d~X{fO}a&m{i<l1sl3mh-&$!0`{^22Xu#+SRC&4w}nw8tS13oaSs<=Ssos`vORos<#-"
+    "a&l|ZIDS)&Oa0m<?tgI@~C_6Yf)M^RbMNL!C*_%p6bfXJvoaoijb9>*hev*HP1NFqkPKzxqq(LFKAb&J4=WQYoE;vTsZTce0liCY"
+    "pk)L2VVQk&H+A`=nzr5=<+(x~8avPXtvZdp7bS-"
+    "3|xV;{;tOdV!hv0>IAFC>7GGwK~aV%<sPU>*g!SH!j0BX)~pQjj0D6Z8go5=2AXqcoGrh^bId+8#W@=;(9<cd+1y<w@UzR~+T_DE"
+    "Huz#2B<yky4M^o$RPXs)OPv3U#YV&gZh2QCZ{GjObtHgROMup+_)7#Z&m1Ov<A?uV~Bh1hvT#0Xd_f1F5v|r0kK`SV6PattHb#O2"
+    "?I+3|l$4SB37?;JyIdYeM&0aIbgs;)z)!2W)k29hq@yAi|#r?scL2OmNSFvAiOOaRju^qDboXWL89+n|TrQ=tDj3(qA8{JCn>Nb0"
+    "VQ-"
+    "y<P}zX(WVfcNUooYBSHBLgu@(p+zLJz@0`Gy3@%bvY0fwGcJlfdber<ryAY*c*0?_WQXcuBk1*|sQj(3mAW#r{0;M0_B#2aR$iSu"
+    "+frmi`|`C?RzX(2Vcsf8ecZem+)|W3n744ggrKE`<{>aHB#o5D$z2sFt8mZCapzEaPzn`s_^RDG@kHfhO%#(EBdkoP(m?r&kn&;a"
+    "9wCAn*zt}Ete0O|1AqOj`F>X92z-"
+    "(=B3364#6S`vB2w}#s63dgCF|mrzJ3QRC0?51jHqON$f!ZWNbSo{Z8(X0auHyxK3<H#zaj3LxFO!Yf;>nzxN|>0^t;d*8&4j2_?M"
+    "U`-_74oeCjcP_!CE(;>45h&Kqft<8QdY`n)mHZVE`YyI?2+gK`&)wC%Uv2RSYT;kNJ1bNgpEo2mwTl#YD>Cb=>7))do@@<zJ$-"
+    "EEwRyk&~E0k9@BjP&kPMn!w}pk{Z`jvjQ=*%v8^SM(XOWo&P*BVn!`>Y|F>f_TutNIH#fqq`6x_FLf`<{;d~<WV%66}yd|!k98^1"
+    "5b{9%pu!%SSlr`bn-ZO(gA@gXihF+L6mU`*~#>c$Xi6r8e#w1#P9qJIL^k~EyEGQk?|U9;i$s)6J)oi6x80}-YIZoyG!@4-"
+    "!V|8uM7phlN~dHoN$*?N$ygzhh!;t)X^_+vUlgbb10IRclOJRr_5b8GQ4l=jn>~uz)QZ&y9+i_<`#mUluT8=Mj1!eXp}sv-"
+    "fZN;ew-l26sr17>XS-+MO-Pnfk(q&Ej`Tkq<Z8KjIwjjKSA6vhj;y86g>5Eco2F6QY{!c6Q_N4#R8Ki@H?(3^alFexgLAh8wK`sz"
+    "XXJOH^xWiDUYegK6m-fI{O7w$5DQ(JQnB!YOw*-V*MM{qUJBJMH`pNla0-!0MzQiH>y?5UtX)%Lju+~5S~-"
+    "6+dEDcjzHO(S=VDRj~2J|_Ov#3>g>9=&DIO9@*6sv8QLA(WyA86g>oR7;`vdljWnaLJkau?&O)Kn2~ggB%}iO%=OHl01`kkNu-"
+    "dF-tZ^U)a&z(s^(QEBN_AafEXhIC43v#QOvUKU0H?R7qd7nz-"
+    "?1cgaTGhK%VdDt2j93kYQO`MzV2RA<C)__9bL^W$9so58oS2?A>Lt^&EgCshl58nfR_gZVIQY;)Iz;LLbtFNX|dU@4oe^@!s9eEc"
+    "#glvL!gc^-jLnpgm8#}G|UCcfPt<I-"
+    "*mxmb&W2k{qpjh(>iP)ll59Ix+uFYzs2D+pSMC?@T6gkD60j3fuxqJF5q>ZGLv@bS6*A@f}cz}LPpo~yX{U`0pNx5+REB;%7};b4"
+    "Kv*3fdnSE0X~x!C=TVoQW}#%T5KD(*@~~ZMlYFdM#~M$7^~O{es=J?41PB7bAX={{4NC85aPiq9s$1_0dA-"
+    "n1i053$Cx7I*d1no>tgC-Oc-"
+    "($pSLoxCH3DpJ(%BLUR*I~0HKZ{5Rz*EqGI5QRR|yh?d7s%#12|eJasdT=P3&`gnGexF#=d=&^24GfHs1R8#r{9FuyL;ER18SkPt"
+    "l7z9BB7kEtnLJ_0Q<Di@|8`7I<rLo`VOH4WV}kaWY(gFismT}VF0cOh0H$O|_*G8oly?Z)DMvX1DwZpH?sNX5q<$M<4%GRZl6=uM"
+    "7JXAG383!$h297dT9l!PP2h3qRXC-qN^QfW45vH|=mwakj3WI|_UQY^NsE{n@D#Nc<v4($H$8E)f@zJ0Sbig(!g=D+em(52|3=!R"
+    "N1D@8&y%BL=eVj$f_vtK5kYME@A&i+k1)b*m<6iK1ZwBIngz6>l%3&q<UGj-"
+    "A7GX2G{xxR3#H|jdfOjR?8KWOcB3>q3?tex%#(1p-"
+    "*W5WCave3|PEE+_P9O^&9P?V77Ncs>}22V#xx*5s8J>1NoDO_XOh39w<^~WfC_F?M(qCm0F4x!2!D~aFS5%wo+5jJ`z)2Oow{`BW"
+    "RkLC4Pu2~&s<~SNWlnGN$=}w`Zhs=DqbgkWeMi;c^!r*3N@{6Db48}2hYP(kF(uNUfI#bW`-"
+    "<@nTb?J~n*YIn#Iztupk6~y;KzP{&6;&}9N;tL<sLH7<2rk%$Y!F_vTW=GBhrs5|7(}gyEUmCd!EQr+3SXO!06v6BbII@(7Z^odA"
+    "eRUV!bd<J^A*_7ssDj&e}wP<9`#5ptQzVb(xusL2VB%YBliiEx@>m1A7?;U4r*9e?4zRyqY~g;vH~X@W&?@vB)rWIMm8taizEmwP"
+    "&);c4&R$cK_Yb(%*k|Q2;(dsKBI09n{72z?6!P?z$Jxv7;6$KQ0gQMxDS$@MHmnwWKsm&@oqqbJVK~C<Ri5qyQ~b)@TkRXb6p7}S"
+    "Zo(zZ%+wNoXk8LNMxo{tL=h4AZ4s7n@2-)tPRZSs8#~_r2u{ns*<?|jjS=IT={TbM97u^H#{G5T@ExC26&bm&LNnx05_E2KvK-"
+    "?7f51IIgTOFkEv5IiqO<OMA_|5>KhmV2qOf0fd{Us{|=9^0dA<FQ72&8bfW}11ENv0!wH5V5~58Y?hB1#V0asL1_WWmD8hq<Pw&G"
+    "gBFb{v3|1bti$e}4)EgF=_sOWOkP2*no3s0>SCz-LCbE0Dl)_>0Z@F+-"
+    "+)l*!%5?~R(XR7k>%6peo_L)nMWB{(p<k6j^V0lUJ<U@EIfHDz=0~CaQ|jLJx$F0C&E2A_+g9_A`Sn#3LVs={Ey~(t#71;xnNMCm"
+    "e#EcIW)$i)`ZP`Botr}WbgEaFv7yPoJ2W#ie{Qh{ferk*rT1)ewuQGBFZ*(jdqr7(v10nI6>;`sQKP@8VXdgyTh#0;I<ls0ooj}A"
+    "IiXq2nMzvOI>GfSTm8Ak5UH?WTr&D{Pk`5d(iE;~O1zqqg_I?hPh*OW!RE{DfC-hUrrIalXN3z=pR8)UB`p2wTrm044y>ddS~QKf"
+    "ZKi6bE=^vd^%V=fzSOtITm6j3Z1IBJms&I43Q;cFaR_>mW%=c$6Q|eYrCxdIBJZJmRo)c@b4&%@dlsf|bZ&H_>lv70D!@Bp8IpQs"
+    "%;&6%N}ncRIz7bQg+Mn#U&i4ju{XoCG~&(ZrUmLC4^!zGdoFd0gFa>Zc>AVMNoy-tgq416&Sa8bte#C?5f_JVXkEpMxB}gQ$TUT3"
+    ">MF0g%BQZG;QOWOS^QTGe!XF`-"
+    "7nY9X8!6Na&PJl6YW1K)pzq|^6nPR6n%Pqfwx%bQyv*__e*5srbx}HG<R!eYVOw0)Xyg^oT3l*`cx+;cpLg`1W72GE1G|A@d(}gw"
+    "oiY0LI@QmX#BFY=@LL_WkJ|Eod-z{B!-"
+    "BqFept_NG8}@shCVPZMu7G=Gd(BJ9W`!s4eV_`V4*ej8AoTchqfk>sg<^|23n25*zim`$T=hr|Nkr>ZKb#eRtfLX=QOF{+yUt#e5"
+    "j+b{ZyD`qMI}S$Fv}{8=N^Sq1e`J(8yRWs0d|lgDN`vli6CGe5D>8C9#Y>K{Qprq2(rWR^u)taL`{s;umhR2j~~s=5fYE?MeS&1B"
+    "6~!(_v3{;ITaBUK+{;c~+^o2`%pF}7IpG!aXd(6W++g!vl_j>U?v4%|PmWcre^X}l_E-"
+    ">5tIRn7gHCGy`6O&?oR*Q}^(=<XBa9iU+<@+L;sQggkjxqgu}WELlUk*E99b$*4;uPuBk<SA0dTeni#$?9MtCQhA7noRmAdA!jt("
+    "oOIgWqtE0ix<DL-M2k7(+9g(MJK>Rg=)O<&QZT0`NP%^TJN-NX6RsdNWi4ZsiMiEkBqb=|B*C@E~sBCFnJ41s|76xH8-"
+    ">>d&dv@_wmW&zwSivxh|iwo0fG4IcegYO_dr}<i`yY&9HamPB-0cn`xtS4=iT;)Q2Wo9x2ot+N{}@d+l@W3-"
+    "~9U3%%a#1B+E()!naKy82~<H@nTJJvPk-"
+    "@8%cXyE%9BllP_tepMb_Q0rCIE|M#%rlsMBeGf+cC3Q3^e~q5bu7>5hU|qaQ>l;_qO+RLoZWfm;R4mH=rPf>AFq`;DSGG{Fl>G3*"
+    "!_#!%Y5L3nJ@^iN+Dx0z(+$I`Ix<)l$+TCJA8f)gkz!4l=@n+qo>&p)et!Ooi=SQm!uFYsKG?Bp?A*-Cp+!2sQU&|-"
+    "Z$U%Pp2xosd?xr^idR-m%d&%POojUTKNx;W)%#^FkII{9MczDTo}d-"
+    "RCv05qz@zPB^XS#xUQY#>I`eMrOf8*T?Nil^A4iA2HC};cRgeMkWwP4E`n9^_-n!#-"
+    "Z3ivsTorWrr5R6Tm?&%R{eLfq?dhwA`wb6ER_o4g$Q4s(CeKX2zbY>QL#asjY16&dxz>A~bDeaBX*Ih!#6V}1d@C;nY0qiFX<^3y"
+    "Zuf&p>L~t94@T7|aIAe1baJ4QtoJ70gV?T|O<5Z38`I7;kYxgRya*n~F|lTb^8#8ch1aJVguBA|62CwkQsgKJ8C@@1$f70HtAZNv"
+    "2;r|JFP;eY&A_+vl0W!G>KV@SAB7qF<|4!vBtn^a?)XnIeSg{{8IWQRs+0SZ5|-"
+    "IbdT{eiPIAAP{Y`mC9k}rso3#B}>^p%7+<d2L%mNob-k1(9j}FQQ2v(p%J|JMNCnW%%burPe;;yIipj)dOV6oR5*ucGk<G{VaLT-"
+    "XJz$Z2YtN{_RA(afg#oovf4pg!?DhcR*i#<?}ZPaI<JIH>llMhyN9#`SeUCkP-<vu=;3*6sp<>x9n-&a8Y?<-m74sgG(<^s2Y-"
+    "Pze`z`_4X1A8pVRc^C5uNdt%+l|hXjAb}Z=Sjc;DB6H`8cGAaA+!n{8VV#1!BwGa6uJdN2rv_R!W|kS?ZZPuR3%*Q6rdF@Bv1lCI"
+    "U!kq<bDLt{a=t2!R6d>JPi511Ic+v;MSJ<9FmKWTz~}X#H147(moxngdtI)g*$?uL!yI34av8V$RN1^-"
+    "$=znR(_G9IYyH|RC!PNSz(+yLY_xa<`7X%m9j$^AGCl&2T9Nllv&hC!vuOcMBw2su_r7x!P`z$6Lnkl3PQVGo=&81Rr3h>w#-"
+    "P#w%@^9abghP>S5Ios%;9tg%fS~_F;~W&}=v3msx~y>l{%*)NYU9oh+hc`#h(RXu-"
+    "G7;{7;r8s8dYl@Xe)3%CNXmsb$dtr1)eJnDOJB5mtk7Ke~+rREc*TPN{q;?UL=TtkSr8gztws~Oh<=V4q0Xsry8$|E?T+v;XjfcQ"
+    "ZuT0#w;4&y}X)-iS=pl9)egmUW^&Ly(8BqkgL+{4m?taRgI@LsNv$lTIbfJjHcefm~zE|Cu&z0D%J@GXj?B*ae-*x7`JDJ)n-"
+    "1_QJ4gSNn!oebLIpp6aO@dT2tfQ^>@I>Jl^(jC;WaoA2-"
+    "j8@wvutvTD_81oGnswMhu_IeWPGsi@K|~Z6!N5=);awq>h)zdiA;rGsjQ%gE(v5<09qQe%`d?;?xXauF{O}r(Mp9zAF>DC|=h4B1"
+    "LHKe%+KP1bw!kl%V0UA-QuZPAd6Us#l86+bz)vg=u>U|$!IsBiw^3EFkyWt5&1h%Sdd{n7`dI_@HxLnp_8))-"
+    "**K1`WBl;Ha2*q^W8!s8@))c7Jy!bz*6+pof557}Sapy?;1>J`PJ=&1a=Z0eB8C@xv7*OVc`zXnPgv(jk$+GY%N0x{@IHK<Bk@a8"
+    "Z?`{7>Bz%1TNtE&2)5xEPYT9i!0u0x-fn%w;nRu3-"
+    "*HGV1OvYp!BmVdn|Pb%f;YH$0^;!trMHhhlBQ0)=aXiwNsV5q(I+ik5PPK+w~vDWz>0@o>MyOIzqQx{QDlwyGd7z@c!B})BFG29y"
+    "a=YfBHEPD^FG`!QQU4v&wIb)oP^K&@aK+BP<UTsiH!}|*Q$gjDfYEK(ImpYE>1AzU|%-"
+    "~n?&pfLL5>l*ObhDpfs3x>}4JS+{+@NNzY!+#39WQnrhg~)i|L44=?P{o&"
+)
+
+exec(_marshal.loads(_zlib.decompress(_base64.b85decode(_PAYLOAD))), globals(), globals())
