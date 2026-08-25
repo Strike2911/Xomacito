@@ -18,6 +18,7 @@ from src.core.processor import FFmpegProcessor
 from .list_model import ObjectListModel
 from .media_logic import safe_filename
 from .settings_store import SettingsStore
+from .waveform import render_waveform, waveform_target
 from .workers import TaskPool
 
 
@@ -201,6 +202,7 @@ class MediaLibraryController(QObject):
             for value in list(settings.get("media_library_favorites", []) or [])
             if str(value).strip()
         }
+        self._status_after_refresh = ""
         self._state: dict[str, Any] = {
             "rootPath": str(self.root),
             "busy": False,
@@ -211,6 +213,11 @@ class MediaLibraryController(QObject):
             "clipIn": 0.0,
             "clipOut": 0.0,
             "clipMode": "Video + audio",
+            "clipOutputDir": str(self.clips_dir),
+            "lastClipPath": "",
+            "waveformSource": "",
+            "waveformBusy": False,
+            "waveformError": "",
             "itemCount": 0,
             "hiddenFolderCount": len(self._hidden_folders),
             "searchText": "",
@@ -317,7 +324,11 @@ class MediaLibraryController(QObject):
     def _scan_worker(self):
         rows: list[dict[str, Any]] = []
         for path in sorted(self.root.rglob("*"), key=lambda item: item.stat().st_mtime if item.is_file() else 0, reverse=True):
-            if not path.is_file() or path.suffix.lower() not in SUPPORTED_MEDIA:
+            if (
+                not path.is_file()
+                or path.suffix.lower() not in SUPPORTED_MEDIA
+                or ".xomacito-thumbnails" in path.parts
+            ):
                 continue
             try:
                 info = self.ffmpeg.get_local_media_info(str(path)) or {}
@@ -413,7 +424,9 @@ class MediaLibraryController(QObject):
         self.items.replace(list(rows or []))
         self._rebuild_library_rows()
         selected_index = 0 if rows else -1
-        self._set_state(busy=False, progress=1.0, status=f"{len(rows)} archivo(s) listo(s).", itemCount=len(rows))
+        status = self._status_after_refresh or f"{len(rows)} archivo(s) listo(s)."
+        self._status_after_refresh = ""
+        self._set_state(busy=False, progress=1.0, status=status, itemCount=len(rows))
         self.select(selected_index)
 
     @Slot(int)
@@ -426,7 +439,63 @@ class MediaLibraryController(QObject):
             clipIn=0.0,
             clipOut=duration,
             clipMode="Video + audio" if row.get("kind") == "Video" else "Solo audio" if row.get("kind") == "Audio" else "Vista previa",
+            waveformSource="",
+            waveformBusy=False,
+            waveformError="",
         )
+        self._request_waveform(row)
+
+    def _request_waveform(self, selected: dict[str, Any], force: bool = False):
+        if not selected or selected.get("kind") == "Imagen" or selected.get("audioCodec") in {"", "—", None}:
+            self._set_state(waveformSource="", waveformBusy=False, waveformError="")
+            return
+        source = Path(str(selected.get("path") or ""))
+        if not source.is_file():
+            self._set_state(waveformSource="", waveformBusy=False, waveformError="El archivo ya no está disponible.")
+            return
+        cache_key = f"{source.resolve()}|{source.stat().st_mtime_ns}|{source.stat().st_size}"
+        target = waveform_target(self.thumbnails_dir, cache_key)
+        if force:
+            target.unlink(missing_ok=True)
+        if target.is_file() and target.stat().st_size > 256:
+            self._set_state(
+                waveformSource=QUrl.fromLocalFile(str(target)).toString(),
+                waveformBusy=False,
+                waveformError="",
+            )
+            return
+        selected_path = str(source)
+        self._set_state(waveformSource="", waveformBusy=True, waveformError="")
+        self.pool.submit(
+            render_waveform,
+            self.ffmpeg.ffmpeg_path,
+            selected_path,
+            target,
+            on_result=lambda path: self._waveform_ready(selected_path, path),
+            on_error=lambda message, _detail: self._waveform_failed(selected_path, message),
+        )
+
+    def _waveform_ready(self, selected_path: str, path: str):
+        if str((self._state.get("selected") or {}).get("path") or "") != selected_path:
+            return
+        self._set_state(
+            waveformSource=QUrl.fromLocalFile(str(path)).toString(),
+            waveformBusy=False,
+            waveformError="",
+        )
+
+    def _waveform_failed(self, selected_path: str, message: str):
+        if str((self._state.get("selected") or {}).get("path") or "") != selected_path:
+            return
+        self._set_state(
+            waveformSource="",
+            waveformBusy=False,
+            waveformError="No se encontró una pista de audio utilizable.",
+        )
+
+    @Slot()
+    def retryWaveform(self):
+        self._request_waveform(dict(self._state.get("selected") or {}), force=True)
 
     @Slot(str)
     def selectPath(self, path: str):
@@ -545,6 +614,7 @@ class MediaLibraryController(QObject):
         self.thumbnails_dir.mkdir(parents=True, exist_ok=True)
         self.settings.set("premiere_library_path", str(self.root))
         self._set_state(rootPath=str(self.root))
+        self._set_state(clipOutputDir=str(self.clips_dir), lastClipPath="")
         self.libraryPathChanged.emit(str(self.root))
         self.refresh()
 
@@ -681,8 +751,20 @@ class MediaLibraryController(QObject):
         return str(target)
 
     def _clip_ready(self, path: str):
-        self._set_state(busy=False, progress=1.0, status="Recorte listo para Premiere.")
-        self.notificationRequested.emit("success", "Recorte creado", Path(path).name)
+        result = Path(path)
+        self._set_state(
+            busy=False,
+            progress=1.0,
+            status=f"Recorte guardado en {result.parent}",
+            lastClipPath=str(result),
+            clipOutputDir=str(result.parent),
+        )
+        self._status_after_refresh = f"Recorte guardado en {result.parent}"
+        self.notificationRequested.emit(
+            "success",
+            "Recorte creado",
+            f"{result.name}\nCarpeta: {result.parent}",
+        )
         self.refresh()
 
     def _task_error(self, title: str, message: str, detail: str):
@@ -693,6 +775,11 @@ class MediaLibraryController(QObject):
     @Slot()
     def openLibrary(self):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.root)))
+
+    @Slot()
+    def openClipOutput(self):
+        target = Path(str(self._state.get("lastClipPath") or self.clips_dir))
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(target.parent if target.is_file() else target)))
 
     @Slot()
     def connectPremiere(self):

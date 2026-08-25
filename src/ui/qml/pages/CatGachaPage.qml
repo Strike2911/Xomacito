@@ -309,7 +309,8 @@ Item {
         property var result: ({})
         property real revealProgress: 1
         readonly property int resultRarity: Math.max(1, Math.min(6, Number(result.rarity || 1)))
-        readonly property color revealColor: result.rarityColor || theme.colors.primary
+        readonly property color revealColor: result.animationStyle === "strike-apex"
+                                             ? "#8476E8" : result.rarityColor || theme.colors.primary
         readonly property string animationStyle: result.animationStyle || ""
         readonly property string rarityTitle: resultRarity < 6
                                                 ? ["", "COMÚN", "PECULIAR", "RARO", "ÉPICO", "LEGENDARIO"][resultRarity]
@@ -409,6 +410,7 @@ Item {
                 anchors.centerIn: parent
                 width: Math.min(parent.width, parent.height) * 0.94
                 height: width
+                visible: !revealPopup.strikeApex
                 scale: 0.56 + revealPopup.revealProgress * 0.58
                 opacity: 0.08 + revealPopup.resultRarity * 0.035
 
@@ -433,6 +435,62 @@ Item {
                     to: 360
                     duration: revealPopup.arcaneMage ? 5200 : revealPopup.resultRarity >= 5 ? 10000 : 16000
                     loops: Animation.Infinite
+                }
+            }
+
+            Item {
+                id: strikeRevealCosmos
+                anchors.centerIn: parent
+                width: Math.min(parent.width, parent.height) * 0.96
+                height: width
+                visible: revealPopup.strikeApex
+                opacity: Math.min(1, revealPopup.revealProgress * 2.4)
+                property real phase: 0
+
+                NumberAnimation on phase {
+                    running: revealPopup.opened && settingsController.state.animationsEnabled
+                    from: 0; to: Math.PI * 2; duration: 9000; loops: Animation.Infinite
+                }
+
+                Repeater {
+                    model: 4
+                    Rectangle {
+                        required property int index
+                        anchors.centerIn: parent
+                        width: parent.width * (0.28 + index * 0.18) * (0.72 + revealPopup.revealProgress * 0.28)
+                        height: width
+                        radius: width / 2
+                        color: "transparent"
+                        border.width: index === 0 ? 4 : 2
+                        border.color: index === 0 ? "#F3F1FF" : index === 1 ? "#8C7AE8" : index === 2 ? "#67B3F0" : "#E7CA82"
+                        opacity: Math.max(0.12, 0.7 - index * 0.13)
+                        scale: 1 + Math.sin(strikeRevealCosmos.phase * 2 + index) * 0.018
+                    }
+                }
+
+                Repeater {
+                    model: 30
+                    Text {
+                        required property int index
+                        readonly property real angle: index * Math.PI * 2 / 30 + strikeRevealCosmos.phase * (index % 2 ? -0.18 : 0.25)
+                        readonly property real radiusValue: parent.width * (0.22 + (index % 5) * 0.055) * Math.max(0.3, revealPopup.revealProgress)
+                        text: index % 7 === 0 ? "✦" : index % 4 === 0 ? "✧" : "·"
+                        color: index % 7 === 0 ? "#FFF0B7" : index % 2 ? "#A695FF" : "#78C4FF"
+                        font.pixelSize: index % 7 === 0 ? 16 : index % 4 === 0 ? 11 : 15
+                        font.weight: Font.Bold
+                        x: parent.width / 2 + Math.cos(angle) * radiusValue - width / 2
+                        y: parent.height / 2 + Math.sin(angle) * radiusValue - height / 2
+                        opacity: 0.25 + (Math.sin(strikeRevealCosmos.phase * 3 + index * 0.8) + 1) * 0.34
+                    }
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "✦"
+                    color: "#FFFFFF"
+                    font.pixelSize: 52 + revealPopup.revealProgress * 30
+                    opacity: Math.max(0, 0.82 - revealPopup.revealProgress)
+                    scale: 0.5 + revealPopup.revealProgress * 0.8
                 }
             }
 

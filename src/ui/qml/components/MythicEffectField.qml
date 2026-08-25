@@ -262,7 +262,7 @@ Item {
         }
     }
 
-    // GATO STRIKE: eclipse dorado, corona estelar y energía carmesí en dos órbitas.
+    // GATO STRIKE: firmamento índigo, órbitas de zafiro y destellos de platino.
     Item {
         anchors.fill: parent
         visible: root.strike
@@ -270,9 +270,9 @@ Item {
         Rectangle {
             anchors.fill: parent
             gradient: Gradient {
-                GradientStop { position: 0; color: "#56000000" }
-                GradientStop { position: 0.5; color: "#667A1600" }
-                GradientStop { position: 1; color: "#4A000000" }
+                GradientStop { position: 0; color: "#62050712" }
+                GradientStop { position: 0.48; color: "#4F151238" }
+                GradientStop { position: 1; color: "#52070B1A" }
             }
         }
         Repeater {
@@ -282,9 +282,9 @@ Item {
                 anchors.centerIn: parent
                 width: Math.min(root.width, root.height) * (0.36 + index * 0.20)
                 height: width; radius: width / 2; color: "transparent"
-                border.width: index === 0 ? 6 : 2
-                border.color: index % 2 ? "#FFF4B0" : index === 0 ? "#FFFFFF" : "#FF6A22"
-                opacity: 0.7 - index * 0.09
+                border.width: index === 0 ? 3 : 2
+                border.color: index === 0 ? "#E7E9FF" : index === 1 ? "#7768DC" : "#65A9EB"
+                opacity: 0.56 - index * 0.09
                 scale: 0.64 + root.progress * 0.36
                 RotationAnimation on rotation {
                     running: root.active; loops: Animation.Infinite
@@ -297,8 +297,8 @@ Item {
             model: 12
             Text {
                 required property int index
-                text: index % 5 === 0 ? "✦" : index % 3 === 0 ? "◆" : "·"
-                color: index % 4 === 0 ? "#FFFFFF" : index % 2 ? "#FFD45C" : "#FF5A22"
+                text: index % 5 === 0 ? "✦" : index % 3 === 0 ? "✧" : "·"
+                color: index % 5 === 0 ? "#FFF0B8" : index % 2 ? "#9E8CFF" : "#75BEFF"
                 font.pixelSize: 9 + index % 4 * 3; font.weight: Font.Bold
                 x: (index * 97) % Math.max(1, root.width - width)
                 y: (index * 61) % Math.max(1, root.height - height)

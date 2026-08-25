@@ -23,10 +23,12 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 12px;
   line-height: 1.35;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 button, input { font: inherit; }
 button { -webkit-appearance: none; appearance: none; }
-#panel { width: 100%; min-height: 100vh; padding: 12px; overflow: hidden; }
+#panel { width: 100%; min-height: 100vh; padding: 12px; overflow: visible; }
 .hidden { display: none !important; }
 .eyebrow, .label { color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: 1px; }
 
@@ -56,7 +58,7 @@ p { margin: 0; }
 .button.full { width: 100%; }
 
 .setup-card {
-  min-height: 330px; padding: 24px 18px; display: flex; flex-direction: column;
+  min-height: min(360px, calc(100vh - 70px)); padding: 24px 18px; display: flex; flex-direction: column;
   align-items: flex-start; justify-content: center; border: 1px solid var(--border);
   border-radius: 14px; background: var(--panel);
 }
@@ -140,6 +142,7 @@ p { margin: 0; }
   background: transparent !important; color: var(--text) !important;
 }
 .search-wrap input::placeholder { color: var(--dim); opacity: 1; }
+.search-wrap input::-webkit-search-cancel-button { opacity: .55; }
 .items { min-height: 92px; max-height: calc(100vh - 475px); overflow-y: auto; }
 .item {
   width: 100%; min-height: 42px; display: flex; align-items: center; gap: 8px;
@@ -181,4 +184,13 @@ p { margin: 0; }
   .connection-state { margin-top: 2px; }
   .action-grid { grid-template-columns: 1fr; }
   .items { max-height: calc(100vh - 515px); }
+}
+
+@media (max-height: 650px) {
+  #panel { padding: 9px; }
+  .app-header { margin-bottom: 7px; }
+  .progress-strip { margin-bottom: 6px; }
+  .source-card, .sync-card, .browser-card { margin-bottom: 6px; padding: 8px; }
+  .helper { margin-top: 5px; }
+  .items { max-height: 118px; }
 }

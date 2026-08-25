@@ -406,45 +406,45 @@ Item {
                             Text { Layout.fillWidth: true; text: selected.path ? "RUTA · " + selected.path : ""; color: theme.colors.textDim; font.pixelSize: 7; elide: Text.ElideMiddle; ToolTip.visible: pathHover.hovered; ToolTip.text: selected.path || ""; HoverHandler { id: pathHover } }
                         }
                     }
-                    RowLayout {
+                    WaveformTrimmer {
+                        id: libraryTrimmer
+                        objectName: "mediaClipRange"
                         visible: selected.kind !== "Imagen"
-                        Layout.fillWidth: true; spacing: 8
-                        Text { text: page.clock(viewState.clipIn); color: theme.colors.text; font.pixelSize: 10; font.weight: Font.Bold }
-                        RangeSlider {
-                            id: clipRange
-                            objectName: "mediaClipRange"
-                            Layout.fillWidth: true
-                            from: 0
-                            to: Math.max(0.01, Number(selected.duration || 0))
-                            first.value: Number(viewState.clipIn || 0)
-                            second.value: Number(viewState.clipOut || 0)
-                            first.onMoved: mediaLibraryController.setValue("clipIn", first.value)
-                            second.onMoved: mediaLibraryController.setValue("clipOut", second.value)
-                            background: Rectangle {
-                                x: clipRange.leftPadding; y: clipRange.topPadding + clipRange.availableHeight / 2 - height / 2
-                                width: clipRange.availableWidth; height: 6; radius: 3; color: theme.colors.surfaceSoft
-                                Rectangle {
-                                    x: clipRange.first.visualPosition * parent.width
-                                    width: Math.max(0, (clipRange.second.visualPosition - clipRange.first.visualPosition) * parent.width)
-                                    height: parent.height; radius: 3; color: theme.colors.primary
-                                }
-                            }
-                            first.handle: Rectangle { x: clipRange.leftPadding + clipRange.first.visualPosition * (clipRange.availableWidth - width); y: clipRange.topPadding + clipRange.availableHeight / 2 - height / 2; width: 18; height: 18; radius: 9; color: theme.colors.text; border.color: theme.colors.primary; border.width: 4 }
-                            second.handle: Rectangle { x: clipRange.leftPadding + clipRange.second.visualPosition * (clipRange.availableWidth - width); y: clipRange.topPadding + clipRange.availableHeight / 2 - height / 2; width: 18; height: 18; radius: 9; color: theme.colors.text; border.color: theme.colors.primary; border.width: 4 }
-                        }
-                        Text { text: page.clock(viewState.clipOut); color: theme.colors.text; font.pixelSize: 10; font.weight: Font.Bold }
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: page.dense ? 142 : 174
+                        compact: page.dense
+                        waveformSource: viewState.waveformSource || ""
+                        busy: Boolean(viewState.waveformBusy)
+                        errorText: viewState.waveformError || ""
+                        duration: Number(selected.duration || 0)
+                        inPoint: Number(viewState.clipIn || 0)
+                        outPoint: Number(viewState.clipOut || 0)
+                        onInPointMoved: function(value) { mediaLibraryController.setValue("clipIn", value) }
+                        onOutPointMoved: function(value) { mediaLibraryController.setValue("clipOut", value) }
+                        onRetryRequested: mediaLibraryController.retryWaveform()
                     }
                     RowLayout {
                         visible: selected.kind !== "Imagen"
                         Layout.fillWidth: true; spacing: 8
-                        Text { text: "Fragmento: " + page.clock(Number(viewState.clipOut || 0) - Number(viewState.clipIn || 0)); color: theme.colors.textMuted; font.pixelSize: 10 }
-                        Item { Layout.fillWidth: true }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text { text: "CARPETA DEL RECORTE"; color: theme.colors.textDim; font.pixelSize: 8; font.weight: Font.Bold; font.letterSpacing: 0.8 }
+                            Text { Layout.fillWidth: true; text: viewState.clipOutputDir || ""; color: theme.colors.textMuted; font.pixelSize: 9; elide: Text.ElideMiddle }
+                        }
+                        XButton {
+                            visible: Boolean(viewState.lastClipPath)
+                            text: "Abrir carpeta"
+                            compact: true
+                            kind: "ghost"
+                            onClicked: mediaLibraryController.openClipOutput()
+                        }
                         ComboBox {
                             visible: selected.kind === "Video"
                             model: ["Video + audio", "Solo video", "Solo audio"]
                             currentIndex: Math.max(0, model.indexOf(viewState.clipMode))
                             onActivated: mediaLibraryController.setValue("clipMode", currentText)
-                            implicitWidth: 145; implicitHeight: 36
+                            implicitWidth: page.dense ? 118 : 135; implicitHeight: 36
                             contentItem: Text { leftPadding: 10; text: parent.displayText; color: theme.colors.text; verticalAlignment: Text.AlignVCenter; font.pixelSize: 10 }
                             background: Rectangle { radius: 9; color: theme.colors.surfaceSoft; border.color: theme.colors.border }
                         }

@@ -19,7 +19,7 @@ Item {
                                              : playeraPrismatic ? "#FF7FB7"
                                              : zarkingCyber ? "#00DCEB"
                                              : blackbullNoir ? "#E7B84A"
-                                             : strikeApex ? "#FF6A2A" : rarityColor
+                                             : strikeApex ? "#8476E8" : rarityColor
     implicitWidth: 64
     implicitHeight: 64
 
@@ -348,32 +348,54 @@ Item {
         height: parent.height
         clip: true
         visible: root.strikeApex
+
+        QtObject { id: strikeOrbit; property real phase: 0 }
+        NumberAnimation {
+            target: strikeOrbit; property: "phase"; from: 0; to: Math.PI * 2
+            duration: 7200; loops: Animation.Infinite
+            running: root.animatedEffects
+        }
+
         Repeater {
-            model: 12
+            model: 2
             Rectangle {
                 required property int index
-                readonly property real angle: index * Math.PI / 6
-                width: index % 4 === 0 ? 6 : 3
+                anchors.centerIn: parent
+                width: parent.width * (index === 0 ? 0.82 : 0.96)
                 height: width
                 radius: width / 2
-                color: index % 4 === 0 ? "#FFF7D1" : index % 2 ? "#FFD45C" : "#FF7A38"
-                x: parent.width / 2 + Math.cos(angle) * (parent.width / 2 - 5) - width / 2
-                y: parent.height / 2 + Math.sin(angle) * (parent.height / 2 - 5) - height / 2
-                SequentialAnimation on scale {
-                    running: root.animatedEffects
-                    loops: Animation.Infinite
-                    PauseAnimation { duration: index * 115 }
-                    NumberAnimation { from: 0.45; to: 1.22; duration: 360; easing.type: Easing.OutCubic }
-                    NumberAnimation { to: 0.55; duration: 920; easing.type: Easing.InOutSine }
-                }
-                SequentialAnimation on opacity {
-                    running: root.animatedEffects
-                    loops: Animation.Infinite
-                    PauseAnimation { duration: index * 115 }
-                    NumberAnimation { from: 0.28; to: 0.96; duration: 360 }
-                    NumberAnimation { to: 0.32; duration: 920 }
-                }
+                color: "transparent"
+                border.width: 1
+                border.color: index === 0 ? "#776DE2" : "#E4CB82"
+                opacity: index === 0 ? 0.62 : 0.36
+                scale: 0.98 + Math.sin(strikeOrbit.phase * 2 + index * 1.7) * 0.018
             }
+        }
+
+        Repeater {
+            model: 16
+            Text {
+                required property int index
+                readonly property real angle: index * Math.PI * 2 / 16 + strikeOrbit.phase * (index % 2 ? -0.42 : 0.28)
+                readonly property real orbit: parent.width * (index % 3 === 0 ? 0.46 : 0.41)
+                text: index % 5 === 0 ? "✦" : index % 3 === 0 ? "✧" : "·"
+                color: index % 5 === 0 ? "#FFF2C2" : index % 2 ? "#9D8DFF" : "#74B7FF"
+                font.pixelSize: index % 5 === 0 ? 8 : index % 3 === 0 ? 6 : 10
+                font.weight: Font.Bold
+                x: parent.width / 2 + Math.cos(angle) * orbit - width / 2
+                y: parent.height / 2 + Math.sin(angle) * orbit - height / 2
+                opacity: 0.42 + (Math.sin(strikeOrbit.phase * 3 + index) + 1) * 0.26
+                scale: 0.8 + (Math.sin(strikeOrbit.phase * 2 + index * 0.7) + 1) * 0.12
+            }
+        }
+
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: 1
+            text: "✦"
+            color: "#FFFFFF"
+            font.pixelSize: 10
+            opacity: 0.7 + Math.sin(strikeOrbit.phase * 3) * 0.25
         }
     }
 }

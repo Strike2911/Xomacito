@@ -7,6 +7,7 @@ from pathlib import Path
 
 from src.core.processor import FFmpegProcessor
 from src.ui.media_library_controller import MediaLibraryController
+from src.ui.waveform import render_waveform
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +26,19 @@ class MemorySettings:
 
 class IdlePool:
     def submit(self, *_args, **_kwargs):
+        return None
+
+
+class ImmediatePool:
+    def submit(self, function, *args, on_result=None, on_error=None, **_kwargs):
+        try:
+            result = function(*args)
+        except Exception as exc:  # pragma: no cover - la aserción reporta el detalle
+            if on_error:
+                on_error(str(exc), repr(exc))
+        else:
+            if on_result:
+                on_result(result)
         return None
 
 
@@ -141,7 +155,7 @@ class MediaLibraryTests(unittest.TestCase):
         self.assertIn('return "Imágenes"', script)
         html = (panel / "index.html").read_text(encoding="utf-8")
         styles = (panel / "styles.css").read_text(encoding="utf-8")
-        self.assertIn("Activar autoimportación", html)
+        self.assertIn("Conectar proyecto abierto", html)
         self.assertIn("No se crearán duplicados", html)
         self.assertIn('data-kind="Audio"', html)
         self.assertIn("@media (max-width: 310px)", styles)
@@ -149,7 +163,10 @@ class MediaLibraryTests(unittest.TestCase):
     def test_library_page_has_preview_dual_trim_and_explicit_output(self):
         qml = (ROOT / "src/ui/qml/pages/MediaLibraryPage.qml").read_text(encoding="utf-8")
         self.assertIn("MediaPlayer", qml)
-        self.assertIn("RangeSlider", qml)
+        waveform = (ROOT / "src/ui/qml/components/WaveformTrimmer.qml").read_text(encoding="utf-8")
+        self.assertIn("WaveformTrimmer", qml)
+        self.assertIn("RangeSlider", waveform)
+        self.assertIn("Las zonas planas indican silencio", waveform)
         self.assertIn('objectName: "mediaClipRange"', qml)
         self.assertIn("SALIDA WAV", qml)
         self.assertIn("SALIDA MP4", qml)
@@ -172,6 +189,28 @@ class MediaLibraryTests(unittest.TestCase):
         controller = (ROOT / "src/ui/media_library_controller.py").read_text(encoding="utf-8")
         self.assertIn("Ventana > Plugins UXP > Xomacito Link", controller)
         self.assertIn("_premiere_panel_installed()", controller)
+
+    def test_waveform_renderer_creates_a_cached_editorial_preview(self):
+        ffmpeg_path = ROOT / "bin" / "ffmpeg" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        if not ffmpeg_path.is_file():
+            self.skipTest("FFmpeg portable no disponible")
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            source = folder / "silencio-y-tono.wav"
+            target = folder / "onda.png"
+            created = subprocess.run(
+                [
+                    str(ffmpeg_path), "-y", "-f", "lavfi", "-i",
+                    "aevalsrc=if(lt(t\\,1)\\,0\\,0.45*sin(2*PI*440*t)):s=48000:d=2",
+                    str(source),
+                ],
+                capture_output=True, timeout=30, check=False,
+            )
+            self.assertEqual(created.returncode, 0, created.stderr.decode(errors="ignore"))
+            output = Path(render_waveform(str(ffmpeg_path), str(source), target))
+            self.assertEqual(output, target)
+            self.assertTrue(output.is_file())
+            self.assertGreater(output.stat().st_size, 256)
 
     def test_accurate_clip_is_created_as_premiere_ready_mp4_and_original_survives(self):
         ffmpeg_path = ROOT / "bin" / "ffmpeg" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
@@ -217,6 +256,35 @@ class MediaLibraryTests(unittest.TestCase):
             self.assertLess(duration, 1.1)
             manifest = json.loads((library / ".xomacito-library.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["library"], "Xomacito")
+
+    def test_create_clip_action_reports_the_exact_output_folder(self):
+        ffmpeg_path = ROOT / "bin" / "ffmpeg" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        if not ffmpeg_path.is_file():
+            self.skipTest("FFmpeg portable no disponible")
+        with tempfile.TemporaryDirectory() as directory:
+            library = Path(directory)
+            source = library / "dialogo.wav"
+            created = subprocess.run(
+                [str(ffmpeg_path), "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", str(source)],
+                capture_output=True, timeout=30, check=False,
+            )
+            self.assertEqual(created.returncode, 0, created.stderr.decode(errors="ignore"))
+            controller = MediaLibraryController(
+                ROOT, MemorySettings(library), ImmediatePool(), FFmpegProcessor("test"),
+            )
+            rows = controller._scan_worker()
+            controller.items.replace(rows)
+            controller.select(0)
+            controller.setValue("clipIn", 0.25)
+            controller.setValue("clipOut", 1.25)
+            notices = []
+            controller.notificationRequested.connect(lambda kind, title, message: notices.append((kind, title, message)))
+            controller.createClip()
+            output = Path(controller.state["lastClipPath"])
+            self.assertTrue(output.is_file())
+            self.assertEqual(output.parent, library / "Recortes")
+            self.assertIn(str(output.parent), controller.state["status"])
+            self.assertTrue(any(str(output.parent) in message for _kind, _title, message in notices))
 
     def test_dropped_folder_is_copied_non_destructively_into_imports(self):
         with tempfile.TemporaryDirectory() as directory:

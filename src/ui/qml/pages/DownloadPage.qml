@@ -138,7 +138,26 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             XButton { Layout.fillWidth: true; compact: true; text: "Guardar miniatura"; kind: "secondary"; enabled: !!viewState.thumbnailSource; onClicked: downloadController.saveThumbnail() }
+                            XButton {
+                                objectName: "openTrimButton"
+                                Layout.fillWidth: true
+                                compact: true
+                                text: options.fragmentEnabled ? "Recorte ✓" : "Recortar"
+                                kind: options.fragmentEnabled ? "success" : "secondary"
+                                visible: !viewState.imagePost
+                                enabled: viewState.analyzed && viewState.duration > 0
+                                onClicked: trimPopup.open()
+                            }
                             XButton { Layout.fillWidth: true; compact: true; text: "Enviar a cola"; kind: "secondary"; enabled: viewState.url.length > 0; onClicked: downloadController.sendToQueue() }
+                        }
+                        Text {
+                            visible: options.fragmentEnabled
+                            Layout.fillWidth: true
+                            text: "Fragmento activo · " + options.startTime + " → " + options.endTime
+                            color: theme.colors.success
+                            font.pixelSize: 9
+                            horizontalAlignment: Text.AlignHCenter
+                            elide: Text.ElideRight
                         }
                     }
                 }
@@ -228,7 +247,7 @@ Item {
                                 ToolTip.text: "Activa un preset MP3 o AAC para incluir la portada."
                             }
                             Item { Layout.fillWidth: true }
-                            XButton { objectName: "advancedToolsButton"; compact: true; text: "Todas las herramientas"; kind: "secondary"; onClicked: advanced.open() }
+                            XButton { objectName: "advancedToolsButton"; compact: true; text: "Ajustes avanzados"; kind: "secondary"; onClicked: advanced.open() }
                         }
                         Text {
                             visible: viewState.imagePost
@@ -239,6 +258,141 @@ Item {
                             color: theme.colors.success
                             font.pixelSize: 12
                             font.weight: Font.DemiBold
+                        }
+                    }
+                }
+            }
+
+            Popup {
+                id: trimPopup
+                objectName: "downloadTrimPopup"
+                property bool previousEnabled: false
+                property string previousStart: "00:00:00"
+                property string previousEnd: ""
+                parent: Overlay.overlay
+                x: Math.round((parent.width - width) / 2)
+                y: Math.round((parent.height - height) / 2)
+                width: Math.min(900, parent.width - 28)
+                height: Math.min(520, parent.height - 28)
+                padding: 18
+                modal: true
+                focus: true
+                closePolicy: Popup.CloseOnEscape
+                background: Rectangle { radius: 18; color: theme.colors.surfaceRaised; border.color: "#6F6AD6"; border.width: 1 }
+                onAboutToShow: {
+                    previousEnabled = Boolean(options.fragmentEnabled)
+                    previousStart = options.startTime
+                    previousEnd = options.endTime
+                    downloadController.setOption("fragmentEnabled", true)
+                    if (page.clockSeconds(options.endTime) <= 0)
+                        downloadController.setOption("endTime", page.clockText(viewState.duration))
+                    downloadController.prepareWaveform()
+                }
+
+                contentItem: ColumnLayout {
+                    spacing: 12
+                    RowLayout {
+                        Layout.fillWidth: true
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 3
+                            Text { text: "RECORTADOR"; color: "#8D88EB"; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.2 }
+                            Text { text: "Quédate sólo con lo que necesitas"; color: theme.colors.text; font.pixelSize: 20; font.weight: Font.DemiBold }
+                            Text { Layout.fillWidth: true; text: "Arrastra Entrada y Salida sobre la forma de onda. Las zonas planas son silencios."; color: theme.colors.textMuted; font.pixelSize: 10; wrapMode: Text.WordWrap }
+                        }
+                        XButton {
+                            text: "Cancelar"
+                            kind: "ghost"
+                            compact: true
+                            onClicked: {
+                                downloadController.setOption("startTime", trimPopup.previousStart)
+                                downloadController.setOption("endTime", trimPopup.previousEnd)
+                                downloadController.setOption("fragmentEnabled", trimPopup.previousEnabled)
+                                trimPopup.close()
+                            }
+                        }
+                    }
+
+                    WaveformTrimmer {
+                        objectName: "downloadWaveformTrimmer"
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.minimumHeight: 170
+                        waveformSource: viewState.waveformSource || ""
+                        busy: Boolean(viewState.waveformBusy)
+                        errorText: viewState.waveformError || ""
+                        duration: Number(viewState.duration || 0)
+                        inPoint: Math.max(0, page.clockSeconds(options.startTime))
+                        outPoint: Math.max(0, page.clockSeconds(options.endTime))
+                        onInPointMoved: function(value) { downloadController.setOption("startTime", page.clockText(value)) }
+                        onOutPointMoved: function(value) { downloadController.setOption("endTime", page.clockText(value)) }
+                        onRetryRequested: downloadController.prepareWaveform()
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: trimPopup.width > 650 ? 2 : 1
+                        columnSpacing: 10
+                        rowSpacing: 8
+                        LabeledControl {
+                            Layout.fillWidth: true
+                            label: "Entrada · HH:MM:SS"
+                            XTextField { Layout.fillWidth: true; text: options.startTime; onEditingFinished: downloadController.setOption("startTime", text) }
+                        }
+                        LabeledControl {
+                            Layout.fillWidth: true
+                            label: "Salida · HH:MM:SS"
+                            XTextField { Layout.fillWidth: true; text: options.endTime; onEditingFinished: downloadController.setOption("endTime", text) }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: outputPathColumn.implicitHeight + 20
+                        radius: 11
+                        color: theme.colors.surfaceSoft
+                        border.color: theme.colors.border
+                        ColumnLayout {
+                            id: outputPathColumn
+                            anchors.fill: parent
+                            anchors.margins: 10
+                            spacing: 3
+                            Text { text: "CARPETA DE SALIDA"; color: theme.colors.textDim; font.pixelSize: 8; font.weight: Font.Bold; font.letterSpacing: 0.9 }
+                            Text { Layout.fillWidth: true; text: viewState.effectiveOutputPath; color: theme.colors.text; font.pixelSize: 10; elide: Text.ElideMiddle }
+                            Text { Layout.fillWidth: true; text: "Al pulsar Iniciar descarga se generará únicamente este fragmento."; color: theme.colors.textMuted; font.pixelSize: 9; wrapMode: Text.WordWrap }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        XSwitch { text: "Corte preciso"; checked: options.preciseClip; onToggled: downloadController.setOption("preciseClip", checked) }
+                        XSwitch {
+                            text: "Conservar archivo completo"
+                            checked: options.keepOriginalOnClip
+                            onToggled: {
+                                downloadController.setOption("keepOriginalOnClip", checked)
+                                downloadController.setOption("forceFullDownload", checked)
+                            }
+                        }
+                        Item { Layout.fillWidth: true }
+                        XButton {
+                            visible: trimPopup.previousEnabled
+                            text: "Quitar recorte"
+                            compact: true
+                            kind: "ghost"
+                            onClicked: {
+                                downloadController.setOption("fragmentEnabled", false)
+                                downloadController.setOption("startTime", "00:00:00")
+                                downloadController.setOption("endTime", page.clockText(viewState.duration))
+                                trimPopup.close()
+                            }
+                        }
+                        XButton {
+                            text: "Usar este fragmento"
+                            compact: true
+                            kind: "primary"
+                            enabled: page.fragmentReady()
+                            onClicked: trimPopup.close()
                         }
                     }
                 }
@@ -273,7 +427,7 @@ Item {
                         spacing: 12
                         RowLayout {
                             Layout.fillWidth: true
-                            SectionTitle { Layout.fillWidth: true; compact: page.denseLayout; eyebrow: "MEJORAS"; title: "Procesamiento sin salir de Xomacito"; description: "Recorta, recodifica, extrae fotogramas o reescala con el mismo flujo."; number: "02" }
+                            SectionTitle { Layout.fillWidth: true; compact: page.denseLayout; eyebrow: "AJUSTES AVANZADOS"; title: "Herramientas técnicas"; description: "Subtítulos, códecs, fotogramas y reescalado. El recorte está junto a la vista previa."; number: "02" }
                             XButton { compact: true; text: "Cerrar"; kind: "ghost"; onClicked: advanced.close() }
                         }
                     TabBar {
@@ -281,7 +435,7 @@ Item {
                         Layout.fillWidth: true
                         background: Rectangle { radius: 11; color: theme.colors.surfaceSoft }
                         Repeater {
-                            model: ["Fragmento", "Subtítulos", "Recodificación", "Fotogramas", "Reescalado"]
+                            model: ["Subtítulos", "Recodificación", "Fotogramas", "Reescalado"]
                             TabButton {
                                 text: modelData
                                 contentItem: Text { text: parent.text; color: parent.checked ? theme.colors.text : theme.colors.textMuted; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; font.pixelSize: 11; font.weight: parent.checked ? Font.DemiBold : Font.Normal }
@@ -292,117 +446,6 @@ Item {
                     StackLayout {
                         Layout.fillWidth: true
                         currentIndex: toolsTabs.currentIndex
-
-                        ColumnLayout {
-                            spacing: 12
-                            RowLayout {
-                                Layout.fillWidth: true
-                                XSwitch {
-                                    text: "Activar recorte"
-                                    checked: options.fragmentEnabled
-                                    onToggled: downloadController.setOption("fragmentEnabled", checked)
-                                }
-                                Item { Layout.fillWidth: true }
-                                Text {
-                                    text: viewState.duration > 0 ? "Duración total · " + page.clockText(viewState.duration) : "Duración no disponible"
-                                    color: theme.colors.textMuted
-                                    font.pixelSize: 11
-                                }
-                            }
-                            Rectangle {
-                                Layout.fillWidth: true
-                                implicitHeight: guideColumn.implicitHeight + 22
-                                radius: 12
-                                color: theme.colors.surfaceSoft
-                                border.width: 1
-                                border.color: page.fragmentReady() ? theme.colors.success : theme.colors.border
-                                ColumnLayout {
-                                    id: guideColumn
-                                    anchors.fill: parent
-                                    anchors.margins: 11
-                                    spacing: 5
-                                    Text {
-                                        text: "1  Activa el recorte   ·   2  Define inicio y final   ·   3  Descarga"
-                                        color: theme.colors.text
-                                        font.pixelSize: 12
-                                        font.weight: Font.DemiBold
-                                    }
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: page.fragmentMessage()
-                                        color: page.fragmentReady() ? theme.colors.success : theme.colors.textMuted
-                                        font.pixelSize: 11
-                                        wrapMode: Text.WordWrap
-                                    }
-                                }
-                            }
-                            GridLayout {
-                                Layout.fillWidth: true
-                                columns: advanced.width > 720 ? 2 : 1
-                                columnSpacing: 12
-                                rowSpacing: 8
-                                LabeledControl {
-                                    Layout.fillWidth: true
-                                    label: "Inicio · HH:MM:SS"
-                                    hint: "Ejemplo: 00:00:30"
-                                    XTextField {
-                                        Layout.fillWidth: true
-                                        enabled: options.fragmentEnabled
-                                        placeholderText: "00:00:00"
-                                        text: options.startTime
-                                        onEditingFinished: downloadController.setOption("startTime", text)
-                                    }
-                                    XButton {
-                                        text: "Desde el inicio"
-                                        compact: true
-                                        kind: "secondary"
-                                        enabled: options.fragmentEnabled
-                                        onClicked: downloadController.setOption("startTime", "00:00:00")
-                                    }
-                                }
-                                LabeledControl {
-                                    Layout.fillWidth: true
-                                    label: "Final · HH:MM:SS"
-                                    hint: "Por defecto usa la duración completa."
-                                    XTextField {
-                                        Layout.fillWidth: true
-                                        enabled: options.fragmentEnabled
-                                        placeholderText: page.clockText(viewState.duration)
-                                        text: options.endTime
-                                        onEditingFinished: downloadController.setOption("endTime", text)
-                                    }
-                                    XButton {
-                                        text: "Hasta el final"
-                                        compact: true
-                                        kind: "secondary"
-                                        enabled: options.fragmentEnabled && viewState.duration > 0
-                                        onClicked: downloadController.setOption("endTime", page.clockText(viewState.duration))
-                                    }
-                                }
-                            }
-                            RowLayout {
-                                Layout.fillWidth: true
-                                visible: options.fragmentEnabled
-                                XSwitch {
-                                    text: "Corte exacto (más lento)"
-                                    checked: options.preciseClip
-                                    onToggled: downloadController.setOption("preciseClip", checked)
-                                    ToolTip.visible: hovered
-                                    ToolTip.text: "Busca el fotograma exacto; puede tardar más."
-                                }
-                                XSwitch {
-                                    text: "Descargar completo antes de cortar"
-                                    checked: options.forceFullDownload
-                                    onToggled: downloadController.setOption("forceFullDownload", checked)
-                                }
-                                XSwitch {
-                                    text: "Conservar archivo completo"
-                                    checked: options.keepOriginalOnClip
-                                    onToggled: downloadController.setOption("keepOriginalOnClip", checked)
-                                }
-                                Item { Layout.fillWidth: true }
-                            }
-                        }
 
                         GridLayout {
                             columns: advanced.width > 850 ? 3 : 1; rowSpacing: 10; columnSpacing: 10

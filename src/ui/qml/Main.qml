@@ -209,6 +209,17 @@ ApplicationWindow {
             opacity: 0.045
             visible: appController.catRarity < 6
         }
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 7
+            radius: 20
+            color: "transparent"
+            border.width: 1
+            border.color: Math.sin(motion.phase) > 0 ? "#6558B5" : "#4769B0"
+            opacity: theme.themeName === "platinum_duality"
+                     ? 0.26 + (Math.sin(motion.phase * 2) + 1) * 0.15 : 0
+            Behavior on border.color { ColorAnimation { duration: 900 } }
+        }
         MythicEffectField {
             anchors.fill: parent
             animationStyle: appController.catAnimationStyle
@@ -219,7 +230,8 @@ ApplicationWindow {
             visible: appController.catRarity >= 6
             opacity: appController.catAnimationStyle === "zarking-cyber"
                      ? 0.19
-                     : appController.catAnimationStyle === "blackbull-noir" ? 0.2 : 0.14
+                     : appController.catAnimationStyle === "blackbull-noir" ? 0.2
+                     : appController.catAnimationStyle === "strike-apex" ? 0.18 : 0.14
         }
         QtObject { id: motion; property real phase: 0 }
         NumberAnimation {

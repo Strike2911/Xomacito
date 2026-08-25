@@ -787,6 +787,15 @@ QTest.keyClick(window, Qt.Key_Escape)
 QTest.qWait(180)
 assert advanced_popup.property("opened") is False
 
+trim_popup = window.findChild(QObject, "downloadTrimPopup")
+trim_button = window.findChild(QObject, "openTrimButton")
+assert trim_popup is not None and trim_button is not None
+assert QMetaObject.invokeMethod(trim_popup, "open", Qt.DirectConnection)
+QTest.qWait(120)
+assert trim_popup.property("opened") is True
+QTest.keyClick(window, Qt.Key_Escape)
+QTest.qWait(120)
+
 controller.setPage(6)
 QTest.qWait(120)
 controller.theme.setCatThemeUnlocks(9)
@@ -879,8 +888,11 @@ controller.shutdown()
         advanced_popup = download.index("id: advanced")
         only_scroll = download.index("contentItem: ScrollView")
         self.assertGreater(only_scroll, advanced_popup, "Sólo las herramientas emergentes pueden desplazarse")
-        for label in ("Fragmento", "Subtítulos", "Recodificación", "Fotogramas", "Reescalado"):
+        for label in ("Subtítulos", "Recodificación", "Fotogramas", "Reescalado"):
             self.assertIn(label, download)
+        self.assertIn('text: options.fragmentEnabled ? "Recorte ✓" : "Recortar"', download)
+        self.assertIn("WaveformTrimmer", download)
+        self.assertNotIn('model: ["Fragmento",', download)
         image = (ROOT / "src" / "ui" / "qml" / "pages" / "ImageStudioPage.qml").read_text(encoding="utf-8")
         for label in ("Tamaño", "Lienzo", "Formato", "Mejora IA", "Video"):
             self.assertIn(label, image)

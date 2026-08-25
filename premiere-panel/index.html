@@ -11,8 +11,8 @@
     <header class="app-header">
       <div class="brand-mark" aria-hidden="true">X</div>
       <div class="brand-copy">
-        <span class="eyebrow">XOMACITO LINK</span>
-        <h1>Biblioteca Premiere</h1>
+        <span class="eyebrow">PREMIERE + XOMACITO</span>
+        <h1>Xomacito Link</h1>
       </div>
       <button id="refresh" class="icon-button" type="button" title="Actualizar biblioteca" aria-label="Actualizar biblioteca">↻</button>
     </header>
@@ -20,10 +20,10 @@
     <section id="empty" class="setup-card">
       <div class="setup-icon" aria-hidden="true">01</div>
       <span class="eyebrow">PRIMERA CONEXIÓN</span>
-      <h2>Usa la biblioteca de Xomacito</h2>
-      <p>Elige la misma carpeta que ves en la pestaña Biblioteca. Premiere sólo pedirá permiso una vez.</p>
+      <h2 id="setup-title">Conecta tu biblioteca</h2>
+      <p id="setup-copy">Elige la misma carpeta que ves en Biblioteca dentro de Xomacito. Premiere sólo pedirá permiso una vez.</p>
       <button id="choose-folder" class="button primary full" type="button">Elegir biblioteca</button>
-      <small>No se mueve, borra ni modifica ningún archivo original.</small>
+      <small id="setup-note">No se mueve, borra ni modifica ningún archivo original.</small>
     </section>
 
     <section id="library" class="hidden">
@@ -54,12 +54,12 @@
           <div class="sync-icon" aria-hidden="true">⇄</div>
           <div class="sync-copy">
             <span class="label">PROYECTO ACTIVO</span>
-            <strong id="project-name">Abre un proyecto de Premiere</strong>
+            <strong id="project-name">Abre un proyecto para conectarlo</strong>
             <small>Destino: Xomacito Import › Video / Audio / Imágenes / Recortes</small>
           </div>
           <span id="connection-state" class="connection-state">PAUSADO</span>
         </div>
-        <button id="connect-project" class="button primary full" type="button">Activar autoimportación</button>
+        <button id="connect-project" class="button primary full" type="button">Conectar proyecto abierto</button>
         <p id="connection-help" class="helper">Los archivos nuevos aparecerán cuando terminen de descargarse. No se crearán duplicados.</p>
       </section>
 

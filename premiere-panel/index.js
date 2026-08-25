@@ -23,6 +23,7 @@ let knownProjectPaths = new Set();
 let stableObservations = new Map();
 let lastProjectGuid = "";
 let currentProjectName = "";
+let unavailableFolderCount = 0;
 
 const byId = (id) => document.getElementById(id);
 
@@ -41,7 +42,7 @@ function renderConnection() {
   const syncStep = byId("sync-step");
   const projectReady = Boolean(currentProjectName);
 
-  button.textContent = autoSyncEnabled ? "Pausar autoimportación" : "Activar autoimportación";
+  button.textContent = autoSyncEnabled ? "Pausar autoimportación" : "Conectar proyecto abierto";
   button.classList.toggle("connected", autoSyncEnabled);
   badge.textContent = autoSyncEnabled ? "ACTIVO" : "PAUSADO";
   badge.className = `connection-state${autoSyncEnabled ? " connected" : ""}`;
@@ -72,11 +73,18 @@ function binForItem(path, kind) {
   return kind;
 }
 
-async function walk(folder, output = []) {
-  const entries = await folder.getEntries();
+async function walk(folder, output = [], depth = 0) {
+  let entries = [];
+  try {
+    entries = await folder.getEntries();
+  } catch (error) {
+    if (depth === 0) throw error;
+    unavailableFolderCount += 1;
+    return output;
+  }
   for (const entry of entries) {
     if (entry.isFolder) {
-      if (entry.name !== ".xomacito-thumbnails") await walk(entry, output);
+      if (entry.name !== ".xomacito-thumbnails") await walk(entry, output, depth + 1);
     } else if (entry.isFile && MEDIA_EXTENSIONS.has(extension(entry.name))) {
       const ext = extension(entry.name);
       const kind = kindForExtension(ext);
@@ -91,6 +99,17 @@ async function walk(folder, output = []) {
     }
   }
   return output;
+}
+
+function showSetup(title = "Conecta tu biblioteca", copy = "Elige la misma carpeta que ves en Biblioteca dentro de Xomacito.") {
+  libraryFolder = null;
+  allItems = [];
+  selectedPath = "";
+  stopAutoSync();
+  byId("library").classList.add("hidden");
+  byId("empty").classList.remove("hidden");
+  byId("setup-title").textContent = title;
+  byId("setup-copy").textContent = copy;
 }
 
 function visibleItems() {
@@ -165,10 +184,25 @@ async function connectFolder(forcePicker = false) {
     }
   }
   if (!folder) {
+    if (!forcePicker) {
+      showSetup();
+      return false;
+    }
     folder = await localFileSystem.getFolder();
-    if (!folder) return;
+    if (!folder) return false;
     const token = await localFileSystem.createPersistentToken(folder);
     localStorage.setItem(TOKEN_KEY, token);
+  }
+  try {
+    await folder.getEntries();
+  } catch (_error) {
+    localStorage.removeItem(TOKEN_KEY);
+    showSetup(
+      "Vuelve a vincular la biblioteca",
+      "Premiere perdió el permiso o la carpeta de OneDrive cambió. Tus archivos siguen intactos."
+    );
+    setStatus("La biblioteca anterior ya no está disponible.", "error");
+    return false;
   }
   libraryFolder = folder;
   knownProjectPaths = new Set();
@@ -178,12 +212,14 @@ async function connectFolder(forcePicker = false) {
   byId("folder-name").textContent = folder.nativePath;
   byId("folder-name").title = folder.nativePath;
   await refreshLibrary();
+  return true;
 }
 
 async function refreshLibrary() {
   if (!libraryFolder) return connectFolder(false);
   setStatus("Leyendo la biblioteca…", "working");
   try {
+    unavailableFolderCount = 0;
     allItems = await walk(libraryFolder, []);
     allItems.sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
     if (selectedPath && !allItems.some((item) => item.path === selectedPath)) {
@@ -191,9 +227,19 @@ async function refreshLibrary() {
       byId("selection-panel").classList.add("hidden");
     }
     renderItems();
-    setStatus(`${allItems.length} archivo(s) disponible(s).`, "success");
+    setStatus(
+      unavailableFolderCount
+        ? `${allItems.length} archivo(s). ${unavailableFolderCount} carpeta(s) de OneDrive aún no están disponibles.`
+        : `${allItems.length} archivo(s) disponible(s).`,
+      unavailableFolderCount ? "working" : "success"
+    );
   } catch (error) {
-    setStatus(`No se pudo leer la biblioteca: ${error}`, "error");
+    localStorage.removeItem(TOKEN_KEY);
+    showSetup(
+      "No pudimos abrir esa biblioteca",
+      "Puede haberse movido, estar sólo en la nube o haber perdido el permiso. Elígela nuevamente."
+    );
+    setStatus("Biblioteca desconectada. Vuelve a vincularla.", "error");
   }
 }
 

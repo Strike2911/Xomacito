@@ -1,17 +1,17 @@
 {
   "_INSTRUCCIONES_XOMACITO": {
     "VERSION": "5.2",
-    "INFO_1": "Tema de celebración rojo y azul para completar la colección.",
+    "INFO_1": "Tema oscuro minimalista con neón azul y violeta para completar la colección.",
     "ThemeName": "Platinum Duality"
   },
   "CustomColors": {
     "DOWNLOAD_BTN": [
-      "#007F92",
-      "#12D9ED"
+      "#5265B8",
+      "#6677CA"
     ],
     "DOWNLOAD_BTN_HOVER": [
-      "#006C7D",
-      "#42E5F4"
+      "#6173C8",
+      "#7888D8"
     ],
     "ANALYZE_BTN": [
       "#008CA1",
@@ -102,16 +102,16 @@
       "#62C9D6"
     ],
     "STATUS_SUCCESS": [
-      "#4F8500",
-      "#A4F052"
+      "#4F7B69",
+      "#78A58E"
     ],
     "STATUS_ERROR": [
-      "#B52D47",
-      "#F45D78"
+      "#8B4E67",
+      "#B76A86"
     ],
     "STATUS_WARNING": [
-      "#856000",
-      "#F0C756"
+      "#85744D",
+      "#B8A16F"
     ],
     "UPDATE_ALERT": [
       "#856000",
@@ -214,28 +214,28 @@
     "corner_radius": 12,
     "border_width": 0,
     "fg_color": [
-      "#F8FCFD",
-      "#071A26"
+      "#F1F2F6",
+      "#12141C"
     ],
     "top_fg_color": [
       "#FFFFFF",
-      "#0A2230"
+      "#171923"
     ],
     "border_color": [
-      "#B7D4DE",
-      "#17485D"
+      "#C7CBD7",
+      "#303750"
     ]
   },
   "CTkButton": {
     "corner_radius": 10,
     "border_width": 0,
     "fg_color": [
-      "#007F92",
-      "#12D9ED"
+      "#5265B8",
+      "#6677CA"
     ],
     "hover_color": [
-      "#006C7D",
-      "#42E5F4"
+      "#6173C8",
+      "#7888D8"
     ],
     "text_color": [
       "#FFFFFF",
@@ -263,11 +263,11 @@
     "border_width": 1,
     "fg_color": [
       "#FFFFFF",
-      "#06151F"
+      "#181A24"
     ],
     "border_color": [
-      "#AFCFD9",
-      "#246078"
+      "#C5CAD9",
+      "#343B59"
     ],
     "text_color": [
       "#122033",
@@ -552,44 +552,44 @@
   "ThemeName": "Platinum Duality",
   "XomacitoVisual": {
     "background_top": [
-      "#EDF5F8",
-      "#09091D"
+      "#E9EBF3",
+      "#0A0C13"
     ],
     "background_bottom": [
-      "#DCECEF",
-      "#21091D"
+      "#DFE2ED",
+      "#10111A"
     ],
     "glow_primary": [
-      "#008CA1",
-      "#12D9ED"
+      "#5B6FCC",
+      "#667BE0"
     ],
     "glow_secondary": [
-      "#C92857",
-      "#FF426D"
+      "#7659B7",
+      "#8A67D4"
     ],
     "header_top": [
-      "#DDF0F4",
-      "#0B2142"
+      "#F0F1F6",
+      "#11131B"
     ],
     "header_bottom": [
-      "#CDE9ED",
-      "#28102E"
+      "#E4E6EE",
+      "#161620"
     ],
     "header_border": [
-      "#AFCFD9",
-      "#17485D"
+      "#C3C8D8",
+      "#313752"
     ],
     "cat_ring": [
-      "#008CA1",
-      "#12D9ED"
+      "#5B6FCC",
+      "#7A65D4"
     ],
     "header_text": [
-      "#101418",
-      "#EAF7FB"
+      "#171922",
+      "#EEF0F8"
     ],
     "header_muted": [
-      "#4E6975",
-      "#7893A3"
+      "#626979",
+      "#9DA5B9"
     ],
     "version_bg": [
       "#D8F5E3",

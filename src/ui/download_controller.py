@@ -15,7 +15,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import requests
-from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, Property, QStandardPaths, QUrl, Signal, Slot
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import QColorDialog, QFileDialog, QInputDialog, QMessageBox
 
@@ -49,6 +49,7 @@ from .media_logic import (
 )
 from .presets import ALPHA_PRESET, BUILT_IN_PRESETS, PresetStore, resolve_recode_parameters
 from .settings_store import SettingsStore
+from .waveform import render_waveform, waveform_target
 from .workers import TaskPool
 
 
@@ -170,6 +171,9 @@ class DownloadController(QObject):
         self.dialogs = dialogs
         self.presets = presets
         self.ffmpeg = FFmpegProcessor(app_version=app_version)
+        cache_root = QStandardPaths.writableLocation(QStandardPaths.CacheLocation)
+        self.waveform_dir = Path(cache_root or tempfile.gettempdir()) / "waveforms"
+        self.waveform_dir.mkdir(parents=True, exist_ok=True)
         self.cancellation = threading.Event()
         output = settings.get("default_download_path") or str(Path.home() / "Downloads")
         self._state: dict[str, Any] = {
@@ -184,6 +188,7 @@ class DownloadController(QObject):
             "originalWidth": 0, "originalHeight": 0, "estimatedSize": "",
             "selectedTag": "Sin etiqueta", "selectedTagColor": "#6F7F8F",
             "effectiveOutputPath": output,
+            "waveformSource": "", "waveformBusy": False, "waveformError": "",
         }
         self._tags = self._load_download_tags()
         saved_tag = str(settings.get("selected_download_tag", "Sin etiqueta"))
@@ -221,6 +226,7 @@ class DownloadController(QObject):
         self._image_post: dict | None = None
         self._active_worker = None
         self._current_counts_as_download = False
+        self._last_download_was_partial = False
         self.progressReported.connect(self._apply_progress)
         self.settings.changed.connect(self._on_settings_changed)
 
@@ -278,6 +284,8 @@ class DownloadController(QObject):
             self._refresh_tag_state()
         elif key == "selectedSubtitleLanguage":
             self._refresh_subtitle_formats(str(value))
+        elif key == "selectedAudio":
+            self.prepareWaveform()
 
     @Slot(str, "QVariant")
     def setOption(self, key: str, value):
@@ -429,7 +437,8 @@ class DownloadController(QObject):
         self._set_state(
             localFile=str(Path(path)), url="", title=Path(path).stem, busy=True,
             analyzed=False, progress=0.0, status="Analizando archivo local…",
-            thumbnailSource="", imagePost=False,
+            thumbnailSource="", imagePost=False, waveformSource="", waveformBusy=False,
+            waveformError="",
         )
         self._active_worker = self.pool.submit(
             self._analyze_local_worker, str(Path(path)),
@@ -477,6 +486,7 @@ class DownloadController(QObject):
         self._set_state(
             localFile="", title="", analyzed=False, thumbnailSource="", imagePost=False, imageCount=0,
             hasVideo=False, hasAudio=False, sourceHasAlpha=False, status="Pega un enlace o importa un archivo.",
+            waveformSource="", waveformBusy=False, waveformError="",
         )
 
     @Slot()
@@ -494,6 +504,7 @@ class DownloadController(QObject):
         self._set_state(
             localFile="", title="Analizando…", busy=True, analyzed=False, progress=-1.0,
             status="Contactando el sitio y leyendo formatos…", thumbnailSource="", imagePost=False, imageCount=0,
+            waveformSource="", waveformBusy=False, waveformError="",
         )
         self._active_worker = self.pool.submit(
             self._analyze_url_worker, url,
@@ -647,6 +658,7 @@ class DownloadController(QObject):
         )
         if not image_post:
             self._ensure_preset_for_mode(mode)
+            self.prepareWaveform()
 
     def _apply_local_analysis(self, result: dict):
         video_choices = []
@@ -686,6 +698,80 @@ class DownloadController(QObject):
         })
         self.optionsChanged.emit()
         self._ensure_preset_for_mode("Video+Audio" if self._video_choices else "Solo Audio")
+        self.prepareWaveform()
+
+    @Slot()
+    def prepareWaveform(self):
+        """Genera una forma de onda local o desde el flujo de audio analizado."""
+        if not self._state.get("analyzed") or self._state.get("imagePost") or not self._state.get("hasAudio"):
+            self._set_state(waveformSource="", waveformBusy=False, waveformError="")
+            return
+        source = str(self._state.get("localFile") or "")
+        headers: dict[str, str] = {}
+        cache_key = source
+        if source:
+            local = Path(source)
+            if not local.is_file():
+                self._set_state(waveformSource="", waveformBusy=False, waveformError="El archivo ya no está disponible.")
+                return
+            stat = local.stat()
+            cache_key = f"{local.resolve()}|{stat.st_mtime_ns}|{stat.st_size}"
+        else:
+            audio_entry = dict(self._audio_map.get(self._state.get("selectedAudio"), {}) or {})
+            raw = dict(audio_entry.get("raw") or {})
+            source = str(raw.get("url") or "")
+            headers = dict(raw.get("http_headers") or {})
+            cache_key = f"{self._state.get('url')}|{self._state.get('selectedAudio')}"
+            if not source:
+                self._set_state(
+                    waveformSource="", waveformBusy=False,
+                    waveformError="El sitio no ofrece una vista previa de audio.",
+                )
+                return
+        target = waveform_target(self.waveform_dir, cache_key)
+        if target.is_file() and target.stat().st_size > 256:
+            self._set_state(
+                waveformSource=QUrl.fromLocalFile(str(target)).toString(),
+                waveformBusy=False,
+                waveformError="",
+            )
+            return
+        request_key = cache_key
+        self._set_state(waveformSource="", waveformBusy=True, waveformError="")
+        self.pool.submit(
+            render_waveform,
+            self.ffmpeg.ffmpeg_path,
+            source,
+            target,
+            headers,
+            on_result=lambda path: self._download_waveform_ready(request_key, path),
+            on_error=lambda message, _detail: self._download_waveform_failed(request_key, message),
+        )
+
+    def _current_waveform_key(self) -> str:
+        local_path = str(self._state.get("localFile") or "")
+        if local_path and Path(local_path).is_file():
+            stat = Path(local_path).stat()
+            return f"{Path(local_path).resolve()}|{stat.st_mtime_ns}|{stat.st_size}"
+        return f"{self._state.get('url')}|{self._state.get('selectedAudio')}"
+
+    def _download_waveform_ready(self, request_key: str, path: str):
+        if request_key != self._current_waveform_key():
+            return
+        self._set_state(
+            waveformSource=QUrl.fromLocalFile(str(path)).toString(),
+            waveformBusy=False,
+            waveformError="",
+        )
+
+    def _download_waveform_failed(self, request_key: str, _message: str):
+        if request_key != self._current_waveform_key():
+            return
+        self._set_state(
+            waveformSource="",
+            waveformBusy=False,
+            waveformError="No se pudo generar la vista previa; el recorte sigue disponible.",
+        )
 
     @staticmethod
     def _format_clock(seconds: float) -> str:
@@ -837,6 +923,10 @@ class DownloadController(QObject):
             result = self._recode_file(input_file, options, downloaded)
         elif options.get("fragmentEnabled") and options.get("local_file"):
             result = self._clip_without_recode(input_file, options)
+        elif options.get("fragmentEnabled") and downloaded and not self._last_download_was_partial:
+            result = self._clip_without_recode(input_file, options)
+            if not options.get("keepOriginalOnClip") and Path(input_file) != Path(result):
+                Path(input_file).unlink(missing_ok=True)
         elif (
             downloaded
             and options.get("mode") == "Video+Audio"
@@ -944,6 +1034,7 @@ class DownloadController(QObject):
 
     def _download_worker(self, options: dict) -> str:
         options = dict(options)
+        self._last_download_was_partial = False
         options["title"] = next_available_media_stem(
             options["output_path"], options["title"]
         )
@@ -1010,7 +1101,11 @@ class DownloadController(QObject):
                 try:
                     authenticated = apply_yt_patch({**ydl_options, **cookie})
                     self.progressReported.emit(0.02, "Reintentando con las cookies configuradas…")
-                    return download_media(options["url"], authenticated, self._download_progress, self.cancellation)
+                    authenticated_result = download_media(
+                        options["url"], authenticated, self._download_progress, self.cancellation,
+                    )
+                    self._last_download_was_partial = "download_ranges" in authenticated
+                    return authenticated_result
                 except Exception:
                     pass
             fallback = dict(ydl_options)
@@ -1049,6 +1144,9 @@ class DownloadController(QObject):
                 if choice != "Usar alternativa":
                     raise UserCancelledError("Descarga cancelada.") from first_error
             result = download_media(options["url"], fallback, self._download_progress, self.cancellation)
+            self._last_download_was_partial = False
+        else:
+            self._last_download_was_partial = "download_ranges" in ydl_options
         if not result or not Path(result).is_file():
             raise RuntimeError("La descarga terminó sin producir un archivo válido.")
         if invalid_argument_retry:
