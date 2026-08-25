@@ -721,6 +721,7 @@ class DownloadController(QObject):
             raw = dict(audio_entry.get("raw") or {})
             source = str(raw.get("url") or "")
             headers = dict(raw.get("http_headers") or {})
+            format_id = str(audio_entry.get("formatId") or raw.get("format_id") or "")
             cache_key = f"{self._state.get('url')}|{self._state.get('selectedAudio')}"
             if not source:
                 self._set_state(
@@ -738,15 +739,89 @@ class DownloadController(QObject):
             return
         request_key = cache_key
         self._set_state(waveformSource="", waveformBusy=True, waveformError="")
+        if self._state.get("localFile"):
+            self.pool.submit(
+                render_waveform,
+                self.ffmpeg.ffmpeg_path,
+                source,
+                target,
+                headers,
+                on_result=lambda path: self._download_waveform_ready(request_key, path),
+                on_error=lambda message, _detail: self._download_waveform_failed(request_key, message),
+            )
+            return
+        cookie_options, using_cookies = self._cookie_options()
         self.pool.submit(
-            render_waveform,
-            self.ffmpeg.ffmpeg_path,
+            self._remote_waveform_worker,
+            str(self._state.get("url") or ""),
             source,
+            format_id,
             target,
             headers,
+            cookie_options,
+            using_cookies,
             on_result=lambda path: self._download_waveform_ready(request_key, path),
             on_error=lambda message, _detail: self._download_waveform_failed(request_key, message),
         )
+
+    def _remote_waveform_worker(
+        self,
+        page_url: str,
+        direct_source: str,
+        format_id: str,
+        target: Path,
+        headers: dict[str, str],
+        cookie_options: dict[str, Any],
+        using_cookies: bool,
+    ) -> str:
+        """Usa la URL efímera y recurre a yt-dlp si el servidor la rechaza."""
+        try:
+            return render_waveform(
+                self.ffmpeg.ffmpeg_path, direct_source, target, headers,
+            )
+        except Exception as direct_error:
+            safe_console_print(
+                f"Vista previa directa rechazada; creando copia temporal: {direct_error}"
+            )
+
+        if not page_url:
+            raise RuntimeError("No hay un enlace original para recuperar la pista de audio.")
+
+        with tempfile.TemporaryDirectory(prefix="xomacito-wave-") as temporary_dir:
+            preview_root = Path(temporary_dir)
+            base_options: dict[str, Any] = {
+                "quiet": True,
+                "no_warnings": True,
+                "noplaylist": True,
+                "playlist_items": "1",
+                "format": format_id or "bestaudio/best",
+                "outtmpl": str(preview_root / "audio.%(ext)s"),
+                "overwrites": True,
+            }
+            configured = configure_ytdlp_options(base_options)
+            if using_cookies:
+                configured = apply_yt_patch({**configured, **cookie_options})
+            try:
+                extract_info_resilient(page_url, configured, download=True)
+            except Exception as selected_error:
+                if not format_id:
+                    raise RuntimeError(
+                        "El sitio no permitió recuperar el audio para dibujar la forma de onda."
+                    ) from selected_error
+                # Algunos extractores renuevan sus identificadores entre el análisis y
+                # el segundo acceso. En ese caso basta la mejor pista para visualizar.
+                fallback = dict(configured)
+                fallback["format"] = "bestaudio/best"
+                extract_info_resilient(page_url, fallback, download=True)
+
+            candidates = [
+                path for path in preview_root.iterdir()
+                if path.is_file() and path.suffix.lower() not in {".part", ".ytdl"}
+            ]
+            if not candidates:
+                raise RuntimeError("La pista temporal terminó sin contenido reproducible.")
+            preview = max(candidates, key=lambda path: path.stat().st_size)
+            return render_waveform(self.ffmpeg.ffmpeg_path, str(preview), target)
 
     def _current_waveform_key(self) -> str:
         local_path = str(self._state.get("localFile") or "")
@@ -770,7 +845,9 @@ class DownloadController(QObject):
         self._set_state(
             waveformSource="",
             waveformBusy=False,
-            waveformError="No se pudo generar la vista previa; el recorte sigue disponible.",
+            waveformError=(
+                "No se pudo leer esta pista. Reanaliza el enlace o elige otra calidad de audio."
+            ),
         )
 
     @staticmethod

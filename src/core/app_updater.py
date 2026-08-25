@@ -25,6 +25,29 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "4.0.8": {
+        "eyebrow": "XOMACITO 1.0",
+        "title": "Xomacito 1.0",
+        "subtitle": "RECORTES PRECISOS Y UNA BIBLIOTECA CONECTADA",
+        "message": (
+            "La forma de onda ahora se recupera incluso cuando el sitio rechaza su enlace "
+            "temporal, y el recortador permite acercarse a cada silencio antes de exportar."
+        ),
+        "highlights": [
+            "Forma de onda con recuperación automática mediante una copia temporal segura.",
+            "Zoom de hasta 16×, navegación horizontal y enfoque directo del fragmento.",
+            "Carpeta de salida clara para cada recorte y flujo compacto en Biblioteca.",
+            "Xomacito Link 1.3 organiza el proyecto activo de Premiere y tolera carpetas sincronizadas.",
+            "GATO STRIKE y el tema Platino reciben una presentación más elegante y distintiva.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Strike", "Zane", "Nuan",
+        ],
+        "closing": "Gracias a quienes prueban cada herramienta y ayudan a que Xomacito 1.0 siga creciendo.",
+        "platinumCelebration": False,
+        "smoothMotionPromotion": False,
+    },
     "4.0.7": {
         "eyebrow": "EDICION DEFINITIVA 1.0.7",
         "title": "Xomacito 1.0.7 Definitive Edition",

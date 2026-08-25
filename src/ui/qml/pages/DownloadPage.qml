@@ -317,7 +317,9 @@ Item {
                         objectName: "downloadWaveformTrimmer"
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        Layout.minimumHeight: 170
+                        Layout.minimumHeight: compact ? 174 : 208
+                        Layout.preferredHeight: compact ? 174 : 208
+                        compact: trimPopup.height < 560
                         waveformSource: viewState.waveformSource || ""
                         busy: Boolean(viewState.waveformBusy)
                         errorText: viewState.waveformError || ""

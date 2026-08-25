@@ -411,7 +411,7 @@ Item {
                         objectName: "mediaClipRange"
                         visible: selected.kind !== "Imagen"
                         Layout.fillWidth: true
-                        Layout.preferredHeight: page.dense ? 142 : 174
+                        Layout.preferredHeight: page.dense ? 174 : 208
                         compact: page.dense
                         waveformSource: viewState.waveformSource || ""
                         busy: Boolean(viewState.waveformBusy)

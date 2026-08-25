@@ -13,11 +13,35 @@ Item {
     property real inPoint: 0
     property real outPoint: duration
     property bool compact: false
+    property real zoomLevel: 1
+    property real viewStart: 0
+    readonly property real viewDuration: duration > 0 ? duration / Math.max(1, zoomLevel) : 0
+    readonly property real viewEnd: Math.min(duration, viewStart + viewDuration)
     signal inPointMoved(real value)
     signal outPointMoved(real value)
     signal retryRequested()
 
-    implicitHeight: root.compact ? 142 : 174
+    implicitHeight: root.compact ? 174 : 208
+
+    function clampViewStart(value) {
+        return Math.max(0, Math.min(Math.max(0, duration - viewDuration), Number(value) || 0))
+    }
+
+    function setZoom(level) {
+        var oldCenter = viewStart + viewDuration / 2
+        var selectionCenter = (Math.max(0, inPoint) + Math.max(inPoint, outPoint)) / 2
+        zoomLevel = Math.max(1, Math.min(16, level))
+        viewStart = clampViewStart((selectionCenter || oldCenter) - viewDuration / 2)
+    }
+
+    function focusSelection() {
+        var span = Math.max(0.25, outPoint - inPoint)
+        var desired = Math.max(1, Math.min(16, duration / (span * 1.35)))
+        zoomLevel = desired
+        viewStart = clampViewStart((inPoint + outPoint) / 2 - viewDuration / 2)
+    }
+
+    onDurationChanged: viewStart = clampViewStart(viewStart)
 
     function clock(seconds) {
         var total = Math.max(0, Number(seconds) || 0)
@@ -69,15 +93,24 @@ Item {
                 color: "#34405C"
                 opacity: 0.7
             }
-            Image {
+            Item {
+                id: waveformViewport
                 anchors.fill: parent
                 anchors.margins: 7
-                source: root.waveformSource
-                visible: status === Image.Ready
-                fillMode: Image.Stretch
-                asynchronous: true
-                cache: true
-                opacity: 0.92
+                clip: true
+                Image {
+                    id: waveformImage
+                    x: root.duration > 0 ? -(root.viewStart / root.duration) * width : 0
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width * Math.max(1, root.zoomLevel)
+                    height: parent.height
+                    source: root.waveformSource
+                    visible: status === Image.Ready
+                    fillMode: Image.Stretch
+                    asynchronous: true
+                    cache: true
+                    opacity: 0.92
+                }
             }
             Rectangle {
                 x: 0
@@ -103,11 +136,11 @@ Item {
 
             Column {
                 anchors.centerIn: parent
-                visible: !root.waveformSource || root.busy || Boolean(root.errorText)
+                visible: !root.waveformSource || root.busy || Boolean(root.errorText) || waveformImage.status === Image.Error
                 spacing: 4
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: root.busy ? "Generando forma de onda…" : root.errorText ? "Forma de onda no disponible" : "Preparando audio…"
+                    text: root.busy ? "Generando forma de onda…" : (root.errorText || waveformImage.status === Image.Error) ? "Forma de onda no disponible" : "Preparando audio…"
                     color: theme.colors.textMuted
                     font.pixelSize: 10
                 }
@@ -127,9 +160,9 @@ Item {
                 anchors.fill: parent
                 anchors.leftMargin: 3
                 anchors.rightMargin: 3
-                from: root.from
-                to: Math.max(0.05, root.to)
-                stepSize: root.duration > 120 ? 0.25 : 0.05
+                from: root.zoomLevel > 1 ? root.viewStart : root.from
+                to: Math.max(from + 0.05, root.zoomLevel > 1 ? root.viewEnd : root.to)
+                stepSize: root.zoomLevel >= 8 ? 0.01 : root.duration > 120 ? 0.1 : 0.02
                 snapMode: RangeSlider.SnapOnRelease
                 first.value: Math.max(from, Math.min(to, root.inPoint))
                 second.value: Math.max(first.value + 0.05, Math.min(to, root.outPoint))
@@ -152,6 +185,60 @@ Item {
                     border.color: "#6E68D8"; border.width: 3
                     Rectangle { anchors.centerIn: parent; width: 2; height: 13; radius: 1; color: "#4E4A93" }
                 }
+            }
+
+            WheelHandler {
+                acceptedModifiers: Qt.ControlModifier
+                onWheel: function(event) {
+                    root.setZoom(root.zoomLevel * (event.angleDelta.y > 0 ? 1.35 : 0.74))
+                }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 7
+            Text { text: "ZOOM"; color: theme.colors.textDim; font.pixelSize: 8; font.weight: Font.Bold; font.letterSpacing: 0.8 }
+            Slider {
+                id: zoomControl
+                Layout.preferredWidth: root.compact ? 94 : 130
+                from: 1
+                to: 16
+                stepSize: 1
+                value: root.zoomLevel
+                onMoved: root.setZoom(value)
+                ToolTip.visible: pressed
+                ToolTip.text: Number(root.zoomLevel).toFixed(root.zoomLevel < 2 ? 0 : 1) + "×"
+            }
+            Text { text: Number(root.zoomLevel).toFixed(root.zoomLevel < 2 ? 0 : 1) + "×"; color: theme.colors.primary; font.pixelSize: 9; font.weight: Font.DemiBold }
+            Slider {
+                id: panControl
+                Layout.fillWidth: true
+                visible: root.zoomLevel > 1.01
+                from: 0
+                to: Math.max(0, root.duration - root.viewDuration)
+                stepSize: Math.max(0.01, root.viewDuration / 100)
+                value: root.viewStart
+                onMoved: root.viewStart = root.clampViewStart(value)
+                ToolTip.visible: pressed
+                ToolTip.text: root.clock(root.viewStart) + " → " + root.clock(root.viewEnd)
+            }
+            Text {
+                visible: root.zoomLevel <= 1.01
+                Layout.fillWidth: true
+                text: "Ctrl + rueda también acerca la onda"
+                color: theme.colors.textDim
+                font.pixelSize: 8
+                elide: Text.ElideRight
+            }
+            Rectangle {
+                implicitWidth: focusLabel.implicitWidth + 18
+                implicitHeight: 24
+                radius: 8
+                color: focusMouse.containsMouse ? theme.colors.surfaceHover : theme.colors.surfaceSoft
+                border.color: theme.colors.border
+                Text { id: focusLabel; anchors.centerIn: parent; text: "Enfocar recorte"; color: theme.colors.textMuted; font.pixelSize: 8; font.weight: Font.DemiBold }
+                MouseArea { id: focusMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.focusSelection() }
             }
         }
 

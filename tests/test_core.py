@@ -319,10 +319,10 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertTrue(notice["smoothMotionPromotion"])
 
     def test_release_407_restores_every_historical_contributor(self):
-        notice = release_notice_for_version("4.0.7")
+        notice = release_notice_for_version("4.0.8")
 
         self.assertIsNotNone(notice)
-        self.assertEqual(notice["title"], "Xomacito 1.0.7 Definitive Edition")
+        self.assertEqual(notice["title"], "Xomacito 1.0")
         for contributor in (
             "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
             "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Strike", "Zane", "Nuan",
@@ -1243,9 +1243,9 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertNotIn("title_fixer.py", spec)
 
         self.assertIn("PrivilegesRequired=lowest", installer)
-        self.assertIn("OutputBaseFilename=Xomacito-1.0.7-Definitive-Edition-Setup", installer)
-        self.assertIn('#define MyAppVersion "4.0.7"', installer)
-        self.assertIn('#define MyAppDisplayVersion "1.0.7 Definitive Edition"', installer)
+        self.assertIn("OutputBaseFilename=Xomacito-1.0-Setup", installer)
+        self.assertIn('#define MyAppVersion "4.0.8"', installer)
+        self.assertIn('#define MyAppDisplayVersion "1.0"', installer)
         self.assertIn("shellexec postinstall skipifsilent skipifdoesntexist", installer)
         self.assertIn("CloseApplications=force", installer)
         self.assertIn("CloseApplicationsFilter=Xomacito.exe,ffmpeg.exe,ffprobe.exe", installer)
@@ -1324,7 +1324,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-1.0.7-Definitive-Edition-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-1.0-Setup.exe", build_script)
         self.assertIn("Assert-ReadableApplicationSource", build_script)
         self.assertIn("pyarmor_runtime|__pyarmor__|pytransform", build_script)
         self.assertIn('PROJECT_ROOT / "main\\.py"', build_script)

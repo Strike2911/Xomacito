@@ -4,8 +4,11 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from src.core.processor import FFmpegProcessor
+from src.ui.download_controller import DownloadController
 from src.ui.media_library_controller import MediaLibraryController
 from src.ui.waveform import render_waveform
 
@@ -43,6 +46,46 @@ class ImmediatePool:
 
 
 class MediaLibraryTests(unittest.TestCase):
+    def test_remote_waveform_recovers_through_a_temporary_ytdlp_download(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "waveform.png"
+            render_calls = []
+
+            def fake_render(_ffmpeg, source, destination, _headers=None):
+                render_calls.append(str(source))
+                if str(source) == "https://media.invalid/expired":
+                    raise RuntimeError("HTTP 403")
+                Path(destination).write_bytes(b"PNG" * 200)
+                return str(destination)
+
+            def fake_extract(_url, options, download=False):
+                self.assertTrue(download)
+                preview = Path(options["outtmpl"].replace("%(ext)s", "m4a"))
+                preview.write_bytes(b"audio-temporal")
+                return {"filepath": str(preview)}
+
+            fake_controller = SimpleNamespace(
+                ffmpeg=SimpleNamespace(ffmpeg_path="ffmpeg-test"),
+            )
+            with (
+                patch("src.ui.download_controller.render_waveform", side_effect=fake_render),
+                patch("src.ui.download_controller.extract_info_resilient", side_effect=fake_extract),
+            ):
+                output = DownloadController._remote_waveform_worker(
+                    fake_controller,
+                    "https://example.test/watch?v=1",
+                    "https://media.invalid/expired",
+                    "140",
+                    target,
+                    {},
+                    {},
+                    False,
+                )
+            self.assertEqual(Path(output), target)
+            self.assertTrue(target.is_file())
+            self.assertEqual(len(render_calls), 2)
+            self.assertTrue(render_calls[1].endswith("audio.m4a"))
+
     def test_library_rows_are_compact_groups_that_can_collapse(self):
         with tempfile.TemporaryDirectory() as directory:
             library = Path(directory)
@@ -167,6 +210,9 @@ class MediaLibraryTests(unittest.TestCase):
         self.assertIn("WaveformTrimmer", qml)
         self.assertIn("RangeSlider", waveform)
         self.assertIn("Las zonas planas indican silencio", waveform)
+        self.assertIn("zoomLevel", waveform)
+        self.assertIn("Enfocar recorte", waveform)
+        self.assertIn("waveformViewport", waveform)
         self.assertIn('objectName: "mediaClipRange"', qml)
         self.assertIn("SALIDA WAV", qml)
         self.assertIn("SALIDA MP4", qml)
