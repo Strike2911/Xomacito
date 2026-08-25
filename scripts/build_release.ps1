@@ -25,9 +25,31 @@ function Remove-VerifiedBuildWork {
     Remove-Item -LiteralPath $ResolvedWork -Recurse -Force
 }
 
+function Assert-ReadableApplicationSource {
+    $SourceFiles = @(
+        (Join-Path $ProjectRoot 'main.py'),
+        (Join-Path $ProjectRoot 'launcher.py')
+    ) + @(Get-ChildItem -LiteralPath (Join-Path $ProjectRoot 'src') -Recurse -File -Filter '*.py' |
+        Select-Object -ExpandProperty FullName)
+
+    $PyArmorMarkers = 'pyarmor_runtime|__pyarmor__|pytransform'
+    $ObfuscatedFiles = Select-String -LiteralPath $SourceFiles -Pattern $PyArmorMarkers -CaseSensitive:$false
+    if ($ObfuscatedFiles) {
+        $Locations = ($ObfuscatedFiles | ForEach-Object { "$($_.Path):$($_.LineNumber)" }) -join ', '
+        throw "Se detectó código ofuscado de PyArmor. El release solo acepta la fuente legible de main.py y src: $Locations"
+    }
+
+    $SpecContents = Get-Content -LiteralPath $Spec -Raw
+    if ($SpecContents -notmatch 'PROJECT_ROOT / "main\.py"') {
+        throw 'El spec de PyInstaller debe compilar directamente main.py desde la raíz del proyecto.'
+    }
+}
+
 if (-not (Test-Path -LiteralPath $Python)) {
     throw "No se encontró el Python de compilación: $Python"
 }
+
+Assert-ReadableApplicationSource
 
 if (-not $SkipApplicationBuild) {
     try {
@@ -85,7 +107,7 @@ if ($LASTEXITCODE -ne 0) {
     throw 'Inno Setup no pudo crear el instalador.'
 }
 
-$Installer = Join-Path $ProjectRoot 'release\Xomacito-1.0.1-Definitive-Edition-Setup.exe'
+$Installer = Join-Path $ProjectRoot 'release\Xomacito-1.0.7-Definitive-Edition-Setup.exe'
 if (-not (Test-Path -LiteralPath $Installer)) {
     throw "No se generó el instalador esperado: $Installer"
 }

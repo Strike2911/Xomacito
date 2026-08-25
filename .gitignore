@@ -4,11 +4,17 @@
 /dist/
 /release/
 /.build/work/
+/.build/work-public/
+/.build/public-hardened/
+/.build/obfuscation-probe-*/
+/.artifacts/
+/supabase/.temp/
 
 # Ejecutables generados (los instaladores se publican en GitHub Releases)
 /Xomacito.exe
 *.exe
 *.msi
+*.ccx
 
 # Python
 __pycache__/

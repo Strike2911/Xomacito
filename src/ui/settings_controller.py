@@ -77,6 +77,8 @@ class SettingsController(QObject):
             "inkscapePath": settings.get("inkscape_path", ""),
             "consoleWrap": settings.get("console_wrap", True),
             "consoleBusy": False,
+            "premierePanelAvailable": (self.project_root / "premiere-panel" / "manifest.json").is_file(),
+            "premierePanelPackageAvailable": (self.project_root / "premiere-panel" / "Xomacito-Link.ccx").is_file(),
         }
         self.console = ConsoleHandler(str(self.project_root / "bin"), str(self.project_root / "bin" / "ffmpeg"))
         self.console.connect_callbacks(
@@ -160,6 +162,20 @@ class SettingsController(QObject):
         path, _ = QFileDialog.getOpenFileName(None, "Ejecutable de Inkscape", "", "Inkscape (inkscape.exe);;Ejecutables (*.exe);;Todos (*.*)")
         if path:
             self.setValue("inkscapePath", path)
+
+    @Slot()
+    def openPremierePanel(self):
+        panel = self.project_root / "premiere-panel"
+        package = panel / "Xomacito-Link.ccx"
+        if package.is_file():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(package)))
+            return
+        if panel.is_dir():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(panel)))
+            self.notificationRequested.emit(
+                "info", "Panel en modo de prueba",
+                "El instalador CCX se generará después de validar el panel en Premiere.",
+            )
 
     def _cookie_options(self):
         mode = str(self._state["cookiesMode"])

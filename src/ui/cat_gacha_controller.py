@@ -23,7 +23,10 @@ class CatGachaController(QObject):
     ROLES = [
         "catId", "name", "source", "rarity", "rarityColor", "stars",
         "animationStyle", "unlocked", "equipped", "duplicateCount",
+        "effectLevel", "effectName",
     ]
+
+    EFFECT_NAMES = ("Sin aura", "Destello", "Resplandor", "Aurora", "Cósmica", "Xoma")
 
     def __init__(
         self,
@@ -74,6 +77,10 @@ class CatGachaController(QObject):
         self._total_downloads = max(0, int(saved.get("totalDownloads", 0)))
         self._total_rolls = max(0, int(saved.get("totalRolls", 0)))
         self._last_daily_roll = str(saved.get("lastDailyRoll", ""))
+        claimed_promotions = saved.get("claimedPromotions", [])
+        self._claimed_promotions = {
+            str(value) for value in claimed_promotions if isinstance(value, str) and value
+        } if isinstance(claimed_promotions, list) else set()
         hashes = saved.get("rewardedSourceHashes", [])
         self._rewarded_source_hashes = {
             str(value) for value in hashes if isinstance(value, str) and value
@@ -106,6 +113,8 @@ class CatGachaController(QObject):
         return "celestial" if cat.rarity >= 6 else "standard"
 
     def _result(self, cat: CatDefinition, **extra) -> dict:
+        duplicate_count = self._duplicates.get(cat.id, 0)
+        effect_level = min(5, duplicate_count)
         return {
             "catId": cat.id,
             "name": cat.name,
@@ -114,6 +123,9 @@ class CatGachaController(QObject):
             "rarityColor": cat.rarity_color,
             "stars": "★" * cat.rarity,
             "animationStyle": self._animation_style(cat),
+            "duplicateCount": duplicate_count,
+            "effectLevel": effect_level,
+            "effectName": self.EFFECT_NAMES[effect_level],
             **extra,
         }
 
@@ -130,6 +142,12 @@ class CatGachaController(QObject):
     def _refresh(self):
         equipped = self._by_id[self._equipped_id]
         daily_available = self._daily_available()
+        visible_catalog = [
+            cat for cat in self.catalog
+            if not cat.exclusive or cat.id in self._unlocked
+        ]
+        completion_catalog = [cat for cat in self.catalog if not cat.exclusive]
+        completion_unlocked = sum(cat.id in self._unlocked for cat in completion_catalog)
         self._state = {
             "downloadProgress": self._download_progress,
             "downloadProgressRatio": self._download_progress / 10.0,
@@ -139,12 +157,13 @@ class CatGachaController(QObject):
             "totalRolls": self._total_rolls,
             "dailyAvailable": daily_available,
             "canRoll": daily_available or self._earned_rolls > 0,
-            "unlockedCount": len(self._unlocked),
+            "unlockedCount": sum(cat.id in self._unlocked for cat in visible_catalog),
+            "isPlatinum": completion_unlocked == len(completion_catalog),
             "themeUnlockCount": sum(
                 1 for cat_id in self._unlocked
                 if self._by_id[cat_id].rarity >= 5
             ),
-            "totalCount": len(self.catalog),
+            "totalCount": len(visible_catalog),
             "equippedId": equipped.id,
             "equippedName": equipped.name,
             "equippedSource": self._url(equipped),
@@ -152,6 +171,10 @@ class CatGachaController(QObject):
             "equippedColor": equipped.rarity_color,
             "equippedStars": "★" * equipped.rarity,
             "equippedAnimationStyle": self._animation_style(equipped),
+            "equippedEffectLevel": min(5, self._duplicates.get(equipped.id, 0)),
+            "equippedEffectName": self.EFFECT_NAMES[
+                min(5, self._duplicates.get(equipped.id, 0))
+            ],
             "rollButtonText": (
                 "Tirada diaria gratis"
                 if daily_available
@@ -161,7 +184,7 @@ class CatGachaController(QObject):
             ),
         }
         items = []
-        for cat in self.catalog:
+        for cat in visible_catalog:
             items.append(
                 {
                     "catId": cat.id,
@@ -174,6 +197,10 @@ class CatGachaController(QObject):
                     "unlocked": cat.id in self._unlocked,
                     "equipped": cat.id == self._equipped_id,
                     "duplicateCount": self._duplicates.get(cat.id, 0),
+                    "effectLevel": min(5, self._duplicates.get(cat.id, 0)),
+                    "effectName": self.EFFECT_NAMES[
+                        min(5, self._duplicates.get(cat.id, 0))
+                    ],
                 }
             )
         self.collection.replace(items)
@@ -193,12 +220,14 @@ class CatGachaController(QObject):
                 "equippedId": self._equipped_id,
                 "duplicates": dict(sorted(self._duplicates.items())),
                 "rewardedSourceHashes": sorted(self._rewarded_source_hashes),
+                "claimedPromotions": sorted(self._claimed_promotions),
             },
         )
 
     def _choose_cat(self) -> CatDefinition:
-        locked = [cat for cat in self.catalog if cat.id not in self._unlocked]
-        candidates = locked or list(self.catalog)
+        rollable = [cat for cat in self.catalog if not cat.exclusive]
+        locked = [cat for cat in rollable if cat.id not in self._unlocked]
+        candidates = locked or rollable
         by_rarity: dict[int, list[CatDefinition]] = {}
         for cat in candidates:
             by_rarity.setdefault(cat.rarity, []).append(cat)
@@ -227,6 +256,16 @@ class CatGachaController(QObject):
                 f"¡{rolls} tirada{'s' if rolls != 1 else ''} gatuna{'s' if rolls != 1 else ''} conseguida{'s' if rolls != 1 else ''}!",
                 f"Tienes {pending} disponible{'s' if pending != 1 else ''}. Abre Personalización para usarlas.",
             )
+
+    @Slot(int)
+    def grantBonusRolls(self, amount):
+        """Añade una recompensa ya autorizada por el servidor y la persiste al instante."""
+        amount = max(0, int(amount or 0))
+        if not amount:
+            return
+        self._earned_rolls += amount
+        self._refresh()
+        self._persist()
 
     @Slot(str)
     def recordSuccessfulSource(self, source_key: str):
@@ -267,6 +306,7 @@ class CatGachaController(QObject):
             cat,
             isNew=is_new,
             themeUnlocked=bool(is_new and cat.rarity >= 5),
+            effectUpgraded=not is_new,
         )
         self._refresh()
         self._persist()
@@ -280,7 +320,7 @@ class CatGachaController(QObject):
         cat = next((item for item in self.catalog if item.name.casefold() == wanted), None)
         if cat is None:
             self.notificationRequested.emit(
-                "error", "Recompensa no disponible", "No se encontró BLACK BULL en la colección.",
+                "error", "Recompensa no disponible", f"No se encontró {str(cat_name or '').strip()} en la colección.",
             )
             return {}
 
@@ -297,13 +337,37 @@ class CatGachaController(QObject):
         if is_new:
             self.revealRequested.emit(result)
             self.notificationRequested.emit(
-                "success", "BLACK BULL 6★ desbloqueado", "Ya está disponible en Personalización.",
+                "success", f"{cat.name} {cat.rarity}★ desbloqueado", "Ya está disponible en Personalización.",
             )
         else:
             self.notificationRequested.emit(
-                "info", "BLACK BULL ya es tuyo", "Puedes equiparlo desde Personalización.",
+                "info", f"{cat.name} ya es tuyo", "Puedes equiparlo desde Personalización.",
             )
         return result
+
+    @Slot(result="QVariantMap")
+    def claimZaneBirthdayReward(self):
+        """Entrega una sola vez la recompensa local del cumpleaños de Zane de 2026."""
+        campaign = "zane-birthday-2026"
+        if self._today() != date(2026, 8, 26) or campaign in self._claimed_promotions:
+            return {}
+        dog = next((cat for cat in self.catalog if cat.name.casefold() == "perro zane"), None)
+        if dog is None:
+            return {}
+
+        self._claimed_promotions.add(campaign)
+        self._earned_rolls += 10
+        is_new = dog.id not in self._unlocked
+        self._unlocked.add(dog.id)
+        self._refresh()
+        self._persist()
+        return {
+            "campaign": campaign,
+            "title": "¡Feliz cumpleaños, Zane!",
+            "message": "Hoy celebramos a Zane con 10 rolleos y PERRO ZANE 5★, una recompensa exclusiva de este día.",
+            "rewardRolls": 10,
+            "cat": self._result(dog, isNew=is_new, themeUnlocked=is_new),
+        }
 
     @Slot(str)
     def equip(self, cat_id):

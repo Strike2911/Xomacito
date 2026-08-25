@@ -64,6 +64,16 @@ class PlaylistDownloadTests(unittest.TestCase):
         self.assertEqual(postprocessors[0]["preferredcodec"], "mp3")
         self.assertEqual(postprocessors[0]["preferredquality"], "192")
 
+    def test_playlist_video_prefers_mp4_and_announces_mkv_fallback(self):
+        with tempfile.TemporaryDirectory() as output:
+            manager = QueueManager(_runtime(output), lambda *_args: None)
+            options = {}
+            manager._apply_playlist_quality(options, "Video+Audio", "Mejor Calidad (Auto)")
+
+        self.assertTrue(options["format_selector"].startswith("bestvideo[ext=mp4]"))
+        self.assertIn("bestvideo+bestaudio/best", options["format_selector"])
+        self.assertEqual(options["merge_output_format"], "mp4/mkv")
+
     def test_flat_youtube_entry_is_rebuilt_as_a_watch_url(self):
         entry = {"id": "abc123XYZ09", "url": "abc123XYZ09", "title": "Tema"}
         playlist = {"extractor_key": "YoutubeTab"}

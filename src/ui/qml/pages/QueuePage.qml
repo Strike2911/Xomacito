@@ -5,6 +5,7 @@ import "../components"
 
 Item {
     id: page
+    objectName: "queuePage"
     property var viewState: batchController.state
     property var selected: batchController.selected
     property bool dense: height <= 620 || width <= 1280
@@ -145,9 +146,11 @@ Item {
                                 required property string status
                                 required property string detail
                                 required property real progress
+                                required property string thumbnail
                                 required property string jobType
                                 required property int itemCount
                                 required property string destinationTag
+                                required property string outputFormat
 
                                 width: jobs.width
                                 height: page.dense ? 62 : 70
@@ -173,11 +176,19 @@ Item {
                                         Layout.preferredWidth: page.dense ? 34 : 38
                                         Layout.preferredHeight: Layout.preferredWidth
                                         radius: 9
-                                        color: status === "COMPLETED" ? theme.colors.success
-                                            : status === "FAILED" ? theme.colors.error
-                                            : theme.colors.surfaceSoft
+                                        color: theme.colors.surfaceSoft
+                                        clip: true
+                                        Image {
+                                            id: jobThumbnail
+                                            anchors.fill: parent
+                                            source: thumbnail
+                                            fillMode: Image.PreserveAspectCrop
+                                            asynchronous: true
+                                            cache: true
+                                        }
                                         Text {
                                             anchors.centerIn: parent
+                                            visible: jobThumbnail.status !== Image.Ready
                                             text: jobType === "PLAYLIST" ? "≡"
                                                 : status === "COMPLETED" ? "✓" : "↓"
                                             color: "white"
@@ -200,9 +211,10 @@ Item {
                                         Text {
                                             Layout.fillWidth: true
                                             text: jobType === "PLAYLIST"
-                                                ? itemCount + " elementos · " + destinationTag
+                                                ? itemCount + " elementos · salida " + outputFormat
                                                 : detail + (destinationTag !== "Sin etiqueta"
                                                     ? " · " + destinationTag : "")
+                                                    + " · salida " + outputFormat
                                             color: theme.colors.textMuted
                                             font.pixelSize: 9
                                             elide: Text.ElideRight
@@ -307,6 +319,167 @@ Item {
                                     text: "Ninguno"
                                     kind: "ghost"
                                     onClicked: batchController.selectAllPlaylistEntries(false)
+                                }
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: page.dense ? 54 : 60
+                                radius: 11
+                                color: theme.colors.surface
+                                border.width: 1
+                                border.color: playlistCountSlider.activeFocus
+                                    ? theme.colors.primary : theme.colors.border
+
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 10
+                                    anchors.rightMargin: 10
+                                    anchors.topMargin: 6
+                                    anchors.bottomMargin: 6
+                                    spacing: 2
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Text {
+                                            text: "ELEGIR CANTIDAD"
+                                            color: theme.colors.textMuted
+                                            font.pixelSize: 8
+                                            font.weight: Font.Bold
+                                            font.letterSpacing: 0.7
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        Rectangle {
+                                            implicitWidth: playlistCountLabel.implicitWidth + 14
+                                            implicitHeight: 21
+                                            radius: 8
+                                            color: Qt.rgba(theme.colors.primary.r,
+                                                           theme.colors.primary.g,
+                                                           theme.colors.primary.b, 0.12)
+                                            border.width: 1
+                                            border.color: theme.colors.primary
+                                            Text {
+                                                id: playlistCountLabel
+                                                anchors.centerIn: parent
+                                                text: Math.round(playlistCountSlider.value) + " de "
+                                                    + Number(page.viewState.playlistEntryCount || 0)
+                                                color: theme.colors.primary
+                                                font.pixelSize: 9
+                                                font.weight: Font.Bold
+                                            }
+                                        }
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 8
+                                        Text {
+                                            text: "0"
+                                            color: theme.colors.textMuted
+                                            font.pixelSize: 9
+                                            font.weight: Font.DemiBold
+                                        }
+                                        Slider {
+                                            id: playlistCountSlider
+                                            objectName: "playlistCountSlider"
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 24
+                                            from: 0
+                                            to: Number(page.viewState.playlistEntryCount || 0)
+                                            stepSize: 1
+                                            live: true
+                                            snapMode: Slider.SnapAlways
+                                            enabled: to > 0
+                                            focusPolicy: Qt.StrongFocus
+                                            onMoved: batchController.setPlaylistSelectionCount(Math.round(value))
+                                            function selectFromPosition(pointerX) {
+                                                const ratio = Math.max(0, Math.min(1,
+                                                    (pointerX - leftPadding) / Math.max(1, availableWidth)))
+                                                const requested = Math.round(from + ratio * (to - from))
+                                                value = requested
+                                                batchController.setPlaylistSelectionCount(requested)
+                                            }
+                                            Keys.onLeftPressed: function(event) {
+                                                batchController.setPlaylistSelectionCount(
+                                                    Math.max(0, Number(page.viewState.playlistSelectionCount || 0) - 1))
+                                                event.accepted = true
+                                            }
+                                            Keys.onRightPressed: function(event) {
+                                                batchController.setPlaylistSelectionCount(
+                                                    Math.min(to, Number(page.viewState.playlistSelectionCount || 0) + 1))
+                                                event.accepted = true
+                                            }
+                                            ToolTip.visible: playlistDragArea.pressed
+                                            ToolTip.text: Math.round(value) + " elemento(s) seleccionado(s)"
+
+                                            Binding {
+                                                target: playlistCountSlider
+                                                property: "value"
+                                                value: Number(page.viewState.playlistSelectionCount || 0)
+                                            }
+
+                                            background: Rectangle {
+                                                x: playlistCountSlider.leftPadding
+                                                y: playlistCountSlider.topPadding
+                                                    + playlistCountSlider.availableHeight / 2 - height / 2
+                                                implicitWidth: 200
+                                                implicitHeight: 7
+                                                width: playlistCountSlider.availableWidth
+                                                height: implicitHeight
+                                                radius: height / 2
+                                                color: theme.colors.surfaceSoft
+                                                Rectangle {
+                                                    width: playlistCountSlider.visualPosition * parent.width
+                                                    height: parent.height
+                                                    radius: parent.radius
+                                                    color: playlistCountSlider.enabled
+                                                        ? theme.colors.primary : theme.colors.textDim
+                                                }
+                                            }
+
+                                            handle: Rectangle {
+                                                x: playlistCountSlider.leftPadding
+                                                    + playlistCountSlider.visualPosition
+                                                      * (playlistCountSlider.availableWidth - width)
+                                                y: playlistCountSlider.topPadding
+                                                    + playlistCountSlider.availableHeight / 2 - height / 2
+                                                implicitWidth: playlistDragArea.pressed ? 23 : 19
+                                                implicitHeight: implicitWidth
+                                                radius: width / 2
+                                                color: playlistCountSlider.enabled
+                                                    ? theme.colors.primary : theme.colors.textDim
+                                                border.width: 3
+                                                border.color: theme.colors.backgroundAlt
+                                                scale: playlistDragArea.pressed ? 1.12 : 1
+                                                Behavior on scale { NumberAnimation { duration: 100 } }
+                                            }
+
+                                            MouseArea {
+                                                id: playlistDragArea
+                                                objectName: "playlistCountDragArea"
+                                                anchors.fill: parent
+                                                z: 10
+                                                enabled: playlistCountSlider.enabled
+                                                hoverEnabled: true
+                                                preventStealing: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onPressed: function(mouse) {
+                                                    playlistCountSlider.forceActiveFocus()
+                                                    playlistCountSlider.selectFromPosition(mouse.x)
+                                                }
+                                                onPositionChanged: function(mouse) {
+                                                    if (pressed)
+                                                        playlistCountSlider.selectFromPosition(mouse.x)
+                                                }
+                                            }
+                                        }
+                                        Text {
+                                            text: Number(page.viewState.playlistEntryCount || 0)
+                                            color: theme.colors.textMuted
+                                            font.pixelSize: 9
+                                            font.weight: Font.DemiBold
+                                        }
+                                    }
                                 }
                             }
 
@@ -518,9 +691,10 @@ Item {
                                 text: selected.jobId
                                     ? (selected.jobType === "PLAYLIST"
                                         ? Number(selected.itemCount || 0)
-                                            + " elementos seleccionados"
-                                        : selected.detail || "Trabajo listo")
-                                    : "Los nuevos trabajos usarán estos ajustes."
+                                            + " elementos seleccionados · salida " + selected.outputFormat
+                                        : (selected.detail || "Trabajo listo")
+                                            + " · salida " + selected.outputFormat)
+                                    : "Los nuevos trabajos usarán estos ajustes. La salida se mostrará antes de iniciar."
                                 color: theme.colors.textMuted
                                 font.pixelSize: 10
                                 wrapMode: Text.WordWrap
@@ -730,7 +904,8 @@ Item {
                         XComboBox {
                             Layout.fillWidth: true
                             compact: true
-                            model: presetStore.videoPresets
+                            model: (selected.jobId ? selected.mode : viewState.globalMode) === "Solo Audio"
+                                ? presetStore.audioPresets : presetStore.videoPresets
                             currentIndex: Math.max(0, find(
                                 selected.preset || viewState.globalPreset))
                             onActivated: selected.jobId

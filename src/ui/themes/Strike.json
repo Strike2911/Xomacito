@@ -1,0 +1,28 @@
+{
+  "ThemeName": "Strike",
+  "CustomColors": {
+    "DOWNLOAD_BTN": ["#4E607D", "#63718D"],
+    "DOWNLOAD_BTN_HOVER": ["#43536D", "#74829E"],
+    "STATUS_SUCCESS": ["#55795E", "#7A9A82"],
+    "STATUS_WARNING": ["#8C744B", "#B39A6B"],
+    "STATUS_ERROR": ["#8C5258", "#B9757B"]
+  },
+  "CTkFrame": { "fg_color": ["#F5F5F6", "#18191D"] },
+  "CTkEntry": { "fg_color": ["#ECEDEF", "#202126"] },
+  "CTkButton": {
+    "fg_color": ["#4E607D", "#63718D"],
+    "hover_color": ["#43536D", "#74829E"]
+  },
+  "XomacitoVisual": {
+    "background_top": ["#E8E9EC", "#0D0D0F"],
+    "background_bottom": ["#DFE1E5", "#121316"],
+    "glow_primary": ["#63718D", "#63718D"],
+    "glow_secondary": ["#6D7D70", "#87978A"],
+    "header_top": ["#F5F5F6", "#18191D"],
+    "header_bottom": ["#FFFFFF", "#202126"],
+    "header_border": ["#C9CBD1", "#34363C"],
+    "header_text": ["#18191D", "#ECECF1"],
+    "header_muted": ["#5E626B", "#A7A9B0"],
+    "font_family": "Segoe UI"
+  }
+}

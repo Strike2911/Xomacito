@@ -66,6 +66,49 @@ class QtMigrationTests(unittest.TestCase):
         self.assertTrue(social.state["configured"])
         self.assertTrue(social._anon_key.startswith("sb_publishable_"))
         self.assertNotIn("service_role", social._anon_key)
+        self.assertEqual(social._normalize_email("  Papu@Example.COM "), "papu@example.com")
+
+    def test_email_reward_migration_is_private_idempotent_and_authenticated(self):
+        migration = (ROOT / "supabase/migrations/202608210001_add_email_signup_reward.sql").read_text(
+            encoding="utf-8"
+        ).lower()
+        self.assertIn("private.email_signup_rewards", migration)
+        self.assertIn("primary key references auth.users", migration)
+        self.assertIn("on conflict (user_id) do nothing", migration)
+        self.assertIn("security definer", migration)
+        self.assertIn("actor uuid := (select auth.uid())", migration)
+        self.assertIn("revoke all on function public.claim_email_signup_bonus() from public, anon", migration)
+        self.assertIn("grant execute on function public.claim_email_signup_bonus() to authenticated", migration)
+
+        reward_upgrade = (ROOT / "supabase/migrations/202608210002_raise_email_reward_to_100.sql").read_text(
+            encoding="utf-8"
+        ).lower()
+        self.assertIn("target_reward constant integer := 100", reward_upgrade)
+        self.assertIn("for update", reward_upgrade)
+        self.assertIn("return target_reward - already_awarded", reward_upgrade)
+        self.assertIn("revoke all on function public.claim_email_roll_reward() from public, anon", reward_upgrade)
+
+        reward_correction = (ROOT / "supabase/migrations/20260821091211_lower_email_reward_to_15.sql").read_text(
+            encoding="utf-8"
+        ).lower()
+        self.assertIn("target_reward constant integer := 15", reward_correction)
+        self.assertIn("for update", reward_correction)
+        self.assertIn("return target_reward - already_awarded", reward_correction)
+        self.assertNotIn("where rolls_awarded > 15", reward_correction)
+
+    def test_email_account_and_recovery_controls_are_present(self):
+        qml = (ROOT / "src/ui/qml/Main.qml").read_text(encoding="utf-8")
+        self.assertIn('objectName: "socialEmailField"', qml)
+        self.assertIn('objectName: "socialRecoveryCodeField"', qml)
+        self.assertIn("Crear y recibir 15", qml)
+        self.assertIn("requestPasswordReset", qml)
+        self.assertIn("confirmPasswordReset", qml)
+        self.assertIn("Popup.CloseOnEscape", qml)
+        self.assertIn('objectName: "recoveryEmailRequiredPopup"', qml)
+        self.assertIn('objectName: "recoveryAccountEmailField"', qml)
+        self.assertIn("ACTUALIZACIÓN DE CUENTA OBLIGATORIA", qml)
+        self.assertIn("Guardar y recibir 15", qml)
+        self.assertIn("Comprobar correo", qml)
 
     def test_social_keeps_local_cat_count_until_an_authenticated_sync(self):
         class MemorySettings:
@@ -95,6 +138,113 @@ class QtMigrationTests(unittest.TestCase):
         self.assertTrue(SocialController._token_expiring(token_with_expiry(int(time.time()) - 1)))
         self.assertFalse(SocialController._token_expiring(token_with_expiry(int(time.time()) + 3600)))
 
+    def test_strike_is_the_default_theme_and_legacy_name_migrates(self):
+        with tempfile.TemporaryDirectory() as appdata, patch.dict(os.environ, {"APPDATA": appdata}):
+            store = SettingsStore("XomacitoStrikeThemeTest")
+            theme = ThemeController(ROOT, store)
+            self.assertIn("Strike", theme.availableThemes)
+            self.assertEqual(theme.themeName, "Strike")
+            self.assertEqual(theme.colors["background"].lower(), "#0d0d0f")
+            self.assertNotEqual(theme.colors["primary"].lower(), "#63718d")
+
+            store.update({"selected_theme_accent": "codex_black", "theme_selection_explicit": True})
+            migrated = ThemeController(ROOT, store)
+            self.assertEqual(migrated.themeName, "Strike")
+            self.assertEqual(store.get("selected_theme_accent"), "Strike")
+
+    def test_guided_tour_is_contextual_skippable_and_repeatable(self):
+        main = (ROOT / "src/ui/qml/Main.qml").read_text(encoding="utf-8")
+        overlay = (ROOT / "src/ui/qml/components/TutorialOverlay.qml").read_text(encoding="utf-8")
+        settings = (ROOT / "src/ui/qml/pages/SettingsPage.qml").read_text(encoding="utf-8")
+        self.assertEqual(main.count('"target": "page"'), 7)
+        self.assertIn('"target": "navigation"', main)
+        self.assertIn('objectName: "guidedTutorialButton"', main)
+        self.assertIn("onGuidedTourRequested", main)
+        self.assertIn("tutorialQuietTicks < 4", main)
+        self.assertIn("updatePopup.visible || noticePopup.visible", main)
+        self.assertIn("|| !window.active", main)
+        self.assertIn('objectName: "guidedTutorialOverlay"', overlay)
+        self.assertIn("function startPage", overlay)
+        self.assertIn('text: tutorial.pageOnly ? "Cerrar" : "Omitir"', overlay)
+        self.assertIn("font.pixelSize: 21", overlay)
+        self.assertIn("font.pixelSize: 14", overlay)
+        self.assertIn("font.pixelSize: 13", overlay)
+        self.assertIn('objectName: "repeatGuidedTourButton"', settings)
+
+    def test_zane_birthday_popup_is_modal_and_blocks_the_guided_tour(self):
+        main = (ROOT / "src/ui/qml/Main.qml").read_text(encoding="utf-8")
+        application = (ROOT / "src/ui/application.py").read_text(encoding="utf-8")
+        self.assertIn('objectName: "zaneBirthdayPopup"', main)
+        self.assertIn("CELEBRACIÓN ESPECIAL · 26 DE AGOSTO", main)
+        self.assertIn("+10 ROLLEOS · PERRO ZANE 5★", main)
+        self.assertIn("zaneBirthdayPopup.visible", main)
+        self.assertIn("claimZaneBirthdayReward", application)
+
+    def test_guided_tour_opens_advances_and_remembers_this_update(self):
+        script = r'''
+from pathlib import Path
+from PySide6.QtCore import QObject, Q_ARG, QMetaObject, Qt, QUrl
+from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
+from src.ui.application import AppController
+
+app = QApplication([])
+root = Path.cwd()
+controller = AppController(app, root, "2.1", "4.0.2")
+engine = QQmlApplicationEngine()
+context = engine.rootContext()
+for name, value in (
+    ("appController", controller), ("theme", controller.theme),
+    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
+    ("settingsController", controller.config), ("catController", controller.cats),
+    ("socialController", controller.social), ("presetStore", controller.presets),
+    ("dialogBroker", controller.dialogs),
+):
+    context.setContextProperty(name, value)
+engine.load(QUrl.fromLocalFile(str(root / "src/ui/qml/Main.qml")))
+window = engine.rootObjects()[0]
+window.setProperty("width", 1280)
+window.setProperty("height", 720)
+tutorial = window.findChild(QObject, "guidedTutorialOverlay")
+coach = window.findChild(QObject, "guidedTutorialCoachCard")
+assert tutorial is not None and coach is not None
+tutorial.setProperty("stepIndex", 5)
+tutorial.setProperty("pageOnly", True)
+assert QMetaObject.invokeMethod(tutorial, "startFull", Qt.DirectConnection)
+assert tutorial.property("stepIndex") == 0
+assert tutorial.property("pageOnly") is False
+QTest.qWait(260)
+assert bool(tutorial.property("visible")), (
+    tutorial.property("opened"), tutorial.property("visible"), tutorial.property("stepIndex")
+)
+assert tutorial.property("stepIndex") == 0
+assert float(coach.property("y")) >= 0
+assert float(coach.property("y")) + float(coach.property("height")) <= 720
+assert QMetaObject.invokeMethod(tutorial, "advance", Qt.DirectConnection)
+QTest.qWait(80)
+assert tutorial.property("stepIndex") == 1
+assert QMetaObject.invokeMethod(tutorial, "omit", Qt.DirectConnection)
+QTest.qWait(80)
+assert tutorial.property("opened") is False
+assert controller.settings.get("guided_tour_seen_version") == "4.0.2"
+assert QMetaObject.invokeMethod(tutorial, "startPage", Qt.DirectConnection, Q_ARG("QVariant", 2))
+QTest.qWait(80)
+assert tutorial.property("pageOnly") is True
+assert tutorial.property("stepIndex") == 3
+assert controller.page == 2
+controller.shutdown()
+'''
+        with tempfile.TemporaryDirectory() as appdata:
+            environment = dict(os.environ)
+            environment.update({"QT_QPA_PLATFORM": "offscreen", "APPDATA": appdata})
+            result = subprocess.run(
+                [sys.executable, "-c", script], cwd=ROOT, env=environment,
+                capture_output=True, text=True, timeout=25, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
     def test_selected_theme_survives_a_full_settings_restart(self):
         with tempfile.TemporaryDirectory() as appdata, patch.dict(os.environ, {"APPDATA": appdata}):
             first_store = SettingsStore("XomacitoThemePersistenceTest")
@@ -107,7 +257,7 @@ class QtMigrationTests(unittest.TestCase):
             self.assertEqual(second_theme.themeName, "coffee_noir")
             self.assertTrue(second_store.get("theme_selection_explicit"))
 
-    def test_release_27_opens_the_zarking_confetti_after_the_update_notice(self):
+    def test_release_notice_does_not_open_collection_platinum_celebration(self):
         script = r'''
 from pathlib import Path
 from PySide6.QtCore import QObject, QMetaObject, Qt, QUrl
@@ -125,7 +275,8 @@ context = engine.rootContext()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
     ("downloadController", controller.download), ("batchController", controller.batch),
-    ("imageController", controller.image_studio), ("settingsController", controller.config),
+    ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
+    ("settingsController", controller.config),
     ("catController", controller.cats),
     ("presetStore", controller.presets), ("dialogBroker", controller.dialogs),
 ):
@@ -147,9 +298,7 @@ assert platinum is not None and platinum.property("opened") is False, (
 assert QMetaObject.invokeMethod(window, "finishReleaseNotice", Qt.DirectConnection)
 QTest.qWait(900)
 assert notice.property("opened") is False, notice.property("opened")
-assert platinum.property("opened") is True, platinum.property("opened")
-assert platinum.property("width") == window.property("width")
-assert platinum.property("height") == window.property("height")
+assert platinum.property("opened") is False, platinum.property("opened")
 controller.shutdown()
 '''
         with tempfile.TemporaryDirectory() as appdata:
@@ -179,7 +328,8 @@ context = engine.rootContext()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
     ("downloadController", controller.download), ("batchController", controller.batch),
-    ("imageController", controller.image_studio), ("settingsController", controller.config),
+    ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
+    ("settingsController", controller.config),
     ("catController", controller.cats),
     ("presetStore", controller.presets), ("dialogBroker", controller.dialogs),
 ):
@@ -225,7 +375,8 @@ context = engine.rootContext()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
     ("downloadController", controller.download), ("batchController", controller.batch),
-    ("imageController", controller.image_studio), ("settingsController", controller.config),
+    ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
+    ("settingsController", controller.config),
     ("catController", controller.cats),
     ("presetStore", controller.presets), ("dialogBroker", controller.dialogs),
 ):
@@ -287,7 +438,7 @@ app.clipboard().setText("https://example.test/playlist")
 QTest.qWait(220)
 assert controller.batch.state["url"] == "https://example.test/playlist"
 
-controller.setPage(2)
+controller.setPage(3)
 app.clipboard().setText("https://example.test/image")
 QTest.qWait(220)
 assert controller.image_studio.state["url"] == "https://example.test/image"
@@ -324,6 +475,71 @@ raise SystemExit(application.run_qt_app(Path.cwd(), '2.1'))
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
         self.assertNotIn("QQmlApplicationEngine failed", result.stderr)
 
+    def test_recovery_email_prompt_is_mandatory_and_login_dialog_is_compact(self):
+        script = r'''
+from pathlib import Path
+from PySide6.QtCore import QObject, QMetaObject, Qt, QUrl
+from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
+from src.ui.application import AppController
+
+app = QApplication([])
+root = Path.cwd()
+controller = AppController(app, root, "2.1")
+engine = QQmlApplicationEngine()
+context = engine.rootContext()
+for name, value in (
+    ("appController", controller), ("theme", controller.theme),
+    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
+    ("settingsController", controller.config),
+    ("catController", controller.cats), ("socialController", controller.social),
+    ("presetStore", controller.presets), ("dialogBroker", controller.dialogs),
+):
+    context.setContextProperty(name, value)
+engine.load(QUrl.fromLocalFile(str(root / "src/ui/qml/Main.qml")))
+window = engine.rootObjects()[0]
+window.setProperty("width", 1280)
+window.setProperty("height", 720)
+controller.social._set_state(
+    authenticated=True,
+    needsRecoveryEmail=True,
+    emailBusy=False,
+    recoveryEmailUpdatePending=False,
+)
+assert QMetaObject.invokeMethod(window, "requestRecoveryEmailRequirement", Qt.DirectConnection)
+QTest.qWait(360)
+recovery = window.findChild(QObject, "recoveryEmailRequiredPopup")
+field = window.findChild(QObject, "recoveryAccountEmailField")
+save = window.findChild(QObject, "recoveryEmailSaveButton")
+assert recovery is not None and recovery.property("opened") is True
+assert field is not None and save is not None
+assert float(recovery.property("height")) <= 455
+QTest.keyClick(window, Qt.Key_Escape)
+QTest.qWait(120)
+assert recovery.property("opened") is True
+
+assert QMetaObject.invokeMethod(recovery, "close", Qt.DirectConnection)
+controller.social._set_state(authenticated=False, needsRecoveryEmail=False)
+assert QMetaObject.invokeMethod(window, "requestSocialOnboarding", Qt.DirectConnection)
+QTest.qWait(360)
+login = window.findChild(QObject, "socialOnboardingPopup")
+assert login is not None and login.property("opened") is True
+login.setProperty("flow", "login")
+QTest.qWait(120)
+assert float(login.property("height")) <= 450
+controller.shutdown()
+'''
+        with tempfile.TemporaryDirectory() as appdata:
+            environment = dict(os.environ)
+            environment.update({"QT_QPA_PLATFORM": "offscreen", "APPDATA": appdata})
+            result = subprocess.run(
+                [sys.executable, "-c", script], cwd=ROOT, env=environment,
+                capture_output=True, text=True, timeout=20, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
     def test_cat_collection_page_and_reveal_fit_1280x720(self):
         script = r'''
 from pathlib import Path
@@ -342,7 +558,8 @@ context = engine.rootContext()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
     ("downloadController", controller.download), ("batchController", controller.batch),
-    ("imageController", controller.image_studio), ("settingsController", controller.config),
+    ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
+    ("settingsController", controller.config),
     ("catController", controller.cats), ("presetStore", controller.presets),
     ("dialogBroker", controller.dialogs),
 ):
@@ -353,7 +570,7 @@ window.setProperty("width", 1280)
 window.setProperty("height", 720)
 QTest.qWait(120)
 assert list(controller.pages) == [
-    "Descargar", "Cola", "Estudio de Imagen", "Personalización", "Scoreboard", "Configuración"
+    "Descargar", "Cola", "Biblioteca", "Estudio de Imagen", "Personalización", "Scoreboard", "Configuración"
 ]
 nav_row = window.findChild(QQuickItem, "navigationBar")
 assert nav_row is not None
@@ -361,18 +578,18 @@ nav_buttons = sorted(
     [item for item in nav_row.childItems() if item.property("text") in list(controller.pages)],
     key=lambda item: float(item.property("x")),
 )
-assert len(nav_buttons) == 6
+assert len(nav_buttons) == 7
 nav_widths = [float(button.property("width")) for button in nav_buttons]
 assert max(nav_widths) - min(nav_widths) < 1.5
 last_nav = nav_buttons[-1]
 assert float(nav_row.property("width")) - (
     float(last_nav.property("x")) + float(last_nav.property("width"))
 ) < 1.5
-controller.setPage(3)
+controller.setPage(4)
 QTest.qWait(650)
 assert window.findChild(QObject, "catCollectionGrid") is not None
 assert window.findChild(QObject, "catRollButton") is not None
-personalization_button = nav_buttons[3]
+personalization_button = nav_buttons[4]
 assert personalization_button.property("showRollBadge") is False
 controller.cats.recordSuccessfulDownloads(20)
 QTest.qWait(180)
@@ -402,7 +619,7 @@ controller.shutdown()
             )
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
-    def test_black_bull_reward_is_readable_when_claimed_from_download_page(self):
+    def test_black_bull_reward_is_readable_without_a_misleading_theme_badge(self):
         script = r'''
 from pathlib import Path
 from PySide6.QtCore import QObject, QUrl
@@ -419,7 +636,8 @@ context = engine.rootContext()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
     ("downloadController", controller.download), ("batchController", controller.batch),
-    ("imageController", controller.image_studio), ("settingsController", controller.config),
+    ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
+    ("settingsController", controller.config),
     ("catController", controller.cats),
     ("presetStore", controller.presets), ("dialogBroker", controller.dialogs),
 ):
@@ -439,19 +657,12 @@ assert result["name"] == "BLACK BULL" and result["themeUnlocked"] is True
 QTest.qWait(3300)
 popup = window.findChild(QObject, "catRevealPopup")
 card = window.findChild(QObject, "catRevealCard")
-badge = window.findChild(QObject, "catThemeRewardBadge")
-reward_text = window.findChild(QObject, "catThemeRewardText")
 equip = window.findChild(QObject, "catRevealEquipButton")
 cont = window.findChild(QObject, "catRevealContinueButton")
 assert popup is not None and popup.property("opened") is True
 assert float(popup.property("width")) >= 600
 assert float(popup.property("height")) >= 500
 assert card is not None and float(card.property("width")) >= 340
-assert badge is not None and badge.property("visible") is True
-assert float(badge.property("width")) >= 290
-assert float(badge.property("height")) >= 40
-assert reward_text is not None and "BLACK BULL" in reward_text.property("text")
-assert float(reward_text.property("width")) > 260
 assert equip is not None and equip.property("visible") is True
 assert cont is not None and cont.property("visible") is True
 assert controller.page == 0
@@ -463,6 +674,59 @@ controller.shutdown()
             result = subprocess.run(
                 [sys.executable, "-c", script], cwd=ROOT, env=environment,
                 capture_output=True, text=True, timeout=25, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        qml = (ROOT / "src/ui/qml/pages/CatGachaPage.qml").read_text(encoding="utf-8")
+        self.assertNotIn("DESBLOQUEADO CON BLACK BULL", qml)
+
+    def test_strike_reveal_finishes_smoothly_without_the_old_reward_badge(self):
+        script = r'''
+from pathlib import Path
+from PySide6.QtCore import QObject, QUrl
+from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
+from src.ui.application import AppController
+
+app = QApplication([])
+root = Path.cwd()
+controller = AppController(app, root, "1.0.5", "4.0.5")
+engine = QQmlApplicationEngine()
+context = engine.rootContext()
+for name, value in (
+    ("appController", controller), ("theme", controller.theme),
+    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
+    ("settingsController", controller.config), ("catController", controller.cats),
+    ("socialController", controller.social), ("presetStore", controller.presets),
+    ("dialogBroker", controller.dialogs),
+):
+    context.setContextProperty(name, value)
+engine.load(QUrl.fromLocalFile(str(root / "src/ui/qml/Main.qml")))
+window = engine.rootObjects()[0]
+window.setProperty("width", 1280)
+window.setProperty("height", 720)
+controller.setPage(4)
+QTest.qWait(180)
+cat = next(item for item in controller.cats.catalog if item.name == "GATO STRIKE")
+result = controller.cats._result(cat, isNew=True, themeUnlocked=True)
+controller.cats.revealRequested.emit(result)
+QTest.qWait(2700)
+popup = window.findChild(QObject, "catRevealPopup")
+card = window.findChild(QObject, "catRevealCard")
+assert popup is not None and popup.property("opened") is True
+assert float(popup.property("revealProgress")) >= 0.99
+assert card is not None and abs(float(card.property("rotation"))) < 0.01
+assert window.findChild(QObject, "catThemeRewardBadge") is None
+controller.shutdown()
+'''
+        with tempfile.TemporaryDirectory() as appdata:
+            environment = dict(os.environ)
+            environment.update({"QT_QPA_PLATFORM": "offscreen", "APPDATA": appdata})
+            result = subprocess.run(
+                [sys.executable, "-c", script], cwd=ROOT, env=environment,
+                capture_output=True, text=True, timeout=20, check=False,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -484,7 +748,8 @@ context = engine.rootContext()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
     ("downloadController", controller.download), ("batchController", controller.batch),
-    ("imageController", controller.image_studio), ("settingsController", controller.config),
+    ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
+    ("settingsController", controller.config),
     ("catController", controller.cats),
     ("presetStore", controller.presets), ("dialogBroker", controller.dialogs),
 ):
@@ -522,7 +787,7 @@ QTest.keyClick(window, Qt.Key_Escape)
 QTest.qWait(180)
 assert advanced_popup.property("opened") is False
 
-controller.setPage(5)
+controller.setPage(6)
 QTest.qWait(120)
 controller.theme.setCatThemeUnlocks(9)
 theme_combo = window.findChild(QObject, "themeCombo")
@@ -531,11 +796,12 @@ open_combo(theme_combo)
 QTest.keyClick(window, Qt.Key_Home)
 QTest.keyClick(window, Qt.Key_Down)
 QTest.keyClick(window, Qt.Key_Down)
+QTest.keyClick(window, Qt.Key_Down)
 QTest.keyClick(window, Qt.Key_Return)
 QTest.qWait(260)
 assert controller.theme.themeName == "forest_moss"
 assert controller.config.state["theme"] == "forest_moss"
-assert controller.theme.colors["primary"].lower() == "#5f8e4c"
+assert controller.theme.colors["primary"].lower() == "#67875a"
 
 probe = QQmlComponent(engine)
 probe.setData(b"""import QtQuick
@@ -592,19 +858,20 @@ controller.shutdown()
         for relative in (
             "src/ui/settings_controller.py", "src/ui/download_controller.py",
             "src/ui/batch_controller.py", "src/ui/image_controller.py",
+            "src/ui/media_library_controller.py",
         ):
             source = (ROOT / relative).read_text(encoding="utf-8")
             self.assertNotIn("@Slot(str, object)", source)
             self.assertIn('@Slot(str, "QVariant")', source)
 
-    def test_all_five_pages_are_persistent_and_have_tools(self):
+    def test_all_seven_pages_are_persistent_and_have_tools(self):
         main = (ROOT / "src" / "ui" / "qml" / "Main.qml").read_text(encoding="utf-8")
         self.assertIn("StackLayout", main)
         self.assertIn('objectName: "platinumCelebrationPopup"', main)
         self.assertIn("¡PLATINASTE XOMACITO!", main)
         self.assertIn("platinum_duality", main)
         self.assertIn("platinumCelebration", main)
-        for page in ("DownloadPage", "QueuePage", "ImageStudioPage", "SettingsPage", "CatGachaPage"):
+        for page in ("DownloadPage", "QueuePage", "MediaLibraryPage", "ImageStudioPage", "SettingsPage", "CatGachaPage", "ScoreboardPage"):
             self.assertEqual(main.count(page), 1)
 
         download = (ROOT / "src" / "ui" / "qml" / "pages" / "DownloadPage.qml").read_text(encoding="utf-8")
@@ -615,7 +882,7 @@ controller.shutdown()
         for label in ("Fragmento", "Subtítulos", "Recodificación", "Fotogramas", "Reescalado"):
             self.assertIn(label, download)
         image = (ROOT / "src" / "ui" / "qml" / "pages" / "ImageStudioPage.qml").read_text(encoding="utf-8")
-        for label in ("Tamaño", "Lienzo", "Formato", "I.A.", "Video"):
+        for label in ("Tamaño", "Lienzo", "Formato", "Mejora IA", "Video"):
             self.assertIn(label, image)
 
     def test_runtime_no_longer_depends_on_tk(self):

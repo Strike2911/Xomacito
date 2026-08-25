@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Xomacito Link</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="panel">
+    <header class="app-header">
+      <div class="brand-mark" aria-hidden="true">X</div>
+      <div class="brand-copy">
+        <span class="eyebrow">XOMACITO LINK</span>
+        <h1>Biblioteca Premiere</h1>
+      </div>
+      <button id="refresh" class="icon-button" type="button" title="Actualizar biblioteca" aria-label="Actualizar biblioteca">↻</button>
+    </header>
+
+    <section id="empty" class="setup-card">
+      <div class="setup-icon" aria-hidden="true">01</div>
+      <span class="eyebrow">PRIMERA CONEXIÓN</span>
+      <h2>Usa la biblioteca de Xomacito</h2>
+      <p>Elige la misma carpeta que ves en la pestaña Biblioteca. Premiere sólo pedirá permiso una vez.</p>
+      <button id="choose-folder" class="button primary full" type="button">Elegir biblioteca</button>
+      <small>No se mueve, borra ni modifica ningún archivo original.</small>
+    </section>
+
+    <section id="library" class="hidden">
+      <div class="progress-strip" aria-label="Flujo de conexión">
+        <div class="progress-step done">
+          <span>1</span><div><strong>Biblioteca</strong><small>Vinculada</small></div>
+        </div>
+        <div id="project-step" class="progress-step">
+          <span>2</span><div><strong>Proyecto</strong><small id="project-step-label">Pendiente</small></div>
+        </div>
+        <div id="sync-step" class="progress-step">
+          <span>3</span><div><strong>Autoimportar</strong><small id="sync-step-label">Pausado</small></div>
+        </div>
+      </div>
+
+      <section class="source-card">
+        <div class="card-heading">
+          <div>
+            <span class="label">BIBLIOTECA EN DISCO</span>
+            <p id="folder-name" class="folder-name" title=""></p>
+          </div>
+          <button id="change-folder" class="button quiet" type="button">Cambiar</button>
+        </div>
+      </section>
+
+      <section class="sync-card">
+        <div class="sync-heading">
+          <div class="sync-icon" aria-hidden="true">⇄</div>
+          <div class="sync-copy">
+            <span class="label">PROYECTO ACTIVO</span>
+            <strong id="project-name">Abre un proyecto de Premiere</strong>
+            <small>Destino: Xomacito Import › Video / Audio / Imágenes / Recortes</small>
+          </div>
+          <span id="connection-state" class="connection-state">PAUSADO</span>
+        </div>
+        <button id="connect-project" class="button primary full" type="button">Activar autoimportación</button>
+        <p id="connection-help" class="helper">Los archivos nuevos aparecerán cuando terminen de descargarse. No se crearán duplicados.</p>
+      </section>
+
+      <section class="browser-card">
+        <div class="browser-heading">
+          <div>
+            <span class="label">ARCHIVOS DISPONIBLES</span>
+            <span id="item-count" class="count">0</span>
+          </div>
+          <span class="microcopy">Selecciona para importar o enviar al cabezal</span>
+        </div>
+
+        <div id="filters" class="filter-row" role="group" aria-label="Filtrar archivos">
+          <button class="filter active" type="button" data-kind="Todos">Todos</button>
+          <button class="filter" type="button" data-kind="Video">Video</button>
+          <button class="filter" type="button" data-kind="Audio">Audio</button>
+          <button class="filter" type="button" data-kind="Imagen">Imagen</button>
+        </div>
+
+        <label class="search-wrap">
+          <span aria-hidden="true">⌕</span>
+          <input id="search" type="search" autocomplete="off" placeholder="Buscar por nombre o formato">
+        </label>
+
+        <div id="items" class="items" aria-live="polite"></div>
+      </section>
+
+      <footer class="actions">
+        <div id="selection-panel" class="selection-panel hidden">
+          <div>
+            <span class="label">SELECCIÓN</span>
+            <strong id="selection-summary">Selecciona un archivo</strong>
+          </div>
+          <div class="action-grid">
+            <button id="import-project" class="button secondary" type="button" disabled>Importar al bin</button>
+            <button id="add-timeline" class="button primary" type="button" disabled>Añadir al cabezal</button>
+          </div>
+        </div>
+        <div class="activity-row">
+          <span id="activity-dot" class="activity-dot"></span>
+          <p id="status" class="status">Panel listo.</p>
+        </div>
+      </footer>
+    </section>
+  </main>
+  <script src="index.js"></script>
+</body>
+</html>

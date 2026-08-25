@@ -24,6 +24,8 @@ RARITY_OVERRIDES = {
     "gato playera": 6,
     "gato zarking": 6,
     "gato black bull": 6,
+    "perro zane": 5,
+    "frido": 5,
 }
 ANIMATION_OVERRIDES = {
     "gato mago": "arcane-mage",
@@ -33,7 +35,10 @@ ANIMATION_OVERRIDES = {
 }
 NAME_OVERRIDES = {
     "gato black bull": "BLACK BULL",
+    "perro zane": "PERRO ZANE",
+    "frido": "Frido",
 }
+EXCLUSIVE_NAMES = {"perro zane"}
 CATALOG_SCHEMA = 2
 AVATAR_SIZE = 384
 
@@ -172,6 +177,7 @@ def import_collection(source: Path, destination: Path, *, append: bool = False) 
                 "avatar": avatar_name,
                 "originalFile": source_path.name,
                 "animationStyle": ANIMATION_OVERRIDES.get(normalized_name, "standard"),
+                "exclusive": normalized_name in EXCLUSIVE_NAMES,
             }
         )
 
@@ -191,6 +197,8 @@ def import_collection(source: Path, destination: Path, *, append: bool = False) 
             normalized_name,
             str(item.get("animationStyle") or "standard"),
         )
+        if normalized_name in EXCLUSIVE_NAMES:
+            item["exclusive"] = True
     cats.sort(key=lambda item: str(item.get("name", "")).casefold())
 
     active_names = {item["image"] for item in cats} | {item["avatar"] for item in cats} | {"catalog.json"}

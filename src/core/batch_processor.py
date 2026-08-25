@@ -519,6 +519,21 @@ class QueueManager:
                     f"{video_title}: el enlace del elemento no se pudo reconstruir.",
                 )
                 continue
+
+            active_thumbnail = entry.get('thumbnail') or ''
+            if not active_thumbnail:
+                for candidate in reversed(entry.get('thumbnails') or []):
+                    if isinstance(candidate, dict) and candidate.get('url'):
+                        active_thumbnail = candidate['url']
+                        break
+            if isinstance(job.analysis_data, dict):
+                job.analysis_data['thumbnail'] = active_thumbnail
+            self.ui_callback(
+                job.job_id,
+                "RUNNING",
+                f"[{i+1}/{total_videos}] Preparando: {video_title}",
+                (i / total_videos) * 100,
+            )
             
             # Callback de progreso interno
             def playlist_progress_callback(vid_percent, vid_message):
@@ -728,18 +743,22 @@ class QueueManager:
             if "Mejor Compatible" in quality_setting:
                 # Buscar H.264 (avc1) y AAC (mp4a) en contenedor MP4
                 # Fallback a best si no encuentra MP4 exacto
-                selector = "bestvideo[ext=mp4][vcodec^=avc]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+                selector = "bestvideo[ext=mp4][vcodec^=avc]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
             elif "4K" in quality_setting:
-                selector = "bestvideo[height=2160]+bestaudio/best[height=2160]/best"
+                selector = "bestvideo[ext=mp4][height=2160]+bestaudio[ext=m4a]/best[ext=mp4][height=2160]/bestvideo[height=2160]+bestaudio/best[height=2160]/best"
             elif "1080p" in quality_setting:
-                selector = "bestvideo[height=1080]+bestaudio/best[height=1080]/best"
+                selector = "bestvideo[ext=mp4][height=1080]+bestaudio[ext=m4a]/best[ext=mp4][height=1080]/bestvideo[height=1080]+bestaudio/best[height=1080]/best"
             elif "720p" in quality_setting:
-                selector = "bestvideo[height=720]+bestaudio/best[height=720]/best"
+                selector = "bestvideo[ext=mp4][height=720]+bestaudio[ext=m4a]/best[ext=mp4][height=720]/bestvideo[height=720]+bestaudio/best[height=720]/best"
             elif "480p" in quality_setting:
-                selector = "bestvideo[height=480]+bestaudio/best[height=480]/best"
+                selector = "bestvideo[ext=mp4][height=480]+bestaudio[ext=m4a]/best[ext=mp4][height=480]/bestvideo[height=480]+bestaudio/best[height=480]/best"
             else:
                 # Mejor Calidad (Auto)
-                selector = "bv+ba/b"
+                selector = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo+bestaudio/best"
+
+            # MP4 es la salida preferida. Si los streams del sitio no son
+            # compatibles, yt-dlp usa MKV y la interfaz lo anuncia de antemano.
+            options['merge_output_format'] = "mp4/mkv"
 
         elif mode == "Solo Audio":
             if "Mejor Compatible" in quality_setting:
@@ -773,6 +792,8 @@ class QueueManager:
             'noprogress': True,
             'ffmpeg_location': self.main_app.ffmpeg_processor.ffmpeg_path
         }
+        if options.get('merge_output_format'):
+            ydl_opts['merge_output_format'] = options['merge_output_format']
         if options.get("mode") == "Solo Audio":
             # El stream de mayor calidad de YouTube suele venir dentro de WEBM.
             # En la cola siempre lo extraemos a MP3 para entregar un archivo de
@@ -793,7 +814,9 @@ class QueueManager:
                     pct = (downloaded / total) * 100
                     progress_callback(pct, f"Descargando: {title}")
             elif d['status'] == 'finished':
-                progress_callback(100, f"Procesando: {title}")
+                extension = os.path.splitext(str(d.get('filename') or ''))[1].lstrip('.').upper()
+                suffix = f" ({extension})" if extension else ""
+                progress_callback(100, f"Procesando{suffix}: {title}")
 
         ydl_opts['progress_hooks'] = [hook]
         
@@ -1029,6 +1052,8 @@ class QueueManager:
             'restrictfilenames': True,
             'noprogress': True,
         }
+        if mode == "Video+Audio":
+            ydl_opts['merge_output_format'] = predicted_ext.lstrip('.') or 'mp4'
 
         # ✅ CORRECCIÓN DINÁMICA: Extraer audio respetando el formato original
         if mode == "Solo Audio":

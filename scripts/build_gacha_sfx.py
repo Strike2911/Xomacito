@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import random
 import struct
 import wave
 from dataclasses import dataclass
@@ -28,17 +27,17 @@ def _oscillator(phase: float, waveform: str) -> float:
     if waveform == "triangle":
         return 2.0 / math.pi * math.asin(math.sin(phase))
     if waveform == "soft-square":
-        # A warm, rounded pulse keeps the impact without the buzzy old square tone.
+        # A rounded pulse with very little upper-harmonic energy avoids the old buzz.
         return (
-            math.sin(phase) * 0.76
-            + math.sin(phase * 2.0) * 0.18
-            + math.sin(phase * 3.0) * 0.06
+            math.sin(phase) * 0.86
+            + math.sin(phase * 2.0) * 0.10
+            + math.sin(phase * 3.0) * 0.04
         )
     if waveform == "chime":
         return (
-            math.sin(phase) * 0.72
-            + math.sin(phase * 2.01) * 0.20
-            + math.sin(phase * 3.97) * 0.08
+            math.sin(phase) * 0.80
+            + math.sin(phase * 2.01) * 0.15
+            + math.sin(phase * 3.97) * 0.05
         )
     return math.sin(phase)
 
@@ -51,8 +50,11 @@ def _envelope(local_time: float, tone: Tone) -> float:
 
 
 def render(filename: str, duration: float, tones: list[Tone], *, sparkle: float = 0.0) -> None:
-    rng = random.Random(f"Xomacito::{filename}")
-    samples: list[int] = []
+    raw_samples: list[float] = []
+    filtered = 0.0
+    # One-pole low-pass: it preserves the musical impact while taming brittle highs.
+    cutoff_hz = 6_800.0
+    low_pass_alpha = 1.0 - math.exp(-2.0 * math.pi * cutoff_hz / SAMPLE_RATE)
     for frame in range(int(duration * SAMPLE_RATE)):
         current = frame / SAMPLE_RATE
         mixed = 0.0
@@ -65,9 +67,24 @@ def render(filename: str, duration: float, tones: list[Tone], *, sparkle: float 
             mixed += _oscillator(phase, tone.waveform) * tone.volume * _envelope(local, tone)
         if sparkle and 0.12 < current < duration - 0.08:
             burst = max(0.0, math.sin(current * math.pi * (15 + int(current * 7))))
-            mixed += (rng.random() * 2.0 - 1.0) * sparkle * burst**9
-        mixed = math.tanh(mixed * 1.06) * 0.76
-        samples.append(int(max(-1.0, min(1.0, mixed)) * 32767))
+            shimmer = (
+                math.sin(2.0 * math.pi * 2_850.0 * current) * 0.72
+                + math.sin(2.0 * math.pi * 4_120.0 * current) * 0.28
+            )
+            mixed += shimmer * sparkle * burst**7
+
+        # Short global fades prevent clicks and a gentle low-pass avoids sharp edges.
+        edge_fade = min(1.0, current / 0.012, (duration - current) / 0.035)
+        filtered += low_pass_alpha * (mixed - filtered)
+        raw_samples.append(filtered * max(0.0, edge_fade))
+
+    peak = max((abs(sample) for sample in raw_samples), default=1.0)
+    # 62% peak leaves generous headroom for Windows mixers and small speakers.
+    gain = 0.62 / max(0.001, peak)
+    samples = [
+        int(max(-0.62, min(0.62, sample * gain)) * 32767)
+        for sample in raw_samples
+    ]
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     with wave.open(str(OUTPUT_DIR / filename), "wb") as output:
@@ -143,6 +160,13 @@ def main() -> None:
         *chord(1.02, 1.30, [293.66, 440.00, 739.99, 1174.66], 1.12),
         Tone(1.42, 0.86, 1760.00, 0.20, sweep=520, waveform="chime"),
     ], sparkle=0.052)
+    render("gacha-reveal-6-strike.wav", 3.18, [
+        Tone(0.00, 1.75, 65.41, 0.30, sweep=420, waveform="soft-square"),
+        Tone(0.26, 1.30, 196.00, 0.25, sweep=980, waveform="triangle"),
+        Tone(0.72, 0.92, 783.99, 0.22, sweep=880, waveform="chime"),
+        *chord(1.28, 1.72, [392.00, 587.33, 783.99, 1174.66, 1567.98], 1.22),
+        Tone(1.92, 1.08, 2093.00, 0.20, sweep=720, waveform="chime"),
+    ], sparkle=0.078)
     render("gacha-equip-6-arcane.wav", 1.82, [
         Tone(0.00, 1.18, 130.81, 0.26, sweep=720, waveform="soft-square"),
         *chord(0.48, 1.20, [523.25, 783.99, 1046.50], 0.88),
@@ -163,6 +187,11 @@ def main() -> None:
         Tone(0.32, 0.72, 220.00, 0.28, sweep=330, waveform="triangle"),
         *chord(0.74, 1.08, [293.66, 440.00, 587.33, 880.00], 1.02),
     ], sparkle=0.046)
+    render("gacha-equip-6-strike.wav", 2.36, [
+        Tone(0.00, 1.18, 82.41, 0.28, sweep=620, waveform="soft-square"),
+        Tone(0.38, 0.92, 329.63, 0.25, sweep=760, waveform="triangle"),
+        *chord(0.86, 1.34, [392.00, 659.25, 987.77, 1567.98], 1.08),
+    ], sparkle=0.068)
 
 
 if __name__ == "__main__":

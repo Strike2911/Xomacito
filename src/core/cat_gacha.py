@@ -27,6 +27,7 @@ class CatDefinition:
     avatar_path: Path
     original_file: str = ""
     animation_style: str = "standard"
+    exclusive: bool = False
 
     @property
     def rarity_color(self) -> str:
@@ -65,6 +66,7 @@ def load_cat_catalog(project_root: str | Path) -> list[CatDefinition]:
                 avatar_path=avatar_path,
                 original_file=str(item.get("originalFile") or ""),
                 animation_style=str(item.get("animationStyle") or "standard"),
+                exclusive=bool(item.get("exclusive", False)),
             )
         )
 
@@ -93,7 +95,8 @@ def starter_cat(catalog: list[CatDefinition]) -> CatDefinition:
     if not catalog:
         raise RuntimeError("Xomacito no encontró imágenes para la colección de gatos.")
     preferred = next(
-        (cat for cat in catalog if cat.name.casefold() == "gatito pensativo"),
+        (cat for cat in catalog if not cat.exclusive and cat.name.casefold() == "gatito pensativo"),
         None,
     )
-    return preferred or min(catalog, key=lambda cat: (cat.rarity, cat.name.casefold()))
+    rollable = [cat for cat in catalog if not cat.exclusive]
+    return preferred or min(rollable or catalog, key=lambda cat: (cat.rarity, cat.name.casefold()))

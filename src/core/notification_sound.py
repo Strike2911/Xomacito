@@ -23,12 +23,14 @@ GACHA_STYLE_SOUND_FILENAMES = {
     "playera-prismatic": "gacha-reveal-6-playera.wav",
     "zarking-cyber": "gacha-reveal-6-zarking.wav",
     "blackbull-noir": "gacha-reveal-6-blackbull.wav",
+    "strike-apex": "gacha-reveal-6-strike.wav",
 }
 GACHA_EQUIP_SOUND_FILENAMES = {
     "arcane-mage": "gacha-equip-6-arcane.wav",
     "playera-prismatic": "gacha-equip-6-playera.wav",
     "zarking-cyber": "gacha-equip-6-zarking.wav",
     "blackbull-noir": "gacha-equip-6-blackbull.wav",
+    "strike-apex": "gacha-equip-6-strike.wav",
 }
 
 
@@ -74,7 +76,7 @@ def platinum_sound_path() -> Path | None:
     return _asset_path("sfx", PLATINUM_SOUND_FILENAME)
 
 
-def _play_with_mci(path: Path) -> None:
+def _play_with_mci(path: Path, volume: int = 1000) -> None:
     if os.name != "nt":
         return
     if path.suffix.casefold() == ".wav":
@@ -91,21 +93,22 @@ def _play_with_mci(path: Path) -> None:
     if send(f'open "{quoted}" type mpegvideo alias {alias}', None, 0, None) != 0:
         return
     try:
+        send(f"setaudio {alias} volume to {max(0, min(1000, int(volume)))}", None, 0, None)
         send(f"play {alias} wait", None, 0, None)
     finally:
         send(f"close {alias}", None, 0, None)
 
 
-def _play_async(path: Path | None) -> bool:
+def _play_async(path: Path | None, volume: int = 1000) -> bool:
     if path is None:
         return False
-    threading.Thread(target=_play_with_mci, args=(path,), daemon=True).start()
+    threading.Thread(target=_play_with_mci, args=(path, volume), daemon=True).start()
     return True
 
 
 def play_completion_sound() -> bool:
-    """Reproduce el maullido de descarga sin bloquear la interfaz."""
-    return _play_async(completion_sound_path())
+    """Reproduce el maullido 10 dB más bajo sin bloquear la interfaz."""
+    return _play_async(completion_sound_path(), volume=316)
 
 
 def play_gacha_reveal_sound(rarity: int, animation_style: str = "") -> bool:

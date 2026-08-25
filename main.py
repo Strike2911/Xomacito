@@ -10,8 +10,8 @@ APP_NAME = "Xomacito"
 # La versión visible forma parte de la edición pública.  UPDATE_VERSION se
 # mantiene numérica para que el instalador de Windows y el actualizador puedan
 # comparar correctamente esta entrega con las instalaciones 3.x anteriores.
-APP_VERSION = "1.0.1 Definitive Edition"
-UPDATE_VERSION = "4.0.1"
+APP_VERSION = "1.0.7 Definitive Edition"
+UPDATE_VERSION = "4.0.7"
 
 FROZEN = bool(getattr(sys, "frozen", False))
 PROJECT_ROOT = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
@@ -42,6 +42,92 @@ REMBG_MODELS_DIR = str(BIN_PATH / "models" / "rembg")
 UPSCALING_DIR = str(BIN_PATH / "models" / "upscaling")
 
 
+def _recommended_ui_scale(width: int, height: int, dpi: int) -> float:
+    """Escala adicional conservadora para pantallas grandes que siguen al 100 %."""
+    if dpi > 110:
+        return 1.0
+    if width >= 3800 and height >= 2000:
+        return 1.5
+    if width >= 2500 and height >= 1350:
+        return 1.25
+    return 1.0
+
+
+def _native_primary_resolution(user32) -> tuple[int, int]:
+    """Lee la resolución nativa, evitando la virtualización de DPI de GetSystemMetrics."""
+    class DevModeW(__import__("ctypes").Structure):
+        _fields_ = [
+            ("dmDeviceName", __import__("ctypes").c_wchar * 32),
+            ("dmSpecVersion", __import__("ctypes").c_ushort),
+            ("dmDriverVersion", __import__("ctypes").c_ushort),
+            ("dmSize", __import__("ctypes").c_ushort),
+            ("dmDriverExtra", __import__("ctypes").c_ushort),
+            ("dmFields", __import__("ctypes").c_ulong),
+            ("dmPositionX", __import__("ctypes").c_long),
+            ("dmPositionY", __import__("ctypes").c_long),
+            ("dmDisplayOrientation", __import__("ctypes").c_ulong),
+            ("dmDisplayFixedOutput", __import__("ctypes").c_ulong),
+            ("dmColor", __import__("ctypes").c_short),
+            ("dmDuplex", __import__("ctypes").c_short),
+            ("dmYResolution", __import__("ctypes").c_short),
+            ("dmTTOption", __import__("ctypes").c_short),
+            ("dmCollate", __import__("ctypes").c_short),
+            ("dmFormName", __import__("ctypes").c_wchar * 32),
+            ("dmLogPixels", __import__("ctypes").c_ushort),
+            ("dmBitsPerPel", __import__("ctypes").c_ulong),
+            ("dmPelsWidth", __import__("ctypes").c_ulong),
+            ("dmPelsHeight", __import__("ctypes").c_ulong),
+            ("dmDisplayFlags", __import__("ctypes").c_ulong),
+            ("dmDisplayFrequency", __import__("ctypes").c_ulong),
+            ("dmICMMethod", __import__("ctypes").c_ulong),
+            ("dmICMIntent", __import__("ctypes").c_ulong),
+            ("dmMediaType", __import__("ctypes").c_ulong),
+            ("dmDitherType", __import__("ctypes").c_ulong),
+            ("dmReserved1", __import__("ctypes").c_ulong),
+            ("dmReserved2", __import__("ctypes").c_ulong),
+            ("dmPanningWidth", __import__("ctypes").c_ulong),
+            ("dmPanningHeight", __import__("ctypes").c_ulong),
+        ]
+
+    mode = DevModeW()
+    mode.dmSize = __import__("ctypes").sizeof(DevModeW)
+    if user32.EnumDisplaySettingsW(None, -1, __import__("ctypes").byref(mode)):
+        return int(mode.dmPelsWidth), int(mode.dmPelsHeight)
+    return int(user32.GetSystemMetrics(0)), int(user32.GetSystemMetrics(1))
+
+
+def _configure_responsive_qt_scale() -> None:
+    """Adapta Qt a la resolución nativa sin duplicar el escalado de Windows."""
+    os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
+    os.environ.setdefault("QT_SCALE_FACTOR_ROUNDING_POLICY", "PassThrough")
+    if os.environ.get("QT_SCALE_FACTOR"):
+        return
+    requested = str(os.environ.get("XOMACITO_UI_SCALE") or "").strip()
+    if requested:
+        try:
+            if float(requested) > 0:
+                os.environ["QT_SCALE_FACTOR"] = requested
+        except ValueError:
+            pass
+        return
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        user32 = ctypes.windll.user32
+        width, height = _native_primary_resolution(user32)
+        get_dpi = getattr(user32, "GetDpiForSystem", None)
+        dpi = int(get_dpi()) if get_dpi else 96
+        # Qt ya respeta el escalado configurado en Windows. Sólo compensamos
+        # pantallas 2K/4K que siguen al 100 %, que eran las que quedaban diminutas.
+        scale = _recommended_ui_scale(width, height, dpi)
+        if scale > 1:
+            os.environ["QT_SCALE_FACTOR"] = f"{scale:g}"
+    except (AttributeError, OSError, TypeError, ValueError):
+        return
+
+
 def _run_self_test() -> int:
     """Comprueba el runtime instalado sin crear una ventana gráfica."""
     if not FROZEN:
@@ -55,6 +141,7 @@ def _run_self_test() -> int:
 
 
 def _run_main_window() -> int:
+    _configure_responsive_qt_scale()
     from src.ui import run_qt_app
 
     return run_qt_app(

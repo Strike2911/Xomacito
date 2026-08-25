@@ -14,6 +14,15 @@
       "animationStyle": "standard"
     },
     {
+      "id": "cat-cf837ae651c8",
+      "name": "BLACK BULL",
+      "rarity": 6,
+      "image": "cat-cf837ae651c8.png",
+      "avatar": "cat-cf837ae651c8-avatar.webp",
+      "originalFile": "GATO BLACK BULL.png",
+      "animationStyle": "blackbull-noir"
+    },
+    {
       "id": "cat-3a59baa03982",
       "name": "CARA DE ASOMBRO",
       "rarity": 4,
@@ -104,6 +113,15 @@
       "animationStyle": "standard"
     },
     {
+      "id": "cat-b065d39c3af3",
+      "name": "Frido",
+      "rarity": 5,
+      "image": "cat-b065d39c3af3.png",
+      "avatar": "cat-b065d39c3af3-avatar.webp",
+      "originalFile": "Frido.png",
+      "animationStyle": "standard"
+    },
+    {
       "id": "cat-25c9c2d55dd1",
       "name": "GAAAA",
       "rarity": 3,
@@ -137,6 +155,15 @@
       "image": "cat-c3e5d849aaf1.jpg",
       "avatar": "cat-c3e5d849aaf1-avatar.webp",
       "originalFile": "GATITO PENSATIVO.jpg",
+      "animationStyle": "standard"
+    },
+    {
+      "id": "cat-796d8a90b763",
+      "name": "GATO ALE",
+      "rarity": 5,
+      "image": "cat-796d8a90b763.png",
+      "avatar": "cat-796d8a90b763-avatar.webp",
+      "originalFile": "GATO ALE.png",
       "animationStyle": "standard"
     },
     {
@@ -174,15 +201,6 @@
       "avatar": "cat-d3b872881f51-avatar.webp",
       "originalFile": "gato backroom.png",
       "animationStyle": "standard"
-    },
-    {
-      "id": "cat-cf837ae651c8",
-      "name": "BLACK BULL",
-      "rarity": 6,
-      "image": "cat-cf837ae651c8.png",
-      "avatar": "cat-cf837ae651c8-avatar.webp",
-      "originalFile": "GATO BLACK BULL.png",
-      "animationStyle": "blackbull-noir"
     },
     {
       "id": "cat-03ffd51c1f63",
@@ -788,15 +806,6 @@
       "animationStyle": "standard"
     },
     {
-      "id": "cat-e78cf17a3656",
-      "name": "GATO PIXELART",
-      "rarity": 5,
-      "image": "cat-e78cf17a3656.jpg",
-      "avatar": "cat-e78cf17a3656-avatar.webp",
-      "originalFile": "GATO PIXELART.jpg",
-      "animationStyle": "standard"
-    },
-    {
       "id": "cat-3fbb2a6fdb2e",
       "name": "GATO PLAYERA",
       "rarity": 6,
@@ -914,6 +923,15 @@
       "animationStyle": "standard"
     },
     {
+      "id": "cat-e78cf17a3656",
+      "name": "GATO SPIKE",
+      "rarity": 5,
+      "image": "cat-e78cf17a3656.jpg",
+      "avatar": "cat-e78cf17a3656-avatar.webp",
+      "originalFile": "GATO SPIKE.jpg",
+      "animationStyle": "standard"
+    },
+    {
       "id": "cat-910f73deffc0",
       "name": "GATO STICKER",
       "rarity": 3,
@@ -921,6 +939,15 @@
       "avatar": "cat-910f73deffc0-avatar.webp",
       "originalFile": "gato sticker.png",
       "animationStyle": "standard"
+    },
+    {
+      "id": "cat-3645f4659a5e",
+      "name": "GATO STRIKE",
+      "rarity": 6,
+      "image": "cat-3645f4659a5e.png",
+      "avatar": "cat-3645f4659a5e-avatar.webp",
+      "originalFile": "GATO STRIKE.png",
+      "animationStyle": "strike-apex"
     },
     {
       "id": "cat-c137fdca8b96",
@@ -1175,6 +1202,16 @@
       "animationStyle": "standard"
     },
     {
+      "id": "cat-5a99d9f019f0",
+      "name": "PERRO ZANE",
+      "rarity": 5,
+      "image": "cat-5a99d9f019f0.png",
+      "avatar": "cat-5a99d9f019f0-avatar.webp",
+      "originalFile": "PERRO ZANE.png",
+      "animationStyle": "standard",
+      "exclusive": true
+    },
+    {
       "id": "cat-cf85e6539348",
       "name": "PRESIDENTE GATUNO",
       "rarity": 1,
@@ -1226,6 +1263,15 @@
       "image": "cat-1dc2bdb2779c.jpg",
       "avatar": "cat-1dc2bdb2779c-avatar.webp",
       "originalFile": "really nigga.jpg",
+      "animationStyle": "standard"
+    },
+    {
+      "id": "cat-4003245df557",
+      "name": "RYKOZIO",
+      "rarity": 5,
+      "image": "cat-4003245df557.png",
+      "avatar": "cat-4003245df557-avatar.webp",
+      "originalFile": "RYKOZIO.png",
       "animationStyle": "standard"
     },
     {

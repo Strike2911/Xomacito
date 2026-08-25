@@ -1,6 +1,6 @@
 # Xomacito
 
-Versión actual: **Xomacito 3.3**.
+Versión actual: **Xomacito 1.0.7 Definitive Edition**.
 
 Aplicación independiente para Windows que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike** pero principalmente inspirado en Dowp hecho por Marck.
 
@@ -16,17 +16,24 @@ Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión 
 
 - Descarga individual y por lotes mediante yt-dlp.
 - Previsualización seleccionable de canciones y videos dentro de cada playlist.
+- Selector arrastrable de cantidad, miniaturas y formato de salida visible en la cola.
+- Presets de conversión separados automáticamente entre audio y video.
 - Etiquetas compartidas entre Descargar y Cola para organizar cada destino por color y carpeta.
 - Video con audio, extracción de audio, miniaturas y subtítulos.
 - Descarga de fotografías públicas de Instagram, incluidas publicaciones con `img_index`.
 - Corte de fragmentos y recodificación mediante FFmpeg.
+- Biblioteca Premiere compacta con arrastre de carpetas, metadatos de FFprobe, vista previa y recorte no destructivo.
+- Panel UXP “Xomacito Link” con estado guiado, filtros, autoimportación estable y bins separados para video, audio, imágenes y recortes.
 - Conversión, optimización y procesamiento de imágenes.
 - Reescalado inteligente de imágenes y videos con perfiles optimizados según el contenido.
 - Removedor de fondos renovado con modelos BiRefNet para retratos, bordes finos y escenas complejas.
-- Temas claros y oscuros, fondos adaptativos y colección gatuna equipable.
+- Tema Strike como apariencia inicial, paletas con saturación más sobria, fondos adaptativos y colección gatuna equipable.
+- Recorrido guiado breve y opcional, con ayuda contextual disponible en cada apartado desde el botón **Guía**.
 - Gacha de gatos: una tirada diaria gratis y una tirada adicional por cada 10 descargas exitosas.
 - 145 personajes con nombres estandarizados en mayúsculas y rarezas estables de 1 a 6 estrellas.
 - Gatos míticos de 6 estrellas con animaciones exclusivas de desbloqueo y equipamiento.
+- Auras mejorables de cinco niveles para los gatos repetidos después de completar la colección.
+- Cuenta comunitaria con correo de recuperación y recompensa única de 15 tiradas verificadas.
 - Sonido de confirmación al finalizar una descarga.
 - Instalación por usuario y desinstalador integrado en Windows.
 - Instancia única: al abrir Xomacito otra vez se enfoca la ventana existente.
@@ -51,10 +58,13 @@ Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión 
 - `tests`: pruebas de regresión.
 - `vendor/cairo`: bibliotecas nativas requeridas por CairoSVG.
 - `.build/XomacitoInstaller.spec`: definición del paquete PyInstaller.
+- `premiere-panel`: panel UXP local para Adobe Premiere 25.6 o posterior.
 
 Los runtimes de compilación, herramientas externas, modelos, builds y preferencias personales están excluidos del repositorio. Los binarios distribuidos a usuarios se publican únicamente en [GitHub Releases](https://github.com/Strike2911/Xomacito/releases).
 
-La versión 3.3 presenta **¡SMOOTH MOTION UPDATE!!**: la recompensa de BLACK BULL se muestra con una tarjeta legible y compacta, su avatar aprovecha mejor el marco mítico y el anuncio de Smooth Motion usa el retrato circular preparado para la interfaz.
+El release se genera directamente desde `main.py` y la carpeta `src`, sin PyArmor ni otra etapa de ofuscación. `scripts/build_release.ps1` cancela la compilación si detecta envoltorios de PyArmor o si el spec deja de apuntar al código fuente legible.
+
+La versión 1.0.7 vuelve más comprensible la conexión con Premiere, evita importar archivos aún incompletos, restaura los créditos históricos y da una identidad visual propia y más tranquila a cada personaje de 6 estrellas.
 
 Para volver a importar o ampliar la colección sin cambiar las rarezas ya asignadas:
 

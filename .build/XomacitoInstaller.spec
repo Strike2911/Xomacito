@@ -18,6 +18,7 @@ datas = [
     (str(PROJECT_ROOT / "assets" / "sfx"), "assets/sfx"),
     (str(PROJECT_ROOT / "assets" / "release"), "assets/release"),
     (str(PROJECT_ROOT / "assets" / "config"), "assets/config"),
+    (str(PROJECT_ROOT / "premiere-panel"), "premiere-panel"),
     (str(PROJECT_ROOT / "Xomacito-icon.ico"), "."),
 ]
 
@@ -48,6 +49,7 @@ hiddenimports = [
     "rawpy", "cv2", "cairosvg", "pdf2image", "img2pdf", "py7zr",
     "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets",
     "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtQuickControls2",
+    "PySide6.QtMultimedia",
 ]
 
 # Conserva el mismo conjunto funcional validado por el build portable.

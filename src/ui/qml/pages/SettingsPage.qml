@@ -125,6 +125,12 @@ Item {
                 XButton { text: "Eliminar tema personal"; kind: "danger"; onClicked: settingsController.deleteTheme(viewState.theme) }
                 XButton { text: "Abrir carpeta de temas"; kind: "ghost"; onClicked: settingsController.openFolder("themes") }
                 Item { Layout.fillWidth: true }
+                XButton {
+                    objectName: "repeatGuidedTourButton"
+                    text: "Repetir recorrido"
+                    kind: "secondary"
+                    onClicked: appController.requestGuidedTour()
+                }
             }
             Rectangle { Layout.fillWidth: true; height: 1; color: theme.colors.border }
             SectionTitle { Layout.fillWidth: true; eyebrow: "VECTORES"; title: "Calidad de render"; description: "SVG, PDF, AI, EPS y PS usan estas resoluciones." }

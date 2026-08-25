@@ -25,6 +25,135 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "4.0.7": {
+        "eyebrow": "EDICION DEFINITIVA 1.0.7",
+        "title": "Xomacito 1.0.7 Definitive Edition",
+        "subtitle": "TU BIBLIOTECA Y CADA 6 ESTRELLAS TIENEN IDENTIDAD",
+        "message": (
+            "Xomacito Link ahora explica el flujo completo, organiza el material por tipo "
+            "y espera a que cada descarga termine antes de importarla a Premiere."
+        ),
+        "highlights": [
+            "Panel de Premiere compacto, legible y guiado para biblioteca, proyecto e importación automática.",
+            "Los medios se organizan dentro de Xomacito Import por video, audio, imágenes y recortes.",
+            "Cada gato de 6 estrellas recibe partículas, ritmo y silueta visual propios.",
+            "Regalos especiales ligados de forma segura a la cuenta y reclamables una sola vez.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Strike", "Zane", "Nuan",
+        ],
+        "closing": "Gracias a todos los contribuyentes que han convertido Xomacito en una herramienta para editores.",
+        "platinumCelebration": False,
+        "smoothMotionPromotion": False,
+    },
+    "4.0.6": {
+        "eyebrow": "ACTUALIZACION LOCAL 1.0.6",
+        "title": "Xomacito 1.0.6 Definitive Edition",
+        "subtitle": "ZANE Y FRIDO LLEGAN A LA COLECCION",
+        "message": (
+            "La colección recibe dos nuevos compañeros y Xomacito Link puede mantener "
+            "sincronizada la biblioteca con el proyecto activo de Premiere."
+        ),
+        "highlights": [
+            "PERRO ZANE y Frido se incorporan como recompensas de 5 estrellas.",
+            "El 26 de agosto de 2026 entrega una sola vez 10 rolleos y PERRO ZANE exclusivo.",
+            "Xomacito Link crea el bin Xomacito Import y detecta medios nuevos sin duplicarlos.",
+            "La biblioteca incluye un acceso directo para instalar y preparar el panel de Premiere.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Strike", "Zane", "Nuan",
+        ],
+        "closing": "Esta compilación se instaló sólo en tu equipo; no se publicó en GitHub.",
+        "platinumCelebration": False,
+        "smoothMotionPromotion": False,
+    },
+    "4.0.5": {
+        "eyebrow": "ACTUALIZACION LOCAL 1.0.5",
+        "title": "Xomacito 1.0.5 Definitive Edition",
+        "subtitle": "UNA BIBLIOTECA PENSADA PARA EDITORES",
+        "message": (
+            "Las herramientas conservan sus proporciones al cambiar la ventana y la "
+            "biblioteca encuentra recursos por categoría, metadata y favoritos."
+        ),
+        "highlights": [
+            "Diseño estable en ventanas panorámicas y cuadradas.",
+            "Búsqueda, favoritos y categorías para SFX, música, video, imágenes y green screen.",
+            "Acceso directo e inicio posterior a la instalación más compatibles con Windows.",
+            "Sólo quedan visibles los perfiles estables de BiRefNet y Real-ESRGAN.",
+        ],
+        "contributors": ["Strike", "Mensva"],
+        "closing": "Esta compilación se instaló sólo en tu equipo para validarla antes de publicarla.",
+        "platinumCelebration": False,
+        "smoothMotionPromotion": False,
+    },
+    "4.0.4": {
+        "eyebrow": "EDICION DEFINITIVA 1.0.4",
+        "title": "Xomacito 1.0.4 Definitive Edition",
+        "subtitle": "UNA INTERFAZ QUE SE ADAPTA A TU PANTALLA",
+        "message": (
+            "Xomacito ahora conserva mejor sus proporciones en Full HD, 2K y 4K, "
+            "mantiene ordenada la biblioteca y hace más suave cada descarga y revelación."
+        ),
+        "highlights": [
+            "Escalado automático y conservador según resolución y DPI de Windows.",
+            "Carpetas agrupadas, ocultables y restaurables sin borrar archivos del editor.",
+            "Maullido de descarga reducido 10 dB para no interrumpir al editor.",
+            "Revelación de GATO STRIKE optimizada y sin el mensaje incorrecto de BlackBull.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio",
+        ],
+        "closing": "Gracias por ayudarnos a hacer Xomacito más cómodo en cada espacio de edición.",
+        "platinumCelebration": False,
+        "smoothMotionPromotion": False,
+    },
+    "4.0.3": {
+        "eyebrow": "EDICION DEFINITIVA 1.0.3",
+        "title": "Xomacito 1.0.3 Definitive Edition",
+        "subtitle": "MAS ESPACIO PARA EDITAR, MAS CONTROL EN TU COLA",
+        "message": (
+            "La biblioteca ahora trabaja como un explorador compacto, las playlists "
+            "responden de verdad al elegir cantidad y la interfaz se adapta a pantallas 2K."
+        ),
+        "highlights": [
+            "Escalado legible para pantallas 2K y 4K usadas al 100 %.",
+            "Carpetas plegables, filas compactas y detalles técnicos ampliados.",
+            "Selector de playlists sincronizado de 0 hasta el total real.",
+            "GATO STRIKE, GATO ALE y RYKOZIO se unen a la colección; Pixelart ahora es GATO SPIKE.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio",
+        ],
+        "closing": "Gracias por seguir convirtiendo Xomacito en una herramienta hecha para editores.",
+        "platinumCelebration": False,
+        "smoothMotionPromotion": False,
+    },
+    "4.0.2": {
+        "eyebrow": "EDICION DEFINITIVA 1.0.2",
+        "title": "Xomacito 1.0.2 Definitive Edition",
+        "subtitle": "TU COLA Y TUS GATOS EVOLUCIONAN",
+        "message": (
+            "La cola ahora responde con precisión, las cuentas recuperan su acceso con correo "
+            "y los gatos repetidos convierten el platino en una colección que sigue creciendo."
+        ),
+        "highlights": [
+            "Selector de cantidad rediseñado y arrastrable para playlists.",
+            "Presets separados por audio o video, miniaturas y salida MP4 más clara.",
+            "Correo de recuperación verificado y recompensa única de 15 tiradas.",
+            "Auras de cinco niveles para gatos repetidos y sonidos más suaves.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako",
+        ],
+        "closing": "Gracias por convertir cada detalle extraño en una mejora para toda la comunidad.",
+        "platinumCelebration": False,
+        "smoothMotionPromotion": True,
+    },
     "4.0.1": {
         "eyebrow": "EDICION DEFINITIVA 1.0.1",
         "title": "Xomacito 1.0.1 Definitive Edition",

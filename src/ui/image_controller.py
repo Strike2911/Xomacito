@@ -87,6 +87,17 @@ UPSCALE_PROFILES = {
     },
 }
 
+STABLE_REMBG_FAMILY = "BiRefNet (Next-Gen 2024)"
+STABLE_REMBG_MODELS = (
+    "General Lite (Rápido)",
+    "General (Estándar)",
+    "Portrait (Retratos)",
+    "DIS (Bordes Finos/Complejo)",
+)
+STABLE_UPSCALE_MODELS = tuple(dict.fromkeys(
+    profile["model"] for profile in UPSCALE_PROFILES.values()
+))
+
 TASK_DEFAULTS = {
     "removeBackground": {
         "format": "PNG", "rembgEnabled": True, "upscaleEnabled": False,
@@ -155,6 +166,16 @@ class ImageController(QObject):
         )
         if self._options["upscaleModel"] not in UPSCAYL_MODELS_MAP.values():
             self._options["upscaleModel"] = UPSCALE_PROFILES["Automático (recomendado)"]["model"]
+        # Las versiones antiguas permitían guardar familias enormes o modelos
+        # experimentales. Se migran a perfiles curados para evitar resultados
+        # impredecibles y descargas que no podían completarse.
+        if self._options.get("rembgFamily") != STABLE_REMBG_FAMILY:
+            self._options["rembgFamily"] = STABLE_REMBG_FAMILY
+        if self._options.get("rembgModel") not in STABLE_REMBG_MODELS:
+            self._options["rembgModel"] = STABLE_REMBG_MODELS[0]
+        if self._options.get("upscaleModel") not in STABLE_UPSCALE_MODELS:
+            self._options["upscaleModel"] = UPSCALE_PROFILES["Automático (recomendado)"]["model"]
+        self._options["upscaleEngine"] = "Upscayl"
         active_task = self._state["task"] if self._state["task"] in TASK_DEFAULTS else "removeBackground"
         self._state["task"] = active_task
         for key in ("rembgEnabled", "upscaleEnabled"):
@@ -200,16 +221,17 @@ class ImageController(QObject):
         return ["No Convertir", "PNG", "JPEG", "JPG", "WEBP", "AVIF", "PDF", "TIFF", "ICO", "BMP", ".mp4 (H.264)", ".mov (ProRes)", ".webm (VP9)", ".gif (Animado)"]
 
     @Property("QStringList", constant=True)
-    def rembgFamilies(self): return list(REMBG_MODEL_FAMILIES)
+    def rembgFamilies(self): return [STABLE_REMBG_FAMILY]
 
     @Property("QStringList", constant=True)
     def upscaleProfiles(self): return list(UPSCALE_PROFILES)
 
     @Property("QStringList", constant=True)
-    def upscaleModels(self): return list(UPSCAYL_MODELS_MAP.values())
+    def upscaleModels(self): return list(STABLE_UPSCALE_MODELS)
 
     @Slot(str, result="QStringList")
-    def rembgModels(self, family): return list(REMBG_MODEL_FAMILIES.get(family, {}))
+    def rembgModels(self, family):
+        return list(STABLE_REMBG_MODELS) if family == STABLE_REMBG_FAMILY else []
 
     def _set_state(self, **values):
         changed = False

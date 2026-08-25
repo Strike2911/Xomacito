@@ -8,7 +8,8 @@ Item {
     property var viewState: imageController.state
     property var options: imageController.options
     property var selected: imageController.selected
-    property bool wide: width >= 1040
+    // Conserva las tres herramientas alineadas también en la ventana mínima.
+    property bool wide: width >= 890
     property bool dense: height < 760
 
     function taskTitle() {
@@ -140,6 +141,7 @@ Item {
                 Layout.fillHeight: true
                 Layout.columnSpan: page.wide ? 3 : 1
                 Layout.minimumHeight: page.dense ? 230 : 278
+                clip: true
                 cardColor: fileDropArea.containsDrag ? theme.colors.surfaceRaised : theme.colors.surface
                 ColumnLayout {
                     anchors.fill: parent
@@ -221,6 +223,7 @@ Item {
                 Layout.fillHeight: true
                 Layout.columnSpan: page.wide ? 4 : 1
                 Layout.minimumHeight: page.dense ? 230 : 278
+                clip: true
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 12
@@ -268,6 +271,7 @@ Item {
                 Layout.fillHeight: true
                 Layout.columnSpan: page.wide ? 5 : 1
                 Layout.minimumHeight: page.dense ? 230 : 278
+                clip: true
                 cardColor: theme.colors.surfaceRaised
                 ColumnLayout {
                     anchors.fill: parent

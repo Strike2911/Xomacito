@@ -20,6 +20,61 @@ ApplicationWindow {
     property var dialogOptions: []
     property bool pendingSmoothMotionPromo: false
     property bool pendingSocialOnboarding: false
+    property bool pendingRecoveryEmailRequirement: false
+    property bool pendingGuidedTutorial: false
+    property bool pendingZaneBirthday: false
+    property var zaneBirthdayInfo: ({})
+    property int tutorialQuietTicks: 0
+    property var tutorialSteps: [
+        {
+            "page": 0, "target": "navigation", "icon": "↔",
+            "title": "Tu mapa de trabajo",
+            "message": "Cada pestaña conserva lo que estabas haciendo. Puedes moverte entre tareas sin perder enlaces, selecciones ni ajustes.",
+            "actions": ["Descarga o prepara contenido desde la primera pestaña.", "Usa Guía cuando quieras repasar sólo el apartado abierto."]
+        },
+        {
+            "page": 0, "target": "page", "icon": "↓",
+            "title": "Descarga con el formato claro",
+            "message": "Pega un enlace o importa un archivo. Xomacito analiza el contenido antes de habilitar la descarga y te dice el formato final.",
+            "actions": ["Elige Video+Audio o Sólo audio.", "Ajusta calidad y un preset compatible con ese modo.", "Revisa la salida anunciada y pulsa Iniciar descarga."]
+        },
+        {
+            "page": 1, "target": "page", "icon": "☷",
+            "title": "Colas sin sorpresas",
+            "message": "Analiza una lista para ver miniaturas y elegir exactamente qué elementos se procesarán.",
+            "actions": ["Mueve Elegir cantidad desde 0 hasta el total.", "Activa o desactiva elementos individuales.", "Confirma modo, preset y formato antes de iniciar la cola."]
+        },
+        {
+            "page": 2, "target": "page", "icon": "▣",
+            "title": "Biblioteca para edición",
+            "message": "Aquí reúnes y revisas material de edición sin alterar los originales.",
+            "actions": ["Arrastra archivos o carpetas sobre la lista.", "Pliega carpetas y selecciona un archivo para ver todos sus datos.", "Marca el fragmento necesario y crea un recorte independiente."]
+        },
+        {
+            "page": 3, "target": "page", "icon": "◇",
+            "title": "Estudio de Imagen",
+            "message": "Prepara imágenes, vectores y fotogramas con una vista previa antes de exportar.",
+            "actions": ["Añade los archivos que quieras procesar.", "Escoge la herramienta y sus ajustes.", "Comprueba la vista previa y abre la salida al terminar."]
+        },
+        {
+            "page": 4, "target": "page", "icon": "★",
+            "title": "Colección gatuna",
+            "message": "Las descargas generan tiradas. Los duplicados mejoran progresivamente el efecto visual de cada gato.",
+            "actions": ["Usa tus tiradas para desbloquear gatos.", "Equipa el que acompañará toda la interfaz.", "Completa la colección y mejora a tus favoritos."]
+        },
+        {
+            "page": 5, "target": "page", "icon": "#",
+            "title": "Comunidad y progreso",
+            "message": "El Scoreboard resume tus descargas, colección y constancia frente a la comunidad.",
+            "actions": ["Conecta tu cuenta para sincronizar el progreso.", "Revisa tu racha y posición.", "Añade un correo real para recuperar la cuenta de forma segura."]
+        },
+        {
+            "page": 6, "target": "page", "icon": "⚙",
+            "title": "Ajusta Xomacito a tu flujo",
+            "message": "Strike es el tema inicial. Aquí administras apariencia, cookies, componentes y rendimiento.",
+            "actions": ["Cambia apariencia o paleta cuando quieras.", "Comprueba las dependencias desde su sección.", "Pulsa Repetir recorrido para volver a esta guía completa."]
+        }
+    ]
 
     onClosing: function(close) {
         close.accepted = false
@@ -33,11 +88,8 @@ ApplicationWindow {
 
     function finishReleaseNotice() {
         pendingSmoothMotionPromo = Boolean(noticePopup.noticeInfo.smoothMotionPromotion)
-        var celebratePlatinum = Boolean(noticePopup.noticeInfo.platinumCelebration)
         noticePopup.close()
-        if (celebratePlatinum)
-            platinumDelay.restart()
-        else if (pendingSmoothMotionPromo)
+        if (pendingSmoothMotionPromo)
             smoothMotionDelay.restart()
     }
 
@@ -46,14 +98,90 @@ ApplicationWindow {
         tryOpenSocialOnboarding()
     }
 
+    function requestZaneBirthday(info) {
+        zaneBirthdayInfo = info || ({})
+        pendingZaneBirthday = true
+        zaneBirthdayGate.restart()
+    }
+
+    function tryOpenZaneBirthday() {
+        if (!pendingZaneBirthday || zaneBirthdayPopup.opened)
+            return
+        if (updatePopup.opened || noticePopup.opened || platinumPopup.opened
+                || smoothMotionPopup.opened || catGachaPage.revealOpen
+                || socialOnboardingPopup.opened || recoveryEmailPopup.opened
+                || dialogPopup.opened || tutorialOverlay.opened) {
+            zaneBirthdayGate.restart()
+            return
+        }
+        pendingZaneBirthday = false
+        zaneBirthdayPopup.open()
+    }
+
     function tryOpenSocialOnboarding() {
         if (!pendingSocialOnboarding || socialOnboardingPopup.opened)
             return
         if (updatePopup.opened || noticePopup.opened || platinumPopup.opened
                 || smoothMotionPopup.opened || pendingSmoothMotionPromo
-                || smoothMotionDelay.running || catGachaPage.revealOpen)
+                || smoothMotionDelay.running || catGachaPage.revealOpen
+                || recoveryEmailPopup.opened || pendingRecoveryEmailRequirement
+                || tutorialOverlay.opened || zaneBirthdayPopup.opened || pendingZaneBirthday)
             return
         socialOnboardingDelay.restart()
+    }
+
+    function requestRecoveryEmailRequirement() {
+        pendingRecoveryEmailRequirement = true
+        tryOpenRecoveryEmailRequirement()
+    }
+
+    function tryOpenRecoveryEmailRequirement() {
+        if (!pendingRecoveryEmailRequirement || recoveryEmailPopup.opened
+                || !socialController.state.authenticated)
+            return
+        if (updatePopup.opened || noticePopup.opened || platinumPopup.opened
+                || smoothMotionPopup.opened || pendingSmoothMotionPromo
+                || smoothMotionDelay.running || catGachaPage.revealOpen
+                || tutorialOverlay.opened || zaneBirthdayPopup.opened || pendingZaneBirthday)
+            return
+        recoveryEmailDelay.restart()
+    }
+
+    function tutorialBlocked() {
+        return updatePopup.visible || noticePopup.visible || platinumPopup.visible
+                || smoothMotionPopup.visible || socialOnboardingPopup.visible
+                || recoveryEmailPopup.visible || dialogPopup.visible
+                || zaneBirthdayPopup.visible
+                || pendingSmoothMotionPromo || smoothMotionDelay.running
+                || pendingSocialOnboarding || socialOnboardingDelay.running
+                || pendingRecoveryEmailRequirement || recoveryEmailDelay.running
+                || pendingZaneBirthday || zaneBirthdayGate.running
+                || catGachaPage.revealOpen
+                || !window.active
+    }
+
+    function requestGuidedTutorial() {
+        pendingGuidedTutorial = true
+        tutorialQuietTicks = 0
+        tutorialGate.restart()
+    }
+
+    function tryOpenGuidedTutorial() {
+        if (!pendingGuidedTutorial)
+            return
+        if (tutorialBlocked()) {
+            tutorialQuietTicks = 0
+            tutorialGate.restart()
+            return
+        }
+        tutorialQuietTicks += 1
+        if (tutorialQuietTicks < 4) {
+            tutorialGate.restart()
+            return
+        }
+        pendingGuidedTutorial = false
+        tutorialQuietTicks = 0
+        tutorialOverlay.startFull()
     }
 
     background: Item {
@@ -121,6 +249,7 @@ ApplicationWindow {
                     rarity: appController.catRarity
                     rarityColor: appController.catRarityColor
                     animationStyle: appController.catAnimationStyle
+                    effectLevel: appController.catEffectLevel
                     animatedEffects: settingsController.state.animationsEnabled
                     SequentialAnimation on scale {
                         loops: Animation.Infinite
@@ -135,6 +264,16 @@ ApplicationWindow {
                     Text { text: "Analiza, descarga y prepara contenido"; color: theme.colors.textMuted; font.pixelSize: 10 }
                 }
                 Item { Layout.fillWidth: true }
+                XButton {
+                    objectName: "guidedTutorialButton"
+                    compact: true
+                    kind: "secondary"
+                    text: "?  Guía"
+                    Accessible.name: "Abrir la guía de " + appController.pages[appController.page]
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Explica las herramientas de esta pestaña"
+                    onClicked: tutorialOverlay.startPage(appController.page)
+                }
                 ColumnLayout {
                     spacing: window.denseWindow ? 3 : 5; Layout.alignment: Qt.AlignVCenter
                     Rectangle {
@@ -168,8 +307,8 @@ ApplicationWindow {
                         required property string modelData
                         required property int index
                         objectName: "navButton" + index
-                        property int pendingCatRolls: index === 3 ? Number(catController.state.earnedRolls || 0) : 0
-                        property bool showRollBadge: index === 3 && pendingCatRolls > 0
+                        property int pendingCatRolls: index === 4 ? Number(catController.state.earnedRolls || 0) : 0
+                        property bool showRollBadge: index === 4 && pendingCatRolls > 0
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
                         Layout.preferredWidth: 1
@@ -292,12 +431,16 @@ ApplicationWindow {
                 currentIndex: appController.page
                 Item { DownloadPage { anchors.fill: parent } }
                 Item { QueuePage { anchors.fill: parent } }
+                Item { MediaLibraryPage { anchors.fill: parent } }
                 Item { ImageStudioPage { anchors.fill: parent } }
                 Item {
                     CatGachaPage {
                         id: catGachaPage
                         anchors.fill: parent
-                        onRevealFinished: window.tryOpenSocialOnboarding()
+                        onRevealFinished: {
+                            window.tryOpenRecoveryEmailRequirement()
+                            window.tryOpenSocialOnboarding()
+                        }
                     }
                 }
                 Item { ScoreboardPage { anchors.fill: parent; onConnectRequested: socialOnboardingPopup.open() } }
@@ -357,7 +500,10 @@ ApplicationWindow {
         implicitHeight: updatePopupContent.implicitHeight + 44
         modal: true; focus: true; padding: 0
         closePolicy: Popup.NoAutoClose
-        onClosed: window.tryOpenSocialOnboarding()
+        onClosed: {
+            window.tryOpenRecoveryEmailRequirement()
+            window.tryOpenSocialOnboarding()
+        }
         background: Rectangle { radius: 20; color: theme.colors.surfaceRaised; border.color: theme.colors.primary; border.width: 1 }
         ColumnLayout {
             id: updatePopupContent
@@ -372,6 +518,106 @@ ApplicationWindow {
                 XButton { text: "Ahora no"; kind: "ghost"; enabled: !appController.updateState.downloading; onClicked: { appController.declineUpdate(); updatePopup.close() } }
                 Item { Layout.fillWidth: true }
                 XButton { text: appController.updateState.downloading ? "Descargando…" : "Actualizar ahora"; enabled: !appController.updateState.downloading; onClicked: appController.acceptUpdate() }
+            }
+        }
+    }
+
+    Timer {
+        id: zaneBirthdayGate
+        interval: 180
+        repeat: false
+        onTriggered: window.tryOpenZaneBirthday()
+    }
+
+    Popup {
+        id: zaneBirthdayPopup
+        objectName: "zaneBirthdayPopup"
+        anchors.centerIn: parent
+        width: Math.min(620, window.width - 48)
+        implicitHeight: birthdayContent.implicitHeight + 44
+        modal: true
+        focus: true
+        padding: 0
+        closePolicy: Popup.NoAutoClose
+        enter: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 220 }
+                NumberAnimation { property: "scale"; from: 0.9; to: 1; duration: 360; easing.type: Easing.OutBack }
+            }
+        }
+        onClosed: {
+            window.tryOpenRecoveryEmailRequirement()
+            window.tryOpenSocialOnboarding()
+            if (window.pendingGuidedTutorial)
+                tutorialGate.restart()
+        }
+        background: Rectangle {
+            radius: 24
+            color: theme.colors.surfaceRaised
+            border.color: "#FFD75E"
+            border.width: 2
+        }
+        ColumnLayout {
+            id: birthdayContent
+            x: 22; y: 22; width: zaneBirthdayPopup.width - 44
+            spacing: 14
+
+            Text {
+                Layout.alignment: Qt.AlignHCenter
+                text: "CELEBRACIÓN ESPECIAL · 26 DE AGOSTO"
+                color: "#FFD75E"
+                font.pixelSize: 11
+                font.weight: Font.Bold
+                font.letterSpacing: 1.2
+            }
+            CatAvatar {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 154
+                Layout.preferredHeight: 154
+                source: (window.zaneBirthdayInfo.cat || {}).source || ""
+                rarity: 5
+                rarityColor: "#FFD75E"
+                animationStyle: "standard"
+                animatedEffects: zaneBirthdayPopup.opened && settingsController.state.animationsEnabled
+            }
+            Text {
+                Layout.fillWidth: true
+                text: window.zaneBirthdayInfo.title || "¡Feliz cumpleaños, Zane!"
+                horizontalAlignment: Text.AlignHCenter
+                color: theme.colors.text
+                font.pixelSize: 29
+                font.weight: Font.Bold
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                Layout.fillWidth: true
+                text: window.zaneBirthdayInfo.message || "10 rolleos y PERRO ZANE 5★ para celebrar."
+                horizontalAlignment: Text.AlignHCenter
+                color: theme.colors.textMuted
+                font.pixelSize: 14
+                lineHeight: 1.18
+                wrapMode: Text.WordWrap
+            }
+            Rectangle {
+                Layout.alignment: Qt.AlignHCenter
+                implicitWidth: rewardText.implicitWidth + 30
+                implicitHeight: 38
+                radius: 12
+                color: theme.colors.surfaceSoft
+                border.color: "#FFD75E"
+                Text {
+                    id: rewardText
+                    anchors.centerIn: parent
+                    text: "+10 ROLLEOS · PERRO ZANE 5★"
+                    color: "#FFD75E"
+                    font.pixelSize: 13
+                    font.weight: Font.Bold
+                }
+            }
+            XButton {
+                Layout.alignment: Qt.AlignHCenter
+                text: "Recibir regalo"
+                onClicked: zaneBirthdayPopup.close()
             }
         }
     }
@@ -435,6 +681,7 @@ ApplicationWindow {
                         rarity: appController.catRarity
                         rarityColor: "#FFE35A"
                         animationStyle: appController.catAnimationStyle
+                        effectLevel: appController.catEffectLevel
                         animatedEffects: noticePopup.opened && settingsController.state.animationsEnabled
                     }
 
@@ -613,6 +860,8 @@ ApplicationWindow {
         onClosed: {
             if (window.pendingSmoothMotionPromo)
                 smoothMotionDelay.restart()
+            else
+                window.tryOpenRecoveryEmailRequirement()
         }
 
         background: Rectangle {
@@ -866,11 +1115,33 @@ ApplicationWindow {
         onTriggered: {
             if (updatePopup.opened || noticePopup.opened || platinumPopup.opened
                     || smoothMotionPopup.opened || window.pendingSmoothMotionPromo
-                    || smoothMotionDelay.running || catGachaPage.revealOpen)
+                    || smoothMotionDelay.running || catGachaPage.revealOpen
+                    || tutorialOverlay.opened)
                 return
             window.pendingSocialOnboarding = false
             socialOnboardingPopup.open()
         }
+    }
+
+    Timer {
+        id: recoveryEmailDelay
+        interval: 220
+        repeat: false
+        onTriggered: {
+            if (!socialController.state.authenticated
+                    || !socialController.state.needsRecoveryEmail
+                    || tutorialOverlay.opened)
+                return
+            window.pendingRecoveryEmailRequirement = false
+            recoveryEmailPopup.open()
+        }
+    }
+
+    Timer {
+        id: tutorialGate
+        interval: 500
+        repeat: false
+        onTriggered: window.tryOpenGuidedTutorial()
     }
 
     Popup {
@@ -884,7 +1155,10 @@ ApplicationWindow {
         padding: 0
         closePolicy: Popup.NoAutoClose
         onOpened: window.pendingSmoothMotionPromo = false
-        onClosed: window.tryOpenSocialOnboarding()
+        onClosed: {
+            window.tryOpenRecoveryEmailRequirement()
+            window.tryOpenSocialOnboarding()
+        }
 
         enter: Transition {
             ParallelAnimation {
@@ -1030,12 +1304,22 @@ ApplicationWindow {
         id: socialOnboardingPopup
         objectName: "socialOnboardingPopup"
         anchors.centerIn: parent
-        width: Math.min(560, window.width - 40)
-        height: Math.min(window.denseWindow ? 400 : 420, window.height - 36)
+        width: Math.min(580, window.width - 40)
+        height: Math.min(
+            socialOnboardingPopup.flow === "create" ? 520
+            : socialOnboardingPopup.flow === "login" ? 450
+            : socialOnboardingPopup.flow === "recover-request" ? 405 : 490,
+            window.height - 36
+        )
         modal: true; focus: true; padding: 0
         clip: true
-        closePolicy: Popup.NoAutoClose
-        property bool createMode: true
+        closePolicy: Popup.CloseOnEscape
+        property string flow: "create"
+        readonly property bool createMode: flow === "create"
+        onClosed: {
+            if (!socialController.state.authenticated)
+                socialController.dismissOnboarding()
+        }
         background: Rectangle {
             radius: 24
             color: theme.colors.surfaceRaised
@@ -1058,7 +1342,8 @@ ApplicationWindow {
             spacing: window.denseWindow ? 10 : 12
 
             Text {
-                text: "TU ID DE XOMACITO"
+                text: socialOnboardingPopup.flow.indexOf("recover") === 0
+                      ? "RECUPERAR CUENTA" : "COMUNIDAD XOMACITO"
                 color: theme.colors.primary
                 font.pixelSize: 10
                 font.weight: Font.Bold
@@ -1067,25 +1352,47 @@ ApplicationWindow {
             Text {
                 objectName: "socialOnboardingTitle"
                 Layout.fillWidth: true
-                text: socialOnboardingPopup.createMode ? "Entra al scoreboard" : "Volver a tu cuenta"
+                text: socialOnboardingPopup.flow === "create" ? "15 tiradas para empezar"
+                      : socialOnboardingPopup.flow === "login" ? "Volver a tu cuenta"
+                      : socialOnboardingPopup.flow === "recover-request" ? "Recupera tu contraseña"
+                      : "Escribe el código recibido"
                 color: theme.colors.text
                 font.pixelSize: window.denseWindow ? 21 : 23
                 font.weight: Font.DemiBold
                 wrapMode: Text.WordWrap
             }
+            Text {
+                Layout.fillWidth: true
+                text: socialOnboardingPopup.flow === "create"
+                      ? "Crea tu nombre público, protege tu progreso y entra a La Liga."
+                      : socialOnboardingPopup.flow === "login"
+                        ? "Continúa tu colección y tu posición en el scoreboard."
+                        : socialOnboardingPopup.flow === "recover-request"
+                          ? "Usa el correo conectado a tu cuenta."
+                          : "El código solo sirve una vez y vence pronto."
+                color: theme.colors.textMuted
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
 
             Rectangle {
+                objectName: "socialOnboardingBenefitCard"
                 Layout.fillWidth: true
                 Layout.preferredHeight: window.denseWindow ? 50 : 54
                 radius: 12
                 color: theme.colors.surfaceSoft
                 border.width: 1
-                border.color: theme.colors.border
+                border.color: socialOnboardingPopup.flow === "create"
+                              ? theme.colors.primary : theme.colors.border
                 Text {
                     objectName: "socialOnboardingPrivacy"
                     anchors.fill: parent
                     anchors.margins: 11
-                    text: "CUENTA SEGURA  ·  Tu contraseña se envía a Supabase Auth y no se guarda en este equipo."
+                    text: socialOnboardingPopup.flow === "create"
+                          ? "REGALO DE BIENVENIDA  ·  Conecta un correo real y recibe hasta 15 tiradas, una sola vez por cuenta."
+                          : socialOnboardingPopup.flow.indexOf("recover") === 0
+                            ? "Te enviaremos un código de 6 dígitos. Si no pediste el cambio, puedes ignorar el correo."
+                            : "Tu contraseña se valida con Supabase Auth y no se guarda en este equipo."
                     color: theme.colors.textMuted
                     font.pixelSize: 10
                     font.weight: Font.Medium
@@ -1098,16 +1405,42 @@ ApplicationWindow {
                 id: socialUsername
                 objectName: "socialUsernameField"
                 Layout.fillWidth: true
-                Layout.preferredHeight: 46
+                Layout.preferredHeight: visible ? 46 : 0
+                visible: socialOnboardingPopup.flow === "create"
                 placeholderText: "ID pública (ej. strike2911)"
+                enabled: !socialController.state.busy
+            }
+            XTextField {
+                id: socialEmail
+                objectName: "socialEmailField"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 46
+                placeholderText: socialOnboardingPopup.flow === "login"
+                                 ? "Correo (o tu ID anterior)" : "Tu correo"
+                enabled: !socialController.state.busy
+            }
+            XTextField {
+                id: socialRecoveryCode
+                objectName: "socialRecoveryCodeField"
+                Layout.fillWidth: true
+                Layout.preferredHeight: visible ? 46 : 0
+                visible: socialOnboardingPopup.flow === "recover-confirm"
+                placeholderText: "Código de 6 dígitos"
+                inputMethodHints: Qt.ImhDigitsOnly
+                maximumLength: 6
                 enabled: !socialController.state.busy
             }
             XTextField {
                 id: socialPassword
                 objectName: "socialPasswordField"
                 Layout.fillWidth: true
-                Layout.preferredHeight: 46
-                placeholderText: "Contraseña (mínimo 8 caracteres)"
+                Layout.preferredHeight: visible ? 46 : 0
+                visible: socialOnboardingPopup.flow === "create"
+                         || socialOnboardingPopup.flow === "login"
+                         || socialOnboardingPopup.flow === "recover-confirm"
+                placeholderText: socialOnboardingPopup.flow === "recover-confirm"
+                                 ? "Nueva contraseña (mínimo 8 caracteres)"
+                                 : "Contraseña (mínimo 8 caracteres)"
                 echoMode: TextInput.Password
                 enabled: !socialController.state.busy
             }
@@ -1122,16 +1455,35 @@ ApplicationWindow {
                 maximumLineCount: 2
                 elide: Text.ElideRight
             }
-            Item { Layout.fillHeight: true }
+            XButton {
+                Layout.alignment: Qt.AlignRight
+                Layout.preferredHeight: visible ? implicitHeight : 0
+                visible: socialOnboardingPopup.flow === "login"
+                text: "Olvidé mi contraseña"
+                kind: "ghost"
+                enabled: !socialController.state.busy
+                onClicked: socialOnboardingPopup.flow = "recover-request"
+            }
+            Item { Layout.preferredHeight: 2 }
             RowLayout {
                 objectName: "socialOnboardingActions"
                 Layout.fillWidth: true
                 spacing: 8
                 XButton {
                     Layout.fillWidth: true
-                    text: socialOnboardingPopup.createMode ? "Ya tengo ID" : "Crear una ID"
+                    text: socialOnboardingPopup.flow === "create" ? "Ya tengo cuenta"
+                          : socialOnboardingPopup.flow === "login" ? "Crear cuenta"
+                          : "Volver"
                     kind: "ghost"
-                    onClicked: socialOnboardingPopup.createMode = !socialOnboardingPopup.createMode
+                    enabled: !socialController.state.busy
+                    onClicked: {
+                        if (socialOnboardingPopup.flow === "create")
+                            socialOnboardingPopup.flow = "login"
+                        else if (socialOnboardingPopup.flow === "login")
+                            socialOnboardingPopup.flow = "create"
+                        else
+                            socialOnboardingPopup.flow = "login"
+                    }
                 }
                 XButton {
                     Layout.fillWidth: true
@@ -1142,13 +1494,30 @@ ApplicationWindow {
                 }
                 XButton {
                     Layout.fillWidth: true
-                    text: socialController.state.busy ? "Conectando…" : socialOnboardingPopup.createMode ? "Crear ID" : "Entrar"
-                    enabled: !socialController.state.busy && socialUsername.text.length >= 3 && socialPassword.text.length >= 8
+                    text: socialController.state.busy ? "Procesando…"
+                          : socialOnboardingPopup.flow === "create" ? "Crear y recibir 15"
+                          : socialOnboardingPopup.flow === "login" ? "Entrar"
+                          : socialOnboardingPopup.flow === "recover-request" ? "Enviar código"
+                          : "Cambiar contraseña"
+                    enabled: !socialController.state.busy
+                             && socialEmail.text.length >= 3
+                             && (socialOnboardingPopup.flow === "recover-request"
+                                 || (socialOnboardingPopup.flow === "login" && socialPassword.text.length >= 8)
+                                 || (socialOnboardingPopup.flow === "create"
+                                     && socialUsername.text.length >= 3 && socialPassword.text.length >= 8)
+                                 || (socialOnboardingPopup.flow === "recover-confirm"
+                                     && socialRecoveryCode.text.length === 6 && socialPassword.text.length >= 8))
                     onClicked: {
-                        if (socialOnboardingPopup.createMode)
-                            socialController.signUp(socialUsername.text, socialPassword.text)
+                        if (socialOnboardingPopup.flow === "create")
+                            socialController.signUp(socialUsername.text, socialEmail.text, socialPassword.text)
+                        else if (socialOnboardingPopup.flow === "login")
+                            socialController.signIn(socialEmail.text, socialPassword.text)
+                        else if (socialOnboardingPopup.flow === "recover-request")
+                            socialController.requestPasswordReset(socialEmail.text)
                         else
-                            socialController.signIn(socialUsername.text, socialPassword.text)
+                            socialController.confirmPasswordReset(
+                                socialEmail.text, socialRecoveryCode.text, socialPassword.text
+                            )
                     }
                 }
             }
@@ -1158,9 +1527,192 @@ ApplicationWindow {
             function onStateChanged() {
                 if (socialController.state.authenticated && socialOnboardingPopup.opened) {
                     socialPassword.text = ""
+                    socialRecoveryCode.text = ""
                     socialOnboardingPopup.close()
+                } else if (socialController.state.recoveryCodeSent) {
+                    socialOnboardingPopup.flow = "recover-confirm"
+                    socialEmail.text = socialController.state.recoveryEmail
+                    socialPassword.text = ""
+                } else if (socialController.state.verificationPending) {
+                    socialOnboardingPopup.flow = "login"
+                    socialEmail.text = socialController.state.email
+                    socialPassword.text = ""
                 }
             }
+        }
+    }
+
+    Popup {
+        id: recoveryEmailPopup
+        objectName: "recoveryEmailRequiredPopup"
+        anchors.centerIn: parent
+        width: Math.min(570, window.width - 40)
+        height: Math.min(455, window.height - 36)
+        modal: true
+        focus: true
+        padding: 0
+        closePolicy: Popup.NoAutoClose
+        onOpened: {
+            window.pendingRecoveryEmailRequirement = false
+            recoveryAccountEmail.text = socialController.state.recoveryEmail || ""
+        }
+        onClosed: window.tryOpenSocialOnboarding()
+
+        Overlay.modal: Rectangle { color: "#D9000710" }
+        background: Rectangle {
+            radius: 24
+            color: theme.colors.surfaceRaised
+            border.width: 2
+            border.color: theme.colors.primary
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: 7
+                radius: 17
+                color: "transparent"
+                border.width: 1
+                border.color: theme.colors.border
+            }
+        }
+
+        contentItem: ColumnLayout {
+            id: recoveryEmailContent
+            objectName: "recoveryEmailRequiredContent"
+            anchors.fill: parent
+            anchors.margins: 26
+            spacing: 12
+
+            Text {
+                text: "ACTUALIZACIÓN DE CUENTA OBLIGATORIA"
+                color: theme.colors.primary
+                font.pixelSize: 10
+                font.weight: Font.Bold
+                font.letterSpacing: 1.2
+            }
+            Text {
+                objectName: "recoveryEmailRequiredTitle"
+                Layout.fillWidth: true
+                text: "Agrega un correo de recuperación"
+                color: theme.colors.text
+                font.pixelSize: 24
+                font.weight: Font.DemiBold
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "Tu ID antigua no tenía un correo real. Agrégalo para recuperar tu contraseña y conservar el acceso a tu progreso."
+                color: theme.colors.textMuted
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 70
+                radius: 14
+                color: theme.colors.surfaceSoft
+                border.width: 1
+                border.color: theme.colors.accent
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 13
+                    spacing: 12
+                    Rectangle {
+                        width: 42; height: 42; radius: 21
+                        color: theme.colors.accent
+                        Text { anchors.centerIn: parent; text: "15"; color: "#071018"; font.pixelSize: 13; font.weight: Font.Bold }
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true; spacing: 1
+                        Text { text: "15 TIRADAS GATUNAS"; color: theme.colors.text; font.pixelSize: 12; font.weight: Font.Bold }
+                        Text { text: "Se entregan cuando Supabase confirma tu correo real."; color: theme.colors.textMuted; font.pixelSize: 10 }
+                    }
+                }
+            }
+
+            XTextField {
+                id: recoveryAccountEmail
+                objectName: "recoveryAccountEmailField"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 48
+                placeholderText: "Correo personal al que tengas acceso"
+                enabled: !socialController.state.emailBusy
+                         && !socialController.state.recoveryEmailUpdatePending
+            }
+            Text {
+                Layout.fillWidth: true
+                Layout.preferredHeight: visible ? implicitHeight : 0
+                visible: socialController.state.recoveryEmailUpdatePending
+                text: "Revisa " + (socialController.state.recoveryEmail || "tu correo")
+                      + ", confirma el cambio y vuelve aquí."
+                color: theme.colors.accent
+                font.pixelSize: 11
+                font.weight: Font.DemiBold
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                Layout.fillWidth: true
+                Layout.preferredHeight: visible ? implicitHeight : 0
+                visible: socialController.state.emailError.length > 0
+                text: socialController.state.emailError
+                color: theme.colors.error
+                font.pixelSize: 10
+                wrapMode: Text.WordWrap
+            }
+            Item { Layout.fillHeight: true }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 9
+                XButton {
+                    text: "Cerrar sesión"
+                    kind: "ghost"
+                    enabled: !socialController.state.emailBusy
+                    onClicked: socialController.signOut()
+                }
+                Item { Layout.fillWidth: true }
+                XButton {
+                    visible: socialController.state.recoveryEmailUpdatePending
+                    text: socialController.state.emailBusy ? "Comprobando…" : "Comprobar correo"
+                    enabled: !socialController.state.emailBusy
+                    onClicked: socialController.checkRecoveryEmail()
+                }
+                XButton {
+                    objectName: "recoveryEmailSaveButton"
+                    visible: !socialController.state.recoveryEmailUpdatePending
+                    text: socialController.state.emailBusy ? "Guardando…" : "Guardar y recibir 15"
+                    enabled: !socialController.state.emailBusy && recoveryAccountEmail.text.length >= 5
+                    onClicked: socialController.updateRecoveryEmail(recoveryAccountEmail.text)
+                }
+            }
+        }
+
+        Connections {
+            target: socialController
+            function onStateChanged() {
+                if ((!socialController.state.authenticated
+                        || !socialController.state.needsRecoveryEmail)
+                        && recoveryEmailPopup.opened) {
+                    recoveryEmailPopup.close()
+                } else if (socialController.state.recoveryEmailUpdatePending
+                           && socialController.state.recoveryEmail.length > 0) {
+                    recoveryAccountEmail.text = socialController.state.recoveryEmail
+                }
+            }
+        }
+    }
+
+    TutorialOverlay {
+        id: tutorialOverlay
+        steps: window.tutorialSteps
+        onPageRequested: function(page) { appController.setPage(page) }
+        onFinished: {
+            appController.completeGuidedTour()
+            window.tryOpenRecoveryEmailRequirement()
+            window.tryOpenSocialOnboarding()
+        }
+        onSkipped: {
+            appController.completeGuidedTour()
+            window.tryOpenRecoveryEmailRequirement()
+            window.tryOpenSocialOnboarding()
         }
     }
 
@@ -1202,12 +1754,14 @@ ApplicationWindow {
         function onToastRequested(kind, title, message) { toast.toastKind = kind; toast.toastTitle = title; toast.toastMessage = message; toast.open() }
         function onUpdatePromptRequested(info) { window.updateInfo = info; updatePopup.open() }
         function onReleaseNoticeRequested(info) { noticePopup.noticeInfo = info; noticePopup.open() }
+        function onZaneBirthdayRequested(info) { window.requestZaneBirthday(info) }
         function onCollectionCompletedRequested() { platinumDelay.restart() }
         function onSmoothMotionPromotionRequested() {
             window.pendingSmoothMotionPromo = true
             if (!noticePopup.opened && !platinumPopup.opened && !updatePopup.opened)
                 smoothMotionDelay.restart()
         }
+        function onGuidedTourRequested() { window.requestGuidedTutorial() }
         function onShowWindowRequested() {
             window.show()
             window.raise()
@@ -1217,6 +1771,7 @@ ApplicationWindow {
     Connections {
         target: socialController
         function onOnboardingRequested() { window.requestSocialOnboarding() }
+        function onRecoveryEmailRequired() { window.requestRecoveryEmailRequirement() }
     }
     Connections {
         target: dialogBroker

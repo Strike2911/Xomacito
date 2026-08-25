@@ -76,6 +76,11 @@ Item {
                         }
                     }
                     XButton { visible: !viewState.authenticated; text: "Conectar ID"; onClicked: root.connectRequested() }
+                    XButton {
+                        visible: viewState.authenticated && viewState.needsRecoveryEmail
+                        text: "Agregar correo · +15"
+                        onClicked: socialController.checkRecoveryEmail()
+                    }
                     XButton { visible: viewState.authenticated; text: "Cerrar sesión"; kind: "ghost"; onClicked: socialController.signOut() }
                 }
             }

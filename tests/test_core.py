@@ -1,12 +1,15 @@
 import hashlib
 import io
 import json
+import os
+import array
 import subprocess
 import sys
 import tempfile
 import threading
 import unittest
 import uuid
+import wave
 from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -32,6 +35,7 @@ from src.core.notification_sound import (
     gacha_equip_sound_path,
     gacha_sound_path,
     platinum_sound_path,
+    play_completion_sound,
 )
 from src.core.processor import (
     CODEC_PROFILES,
@@ -56,6 +60,19 @@ LEGACY_APP_NAME = "Do" + "wP"
 
 
 class XomacitoWrapperTests(unittest.TestCase):
+    def test_explicit_ui_scale_is_applied_before_qt_starts(self):
+        with patch.dict(os.environ, {"XOMACITO_UI_SCALE": "1.5"}, clear=False):
+            os.environ.pop("QT_SCALE_FACTOR", None)
+            main._configure_responsive_qt_scale()
+            self.assertEqual(os.environ.get("QT_SCALE_FACTOR"), "1.5")
+            os.environ.pop("QT_SCALE_FACTOR", None)
+
+    def test_automatic_ui_scale_is_conservative_and_resolution_aware(self):
+        self.assertEqual(main._recommended_ui_scale(1920, 1080, 96), 1.0)
+        self.assertEqual(main._recommended_ui_scale(2560, 1440, 96), 1.25)
+        self.assertEqual(main._recommended_ui_scale(3840, 2160, 96), 1.5)
+        self.assertEqual(main._recommended_ui_scale(2560, 1440, 120), 1.0)
+
     @staticmethod
     def _release_payload(tag="v1.6.0", payload_size=512, digest=None):
         if digest is None:
@@ -300,6 +317,19 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("FORMULARIO DE ID", highlights)
         self.assertIn("BLACK BULL", highlights)
         self.assertTrue(notice["smoothMotionPromotion"])
+
+    def test_release_407_restores_every_historical_contributor(self):
+        notice = release_notice_for_version("4.0.7")
+
+        self.assertIsNotNone(notice)
+        self.assertEqual(notice["title"], "Xomacito 1.0.7 Definitive Edition")
+        for contributor in (
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Strike", "Zane", "Nuan",
+        ):
+            self.assertIn(contributor, notice["contributors"])
+        self.assertNotIn("Frido", notice["contributors"])
+        self.assertIn("Premiere", " ".join(notice["highlights"]))
 
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
@@ -851,6 +881,11 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertEqual(sound.read_bytes()[:3], b"ID3")
         self.assertEqual(completion_sound_path(), sound)
 
+    def test_completion_meow_is_attenuated_by_ten_decibels(self):
+        with patch("src.core.notification_sound._play_async", return_value=True) as playback:
+            self.assertTrue(play_completion_sound())
+        playback.assert_called_once_with(completion_sound_path(), volume=316)
+
     def test_platinum_celebration_has_its_own_sound(self):
         sound = ROOT / "assets" / "sfx" / "platinum-celebration.mp3"
         self.assertTrue(sound.exists())
@@ -872,7 +907,7 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertEqual(sizes, sorted(sizes))
         self.assertEqual(
             set(GACHA_STYLE_SOUND_FILENAMES),
-            {"arcane-mage", "playera-prismatic", "zarking-cyber", "blackbull-noir"},
+            {"arcane-mage", "playera-prismatic", "zarking-cyber", "blackbull-noir", "strike-apex"},
         )
         self.assertEqual(set(GACHA_EQUIP_SOUND_FILENAMES), set(GACHA_STYLE_SOUND_FILENAMES))
         for style in GACHA_STYLE_SOUND_FILENAMES:
@@ -886,6 +921,23 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("successfulDownload.connect(self._play_download_completion)", application)
         self.assertIn("revealRequested.connect(self._play_cat_reveal)", application)
         self.assertIn("equippedRequested.connect(self._play_cat_equip)", application)
+
+    def test_gacha_sounds_keep_headroom_and_smooth_transients(self):
+        sounds = sorted((ROOT / "assets" / "sfx").glob("gacha-*.wav"))
+        self.assertGreaterEqual(len(sounds), 13)
+        for sound in sounds:
+            with wave.open(str(sound), "rb") as reader:
+                self.assertEqual(reader.getsampwidth(), 2)
+                samples = array.array("h", reader.readframes(reader.getnframes()))
+            peak = max(abs(sample) for sample in samples) / 32767
+            deltas = sorted(
+                abs(samples[index] - samples[index - 1]) / 32767
+                for index in range(1, len(samples))
+            )
+            percentile_99 = deltas[int(len(deltas) * 0.99)]
+            self.assertLessEqual(peak, 0.63, sound.name)
+            self.assertGreater(peak, 0.50, sound.name)
+            self.assertLess(percentile_99, 0.10, sound.name)
 
     def test_runtime_uses_updatable_ytdlp_zip(self):
         helper = (ROOT / "src" / "core" / "ytdlp_runtime.py").read_text(encoding="utf-8")
@@ -989,6 +1041,7 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("appController.catRarity", main_qml)
         self.assertIn("DownloadPage", main_qml)
         self.assertIn("ImageStudioPage", main_qml)
+        self.assertIn("MediaLibraryPage", main_qml)
         self.assertIn("StackLayout", main_qml)
 
     def test_launcher_self_test_finds_exe(self):
@@ -1029,8 +1082,11 @@ class XomacitoWrapperTests(unittest.TestCase):
         for relative in obsolete_paths:
             self.assertFalse((ROOT / relative).exists(), relative)
 
-        build_entries = {path.name for path in (ROOT / ".build").iterdir()}
-        self.assertEqual(build_entries, {"XomacitoInstaller.spec", "XomacitoLauncher.spec"})
+        build_entries = {path.name for path in (ROOT / ".build").iterdir() if path.is_file()}
+        self.assertEqual(
+            build_entries,
+            {"XomacitoInstaller.spec", "XomacitoLauncher.spec", "XomacitoPublic.spec"},
+        )
 
 
     def test_eight_daily_cat_icons_are_installed(self):
@@ -1057,7 +1113,7 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("appController.catSource", source)
         self.assertIn("theme.colors.backgroundAlt", source)
         self.assertIn("StackLayout", source)
-        for page in ("DownloadPage", "QueuePage", "ImageStudioPage", "SettingsPage"):
+        for page in ("DownloadPage", "QueuePage", "MediaLibraryPage", "ImageStudioPage", "SettingsPage"):
             self.assertIn(page, source)
 
     def test_secondary_tabs_and_heavy_engines_are_loaded_on_demand(self):
@@ -1104,9 +1160,16 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         allowed_fonts = {"Segoe UI Variable Text", "Candara", "Bahnschrift"}
         themes = sorted((ROOT / "src" / "ui" / "themes").glob("*.json"))
-        self.assertEqual(len(themes), 11)
+        self.assertEqual(len(themes), 12)
         for path in themes:
             data = json.loads(path.read_text(encoding="utf-8-sig"))
+            if path.name == "Strike.json":
+                self.assertEqual(data["ThemeName"], "Strike")
+                self.assertTrue({
+                    "background_top", "background_bottom", "glow_primary", "glow_secondary",
+                    "header_top", "header_bottom", "header_border", "font_family",
+                }.issubset(data["XomacitoVisual"]))
+                continue
             self.assertEqual(data["_INSTRUCCIONES_XOMACITO"]["VERSION"], "5.2", path.name)
             self.assertIn(data["CTkFont"]["Windows"]["family"], allowed_fonts, path.name)
             self.assertEqual(data["CTkFont"]["Windows"]["size"], 14, path.name)
@@ -1180,9 +1243,10 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertNotIn("title_fixer.py", spec)
 
         self.assertIn("PrivilegesRequired=lowest", installer)
-        self.assertIn("OutputBaseFilename=Xomacito-1.0-Definitive-Edition-Setup", installer)
-        self.assertIn('#define MyAppVersion "4.0.0"', installer)
-        self.assertIn('#define MyAppDisplayVersion "1.0 Definitive Edition"', installer)
+        self.assertIn("OutputBaseFilename=Xomacito-1.0.7-Definitive-Edition-Setup", installer)
+        self.assertIn('#define MyAppVersion "4.0.7"', installer)
+        self.assertIn('#define MyAppDisplayVersion "1.0.7 Definitive Edition"', installer)
+        self.assertIn("shellexec postinstall skipifsilent skipifdoesntexist", installer)
         self.assertIn("CloseApplications=force", installer)
         self.assertIn("CloseApplicationsFilter=Xomacito.exe,ffmpeg.exe,ffprobe.exe", installer)
         self.assertNotIn("CloseApplicationsFilter=*.*", installer)
@@ -1260,9 +1324,14 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-1.0-Definitive-Edition-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-1.0.7-Definitive-Edition-Setup.exe", build_script)
+        self.assertIn("Assert-ReadableApplicationSource", build_script)
+        self.assertIn("pyarmor_runtime|__pyarmor__|pytransform", build_script)
+        self.assertIn('PROJECT_ROOT / "main\\.py"', build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
+        installer_spec = (ROOT / ".build" / "XomacitoInstaller.spec").read_text(encoding="utf-8")
+        self.assertIn('PROJECT_ROOT / "premiere-panel"', installer_spec)
         self.assertIn("AverageStartupSeconds", benchmark_script)
         self.assertIn("MainWindowHandle", benchmark_script)
         self.assertIn("ExpectedWindowTitle", benchmark_script)

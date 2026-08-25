@@ -104,7 +104,7 @@ class BatchController(QObject):
     ROLES = [
         "jobId", "title", "status", "detail", "progress", "thumbnail", "jobType",
         "mode", "quality", "recode", "preset", "keepOriginal", "downloadThumbnail",
-        "embedAudioCover", "itemCount", "destinationTag",
+        "embedAudioCover", "itemCount", "destinationTag", "outputFormat",
     ]
     PLAYLIST_ENTRY_ROLES = ["index", "title", "thumbnail", "selected"]
 
@@ -126,6 +126,7 @@ class BatchController(QObject):
             "globalEmbedAudioCover": settings.get("batch_embed_audio_cover", False),
             "allAudioTracks": False, "status": "Cola lista.", "progress": 0.0,
             "running": False, "analyzing": False, "selectedJobId": "",
+            "playlistSelectionCount": 0, "playlistEntryCount": 0,
             "selectedTag": "Sin etiqueta", "selectedTagColor": "#6F7F8F",
             "effectiveOutputPath": settings.get("batch_download_path", str(Path.home() / "Downloads")),
         }
@@ -190,7 +191,16 @@ class BatchController(QObject):
     @Slot(str, "QVariant")
     def setValue(self, key, value):
         if key not in self._state: return
-        self._set_state(**{key: value})
+        if key == "globalMode":
+            mode = str(value)
+            self._set_state(
+                globalMode=mode,
+                globalPreset=self._compatible_preset(mode, self._state["globalPreset"]),
+            )
+        elif key == "globalPreset":
+            self._set_state(globalPreset=self._compatible_preset(self._state["globalMode"], str(value)))
+        else:
+            self._set_state(**{key: value})
         if key == "outputPath":
             self.settings.set("batch_download_path", str(value))
             self._refresh_tag_state()
@@ -201,6 +211,21 @@ class BatchController(QObject):
         elif key == "selectedTag":
             self.settings.set("selected_download_tag", str(value))
             self._refresh_tag_state()
+
+    def _compatible_preset(self, mode: str, current: str) -> str:
+        names = self.presets.names("Solo Audio" if mode == "Solo Audio" else "Video+Audio")
+        return current if current in names else (names[0] if names else "-")
+
+    @staticmethod
+    def _entry_thumbnail(entry: dict) -> str:
+        direct = str(entry.get("thumbnail") or "")
+        if direct:
+            return direct
+        thumbnails = entry.get("thumbnails") or []
+        for candidate in reversed(thumbnails):
+            if isinstance(candidate, dict) and candidate.get("url"):
+                return str(candidate["url"])
+        return ""
 
     def _load_download_tags(self):
         tags = []
@@ -504,10 +529,14 @@ class BatchController(QObject):
 
     def _model_item(self, job, status=None, detail="", progress=0.0):
         config = job.config
+        entries = self._playlist_entries.get(job.job_id, [])
+        thumbnail = (job.analysis_data or {}).get("thumbnail", "")
+        if not thumbnail and entries:
+            thumbnail = self._entry_thumbnail(entries[0])
         return {
             "jobId": job.job_id, "title": config.get("title", "Sin título"),
             "status": status or job.status, "detail": detail or job.progress_message,
-            "progress": progress, "thumbnail": (job.analysis_data or {}).get("thumbnail", ""),
+            "progress": progress, "thumbnail": thumbnail,
             "jobType": job.job_type, "mode": config.get("mode", config.get("playlist_mode", "Video+Audio")),
             "quality": config.get("playlist_quality", self._state["globalQuality"]),
             "recode": bool(config.get("recode_enabled")), "preset": config.get("recode_preset_name", "-"),
@@ -515,7 +544,54 @@ class BatchController(QObject):
             "downloadThumbnail": bool(config.get("download_thumbnail", False)),
             "embedAudioCover": bool(config.get("embed_audio_cover", False)), "itemCount": job.total_items,
             "destinationTag": config.get("destination_tag", "Sin etiqueta"),
+            "outputFormat": self._output_format_label(job),
         }
+
+    def _output_format_label(self, job) -> str:
+        config = job.config
+        mode = config.get("mode", config.get("playlist_mode", "Video+Audio"))
+        if config.get("recode_enabled"):
+            preset = self.presets.find(config.get("recode_preset_name", ""))
+            container = str(preset.get("recode_container") or "").lstrip(".")
+            if container:
+                return container.upper()
+        if job.job_type == "PLAYLIST":
+            return "MP3" if mode == "Solo Audio" else "MP4 preferido · alternativa MKV"
+
+        choices = build_media_choices(job.analysis_data or {})
+        if mode == "Solo Audio":
+            selected = next(
+                (item for item in choices["audio"] if item["formatId"] == config.get("resolved_audio_format_id")),
+                choices["audio"][0] if choices["audio"] else {},
+            )
+            codec = str(selected.get("acodec") or "").lower()
+            if "aac" in codec or "mp4a" in codec:
+                return "M4A"
+            if "opus" in codec:
+                return "OPUS"
+            if "vorbis" in codec:
+                return "OGG"
+            if "flac" in codec:
+                return "FLAC"
+            return "MP3"
+
+        selected_video = next(
+            (item for item in choices["video"] if item["formatId"] == config.get("resolved_video_format_id")),
+            choices["video"][0] if choices["video"] else {},
+        )
+        selected_audio = next(
+            (item for item in choices["audio"] if item["formatId"] == config.get("resolved_audio_format_id")),
+            choices["audio"][0] if choices["audio"] else {},
+        )
+        video_ext = str(selected_video.get("ext") or "").lower()
+        audio_ext = str(selected_audio.get("ext") or "").lower()
+        if selected_video.get("combined"):
+            return (video_ext or "MP4").upper()
+        if video_ext == "mp4" and audio_ext in {"m4a", "mp4"}:
+            return "MP4"
+        if video_ext == "webm" and audio_ext in {"webm", "opus", "ogg"}:
+            return "WEBM"
+        return "MKV"
 
     def _find_row(self, job_id):
         for index, item in enumerate(self.jobs.items()):
@@ -550,12 +626,16 @@ class BatchController(QObject):
                 {
                     "index": index,
                     "title": entry.get("title") or entry.get("id") or f"Elemento {index + 1}",
-                    "thumbnail": entry.get("thumbnail", ""),
+                    "thumbnail": self._entry_thumbnail(entry),
                     "selected": index in selected,
                 }
                 for index, entry in enumerate(self._playlist_entries.get(job.job_id, []))
             ]
         self.playlist_entries_model.replace(self._selected_playlist_entries)
+        self._set_state(
+            playlistSelectionCount=sum(1 for entry in self._selected_playlist_entries if entry["selected"]),
+            playlistEntryCount=len(self._selected_playlist_entries),
+        )
         self.selectedPlaylistEntriesChanged.emit()
 
     @Slot(str, "QVariant")
@@ -576,6 +656,13 @@ class BatchController(QObject):
             config_key = mapping.get(key)
         if not config_key: return
         job.config[config_key] = value
+        if key == "mode":
+            job.config["recode_preset_name"] = self._compatible_preset(
+                str(value), str(job.config.get("recode_preset_name") or "")
+            )
+        elif key == "preset":
+            mode = job.config.get("playlist_mode", job.config.get("mode", "Video+Audio"))
+            job.config[config_key] = self._compatible_preset(str(mode), str(value))
         self.selectJob(job.job_id)
         self._replace_job_model(job, job.status, job.progress_message)
 
@@ -610,6 +697,7 @@ class BatchController(QObject):
         self._selected_playlist_entries[row]["selected"] = bool(selected)
         self.playlist_entries_model.update_item(row, {"selected": bool(selected)})
         self._selected = self._model_item(job)
+        self._set_state(playlistSelectionCount=len(chosen), playlistEntryCount=len(entries))
         self.selectedChanged.emit()
 
     @Slot(bool)
@@ -625,11 +713,30 @@ class BatchController(QObject):
             entry["selected"] = bool(selected)
             self.playlist_entries_model.update_item(row, {"selected": bool(selected)})
         self._selected = self._model_item(job)
+        self._set_state(playlistSelectionCount=job.total_items, playlistEntryCount=len(entries))
+        self.selectedChanged.emit()
+
+    @Slot(int)
+    def setPlaylistSelectionCount(self, count):
+        job = self.manager.get_job_by_id(self._state["selectedJobId"])
+        if not job or job.job_type != "PLAYLIST":
+            return
+        entries = self._playlist_entries.get(job.job_id, [])
+        requested = max(0, min(int(count), len(entries)))
+        job.config["selected_indices"] = list(range(requested))
+        job.total_items = requested
+        self._replace_job_model(job, job.status, f"{requested} de {len(entries)} seleccionados")
+        for row, entry in enumerate(self._selected_playlist_entries):
+            chosen = row < requested
+            entry["selected"] = chosen
+            self.playlist_entries_model.update_item(row, {"selected": chosen})
+        self._selected = self._model_item(job)
+        self._set_state(playlistSelectionCount=requested, playlistEntryCount=len(entries))
         self.selectedChanged.emit()
 
     @Slot(str, result="QVariantList")
     def playlistEntries(self, job_id):
-        return [{"index": index, "title": entry.get("title") or entry.get("id") or f"Elemento {index + 1}", "thumbnail": entry.get("thumbnail", "")} for index, entry in enumerate(self._playlist_entries.get(job_id, []))]
+        return [{"index": index, "title": entry.get("title") or entry.get("id") or f"Elemento {index + 1}", "thumbnail": self._entry_thumbnail(entry)} for index, entry in enumerate(self._playlist_entries.get(job_id, []))]
 
     @Slot(str)
     def removeJob(self, job_id):

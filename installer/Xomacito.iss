@@ -1,6 +1,6 @@
 #define MyAppName "Xomacito"
-#define MyAppVersion "4.0.1"
-#define MyAppDisplayVersion "1.0.1 Definitive Edition"
+#define MyAppVersion "4.0.7"
+#define MyAppDisplayVersion "1.0.7 Definitive Edition"
 #define MyAppPublisher "Xomacito"
 #define MyAppExeName "Xomacito.exe"
 #define ProjectRoot ".."
@@ -18,7 +18,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#ProjectRoot}\release
-OutputBaseFilename=Xomacito-1.0.1-Definitive-Edition-Setup
+OutputBaseFilename=Xomacito-1.0.7-Definitive-Edition-Setup
 SetupIconFile={#ProjectRoot}\Xomacito-icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName} {#MyAppDisplayVersion}
@@ -35,10 +35,10 @@ RestartApplications=no
 Uninstallable=yes
 CreateUninstallRegKey=yes
 MinVersion=10.0.17763
-VersionInfoVersion=4.0.1.0
+VersionInfoVersion=4.0.7.0
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
-VersionInfoDescription=Xomacito 1.0.1 Definitive Edition
+VersionInfoDescription=Xomacito 1.0.7 Definitive Edition
 VersionInfoCompany={#MyAppPublisher}
 
 [Languages]
@@ -59,15 +59,15 @@ Name: "{app}\_internal\bin\models\upscaling"
 [Icons]
 ; El acceso directo principal va directamente en Programas para que Windows
 ; Search lo indexe como aplicación, no como una simple carpeta.
-Name: "{userprograms}\Xomacito"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; AppUserModelID: "Xomacito.App"
+Name: "{userprograms}\Xomacito"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"; IconIndex: 0; AppUserModelID: "Xomacito.App"
 Name: "{userprograms}\Desinstalar Xomacito"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\Xomacito"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; AppUserModelID: "Xomacito.App"; Tasks: desktopicon
+Name: "{autodesktop}\Xomacito"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"; IconIndex: 0; AppUserModelID: "Xomacito.App"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Abrir Xomacito"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Abrir Xomacito"; WorkingDir: "{app}"; Flags: shellexec postinstall skipifsilent skipifdoesntexist
 ; La instalación silenciosa iniciada desde Xomacito vuelve a abrir únicamente
 ; cuando lleva el parámetro privado del actualizador.
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--updated"; Flags: nowait skipifnotsilent; Check: IsAutoUpdate
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--updated"; WorkingDir: "{app}"; Flags: shellexec skipifnotsilent skipifdoesntexist; Check: IsAutoUpdate
 
 [UninstallRun]
 ; Se ejecuta como primer paso del desinstalador. Inno espera a que taskkill

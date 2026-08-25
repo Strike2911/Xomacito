@@ -57,6 +57,8 @@ LEGACY_THEME_ALIASES = {
     "blue": "midnight_ocean",
     "dark-blue": "midnight_ocean",
     "green": "forest_moss",
+    "codex_black": "Strike",
+    "Codex Black": "Strike",
 }
 
 THEME_UNLOCK_ORDER = [
@@ -85,6 +87,19 @@ def _mix(first: str, second: str, amount: float) -> str:
     ).name(QColor.HexArgb)
 
 
+def _soften(color: str, dark: bool) -> str:
+    """Reduce la saturación estridente sin borrar la identidad del tema."""
+    value = QColor(color)
+    hue, saturation, brightness, alpha = value.getHsvF()
+    if hue < 0:
+        return value.name(QColor.HexRgb)
+    saturation *= 0.72
+    if dark:
+        brightness = min(0.84, brightness * 0.88 + 0.04)
+    value.setHsvF(hue, saturation, brightness, alpha)
+    return value.name(QColor.HexArgb if alpha < 1 else QColor.HexRgb)
+
+
 class ThemeController(QObject):
     colorsChanged = Signal()
     appearanceChanged = Signal()
@@ -98,9 +113,12 @@ class ThemeController(QObject):
         self.settings = settings
         self.builtin_dir = self.project_root / "src" / "ui" / "themes"
         self._appearance = str(settings.get("appearance_mode", "Dark"))
-        requested_theme = str(settings.get("selected_theme_accent", "midnight_ocean"))
+        stored_theme = str(settings.get("selected_theme_accent", "Strike"))
+        requested_theme = stored_theme
+        if not bool(settings.get("theme_selection_explicit", False)):
+            requested_theme = "Strike"
         self._theme_name = self._normalized_theme_name(requested_theme)
-        if self._theme_name != requested_theme:
+        if self._theme_name != stored_theme:
             self.settings.set("selected_theme_accent", self._theme_name)
         self._colors: dict[str, str] = {}
         self._cat_theme_unlocks = 0
@@ -110,7 +128,7 @@ class ThemeController(QObject):
         candidate = LEGACY_THEME_ALIASES.get(str(name).strip(), str(name).strip())
         personal = self.settings.themes_dir / f"{candidate}.json"
         builtin = self.builtin_dir / f"{candidate}.json"
-        return candidate if personal.is_file() or builtin.is_file() else "midnight_ocean"
+        return candidate if personal.is_file() or builtin.is_file() else "Strike"
 
     @Property("QVariantMap", notify=colorsChanged)
     def colors(self):
@@ -127,7 +145,7 @@ class ThemeController(QObject):
     @Property("QStringList", notify=availableThemesChanged)
     def availableThemes(self):
         builtin = {path.stem for path in self.builtin_dir.glob("*.json")}
-        names = {"midnight_ocean"}
+        names = {"midnight_ocean", "Strike"}
         names.update(name for name in THEME_UNLOCK_ORDER[:self._cat_theme_unlocks] if name in builtin)
         # Imported themes belong to the user and are never gated by the gacha.
         names.update(path.stem for path in self.settings.themes_dir.glob("*.json"))
@@ -144,7 +162,7 @@ class ThemeController(QObject):
         self._cat_theme_unlocks = amount
         allowed = set(self.availableThemes)
         if self._theme_name not in allowed:
-            self._theme_name = "midnight_ocean"
+            self._theme_name = "Strike"
             self.settings.set("selected_theme_accent", self._theme_name)
             self.themeNameChanged.emit()
             self.reload()
@@ -159,7 +177,7 @@ class ThemeController(QObject):
     def _theme_path(self) -> Path:
         personal = self.settings.themes_dir / f"{self._theme_name}.json"
         builtin = self.builtin_dir / f"{self._theme_name}.json"
-        fallback = self.builtin_dir / "midnight_ocean.json"
+        fallback = self.builtin_dir / "Strike.json"
         return personal if personal.is_file() else builtin if builtin.is_file() else fallback
 
     @Slot()
@@ -181,8 +199,8 @@ class ThemeController(QObject):
         surface = _pick(visual.get("header_top") or frame.get("fg_color"), dark, fallback["surface"])
         raised = _pick(visual.get("header_bottom"), dark, fallback["surfaceRaised"])
         border = _pick(visual.get("header_border"), dark, fallback["border"])
-        primary = _pick(custom.get("DOWNLOAD_BTN") or button.get("fg_color"), dark, fallback["primary"])
-        hover = _pick(custom.get("DOWNLOAD_BTN_HOVER") or button.get("hover_color"), dark, fallback["primaryHover"])
+        primary = _soften(_pick(custom.get("DOWNLOAD_BTN") or button.get("fg_color"), dark, fallback["primary"]), dark)
+        hover = _soften(_pick(custom.get("DOWNLOAD_BTN_HOVER") or button.get("hover_color"), dark, fallback["primaryHover"]), dark)
         field = _pick(entry.get("fg_color"), dark, _mix(background, surface, 0.55))
 
         self._colors = {
@@ -197,7 +215,7 @@ class ThemeController(QObject):
             "primary": primary,
             "primaryHover": hover,
             "primaryPressed": _mix(primary, background, 0.28),
-            "accent": _pick(visual.get("glow_secondary"), dark, fallback["accent"]),
+            "accent": _soften(_pick(visual.get("glow_secondary"), dark, fallback["accent"]), dark),
             "text": _pick(visual.get("header_text"), dark, fallback["text"]),
             "textMuted": _pick(visual.get("header_muted"), dark, fallback["textMuted"]),
             "textDim": _mix(_pick(visual.get("header_muted"), dark, fallback["textMuted"]), background, 0.28),

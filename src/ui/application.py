@@ -32,6 +32,7 @@ from .cat_gacha_controller import CatGachaController
 from .dialog_broker import DialogBroker
 from .download_controller import DownloadController
 from .image_controller import ImageController
+from .media_library_controller import MediaLibraryController
 from .presets import PresetStore
 from .settings_controller import SettingsController
 from .settings_store import SettingsStore
@@ -61,13 +62,15 @@ class AppController(QObject):
     toastRequested = Signal(str, str, str)
     updatePromptRequested = Signal("QVariantMap")
     releaseNoticeRequested = Signal("QVariantMap")
+    zaneBirthdayRequested = Signal("QVariantMap")
     smoothMotionPromotionRequested = Signal()
+    guidedTourRequested = Signal()
     collectionCompletedRequested = Signal()
     showWindowRequested = Signal()
     trayAvailableChanged = Signal()
     updateProgressReported = Signal(float, str)
 
-    PAGES = ["Descargar", "Cola", "Estudio de Imagen", "Personalización", "Scoreboard", "Configuración"]
+    PAGES = ["Descargar", "Cola", "Biblioteca", "Estudio de Imagen", "Personalización", "Scoreboard", "Configuración"]
 
     def __init__(
         self,
@@ -89,6 +92,14 @@ class AppController(QObject):
         self.presets = PresetStore(self.settings, self)
         self.download = DownloadController(self.project_root, self.settings, self.pool, self.dialogs, self.presets, self.update_version, self)
         self.batch = BatchController(self.project_root, self.settings, self.pool, self.presets, self.update_version, self)
+        self.media_library = MediaLibraryController(
+            self.project_root, self.settings, self.pool, self.download.ffmpeg, self
+        )
+        self.media_library.libraryPathChanged.connect(self._use_premiere_library)
+        if bool(self.settings.get("premiere_library_enabled", True)):
+            library_path = str(self.media_library.root)
+            self.download.setValue("outputPath", library_path)
+            self.batch.setValue("outputPath", library_path)
         self.image_studio = ImageController(self.project_root, self.settings, self.pool, self.update_version, self)
         self.config = SettingsController(self.project_root, self.settings, self.theme, self.pool, self)
         self.cats = CatGachaController(self.project_root, self.settings, self)
@@ -147,14 +158,19 @@ class AppController(QObject):
         return bool(self._tray and self._tray.isVisible())
 
     def _connect_routes(self):
-        for controller in (self.download, self.batch, self.image_studio, self.config, self.cats, self.social):
+        for controller in (self.download, self.batch, self.media_library, self.image_studio, self.config, self.cats, self.social):
             controller.notificationRequested.connect(self.toastRequested)
         self.download.gachaSourceCompleted.connect(self.cats.recordSuccessfulSource)
         self.batch.gachaSourceCompleted.connect(self.cats.recordSuccessfulSource)
         self.download.successfulDownload.connect(self._play_download_completion)
         self.batch.successfulDownload.connect(self._play_download_completion)
+        self.download.successfulDownload.connect(lambda _count: self.media_library.refresh())
+        self.batch.successfulDownload.connect(lambda _count: self.media_library.refresh())
         self.download.successfulDownload.connect(self.social.recordDownload)
         self.batch.successfulDownload.connect(self.social.recordDownload)
+        self.social.signupBonusGranted.connect(self.cats.grantBonusRolls)
+        QTimer.singleShot(0, self.social.claimCreatorGiftIfEligible)
+        QTimer.singleShot(0, self.social.claimAccountRollGifts)
         self.cats.stateChanged.connect(
             self._sync_social_cat_count
         )
@@ -247,7 +263,7 @@ class AppController(QObject):
         elif self._page == 1:
             target = self.batch
             blocked = bool(self.batch.state.get("analyzing") or self.batch.state.get("running"))
-        elif self._page == 2:
+        elif self._page == 3:
             target = self.image_studio
             blocked = bool(self.image_studio.state.get("busy"))
 
@@ -302,6 +318,10 @@ class AppController(QObject):
     def catAnimationStyle(self):
         return str(self.cats.state.get("equippedAnimationStyle", "standard"))
 
+    @Property(int, notify=catChanged)
+    def catEffectLevel(self):
+        return int(self.cats.state.get("equippedEffectLevel", 0))
+
     @Slot(str, result=str)
     def catSourceForId(self, cat_id):
         cat = self.cats._by_id.get(str(cat_id or ""))
@@ -339,16 +359,19 @@ class AppController(QObject):
             "download": 0,
             "batch": 1,
             "queue": 1,
-            "image": 2,
-            "cats": 3,
-            "gatitos": 3,
-            "personalizacion": 3,
-            "personalización": 3,
-            "scoreboard": 4,
-            "ranking": 4,
-            "settings": 5,
-            "configuracion": 5,
-            "configuración": 5,
+            "library": 2,
+            "biblioteca": 2,
+            "premiere": 2,
+            "image": 3,
+            "cats": 4,
+            "gatitos": 4,
+            "personalizacion": 4,
+            "personalización": 4,
+            "scoreboard": 5,
+            "ranking": 5,
+            "settings": 6,
+            "configuracion": 6,
+            "configuración": 6,
         }
         index = aliases.get(str(name).lower())
         if index is None:
@@ -460,13 +483,23 @@ class AppController(QObject):
         self.setPage(1)
         self.batch.analyze()
 
+    @Slot(str)
+    def _use_premiere_library(self, path):
+        if not bool(self.settings.get("premiere_library_enabled", True)):
+            return
+        self.download.setValue("outputPath", str(path))
+        self.batch.setValue("outputPath", str(path))
+
     def _send_files_to_image(self, paths):
         self.image_studio.addPaths(list(paths))
-        self.setPage(2)
+        self.setPage(3)
 
     @Slot()
     def showStartupMessages(self):
         self._schedule_clipboard_check()
+        birthday_reward = self.cats.claimZaneBirthdayReward()
+        if birthday_reward:
+            QTimer.singleShot(120, lambda reward=dict(birthday_reward): self.zaneBirthdayRequested.emit(reward))
         notice = release_notice_for_version(self.update_version)
         seen = str(self.settings.get("release_notice_seen_version", ""))
         if notice and seen != self.update_version:
@@ -478,6 +511,19 @@ class AppController(QObject):
         # Registra como máximo una visita por día en el servidor. El RPC es
         # idempotente y no expone la fecha exacta de actividad al scoreboard.
         QTimer.singleShot(1750, self.social.refresh)
+        # Las IDs creadas antes de admitir correos reales deben completar esta
+        # migración para conservar una vía de recuperación de contraseña.
+        QTimer.singleShot(2200, self.social.checkRecoveryEmail)
+        if str(self.settings.get("guided_tour_seen_version", "")) != self.update_version:
+            QTimer.singleShot(2700, self.guidedTourRequested.emit)
+
+    @Slot()
+    def completeGuidedTour(self):
+        self.settings.set("guided_tour_seen_version", self.update_version)
+
+    @Slot()
+    def requestGuidedTour(self):
+        self.guidedTourRequested.emit()
 
     @Slot()
     def notifyRunningInBackground(self):
@@ -498,8 +544,10 @@ class AppController(QObject):
             return
         self._closing = True
         self.dialogs.close_all()
+        self.social.shutdown()
         self.download.shutdown()
         self.batch.shutdown()
+        self.media_library.shutdown()
         self.image_studio.shutdown()
         self.config.shutdown()
         self.settings.save()
@@ -543,6 +591,7 @@ def run_qt_app(
     context.setContextProperty("theme", controller.theme)
     context.setContextProperty("downloadController", controller.download)
     context.setContextProperty("batchController", controller.batch)
+    context.setContextProperty("mediaLibraryController", controller.media_library)
     context.setContextProperty("imageController", controller.image_studio)
     context.setContextProperty("settingsController", controller.config)
     context.setContextProperty("catController", controller.cats)

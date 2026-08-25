@@ -1036,9 +1036,14 @@ class DownloadController(QObject):
                 fallback["outtmpl"] = str(Path(options["output_path"]) / f"{staging_name}.%(ext)s")
                 self.progressReported.emit(0.02, "Reintentando con una ruta compatible con Windows…")
             else:
+                alternative_result = (
+                    "La mejor alternativa se entregará como MP4 compatible."
+                    if options["mode"] == "Video+Audio"
+                    else "Se priorizará M4A; si el sitio no lo ofrece, se mostrará el formato de audio disponible."
+                )
                 choice = self.dialogs.ask(
                     "choice", "Calidad no disponible",
-                    "El formato exacto falló. ¿Deseas descargar la mejor alternativa compatible?",
+                    f"El formato exacto falló. {alternative_result}\n\n¿Deseas continuar?",
                     ["Usar alternativa", "Cancelar"], "Cancelar",
                 )
                 if choice != "Usar alternativa":

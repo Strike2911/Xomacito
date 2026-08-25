@@ -25,7 +25,9 @@ Item {
                     font.letterSpacing: 1.2
                 }
                 Text {
-                    text: "Desbloquea. Colecciona. Equipa."
+                    text: catController.state.isPlatinum
+                        ? "Colección completa. Mejora sus auras."
+                        : "Desbloquea. Colecciona. Equipa."
                     color: theme.colors.text
                     font.pixelSize: root.dense ? 20 : 24
                     font.weight: Font.DemiBold
@@ -65,6 +67,7 @@ Item {
                     rarity: catController.state.equippedRarity
                     rarityColor: catController.state.equippedColor
                     animationStyle: catController.state.equippedAnimationStyle
+                    effectLevel: catController.state.equippedEffectLevel
                     animatedEffects: settingsController.state.animationsEnabled
                 }
                 ColumnLayout {
@@ -91,6 +94,15 @@ Item {
                         font.pixelSize: 15
                         font.letterSpacing: 2
                     }
+                    Text {
+                        visible: Number(catController.state.equippedEffectLevel || 0) > 0
+                        text: "AURA " + catController.state.equippedEffectLevel
+                            + " · " + String(catController.state.equippedEffectName || "").toUpperCase()
+                        color: catController.state.equippedColor
+                        font.pixelSize: 9
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1
+                    }
                 }
 
                 Rectangle {
@@ -115,7 +127,9 @@ Item {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: catController.state.dailyAvailable
+                            text: catController.state.isPlatinum
+                                  ? "Cada gato repetido mejora su aura hasta nivel 5."
+                                  : catController.state.dailyAvailable
                                   ? "Tu tirada gratis de hoy está lista."
                                   : catController.state.earnedRolls
                                     ? "Tienes " + catController.state.earnedRolls + " tirada(s) acumulada(s)."
@@ -178,6 +192,8 @@ Item {
                 required property bool unlocked
                 required property bool equipped
                 required property int duplicateCount
+                required property int effectLevel
+                required property string effectName
                 width: collectionGrid.cellWidth
                 height: collectionGrid.cellHeight
 
@@ -186,8 +202,8 @@ Item {
                     anchors.margins: 5
                     radius: 15
                     color: equipped ? theme.colors.surfaceRaised : theme.colors.surface
-                    border.width: equipped ? 2 : 1
-                    border.color: equipped ? rarityColor : theme.colors.border
+                    border.width: equipped || effectLevel > 0 ? 2 : 1
+                    border.color: equipped || effectLevel > 0 ? rarityColor : theme.colors.border
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -204,6 +220,10 @@ Item {
                                 rarity: catCard.rarity
                                 rarityColor: catCard.rarityColor
                                 animationStyle: catCard.animationStyle
+                                effectLevel: catCard.effectLevel
+                                animatedEffects: catCard.unlocked
+                                    && settingsController.state.animationsEnabled
+                                    && catCard.effectLevel > 0
                                 opacity: catCard.unlocked ? 1 : 0.2
                             }
                             Rectangle {
@@ -227,7 +247,32 @@ Item {
                             Layout.fillWidth: true
                             Text { text: stars; color: rarityColor; font.pixelSize: 10; font.letterSpacing: 1 }
                             Item { Layout.fillWidth: true }
-                            Text { visible: duplicateCount > 0; text: "+" + duplicateCount; color: theme.colors.textMuted; font.pixelSize: 9 }
+                            Rectangle {
+                                visible: effectLevel > 0
+                                implicitWidth: auraLabel.implicitWidth + 12
+                                implicitHeight: 20
+                                radius: 7
+                                color: Qt.rgba(rarityColor.r, rarityColor.g, rarityColor.b, 0.14)
+                                border.width: 1
+                                border.color: rarityColor
+                                Text {
+                                    id: auraLabel
+                                    anchors.centerIn: parent
+                                    text: "AURA " + effectLevel
+                                    color: rarityColor
+                                    font.pixelSize: 8
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 0.5
+                                }
+                                ToolTip.visible: auraBadgeMouse.containsMouse
+                                ToolTip.text: effectName + " · " + duplicateCount
+                                    + " repetido(s)"
+                                MouseArea {
+                                    id: auraBadgeMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                }
+                            }
                         }
                         XButton {
                             Layout.fillWidth: true
@@ -268,6 +313,8 @@ Item {
         readonly property string animationStyle: result.animationStyle || ""
         readonly property string rarityTitle: resultRarity < 6
                                                 ? ["", "COMÚN", "PECULIAR", "RARO", "ÉPICO", "LEGENDARIO"][resultRarity]
+                                                : animationStyle === "strike-apex"
+                                                  ? "MÍTICO SUPREMO"
                                                 : animationStyle === "playera-prismatic"
                                                   ? "MÍTICO PRISMÁTICO"
                                                   : animationStyle === "zarking-cyber"
@@ -276,6 +323,7 @@ Item {
                                                       ? "MÍTICO BLACK BULL"
                                                     : "MÍTICO ARCANO"
         readonly property bool arcaneMage: result.animationStyle === "arcane-mage"
+        readonly property bool strikeApex: result.animationStyle === "strike-apex"
         readonly property bool mythicCat: resultRarity >= 6
 
         function beginReveal() {
@@ -312,7 +360,7 @@ Item {
                 property: "revealProgress"
                 from: 0
                 to: 0.48
-                duration: revealPopup.mythicCat ? 1650 : revealPopup.resultRarity >= 5 ? 1050 : revealPopup.resultRarity >= 4 ? 860 : 620
+                duration: revealPopup.strikeApex ? 1450 : revealPopup.mythicCat ? 1650 : revealPopup.resultRarity >= 5 ? 1050 : revealPopup.resultRarity >= 4 ? 860 : 620
                 easing.type: Easing.InCubic
             }
             NumberAnimation {
@@ -322,12 +370,12 @@ Item {
                 duration: 150
                 easing.type: Easing.OutExpo
             }
-            PauseAnimation { duration: revealPopup.mythicCat ? 220 : revealPopup.resultRarity >= 4 ? 90 : 40 }
+            PauseAnimation { duration: revealPopup.strikeApex ? 180 : revealPopup.mythicCat ? 220 : revealPopup.resultRarity >= 4 ? 90 : 40 }
             NumberAnimation {
                 target: revealPopup
                 property: "revealProgress"
                 to: 1
-                duration: revealPopup.mythicCat ? 860 : revealPopup.resultRarity >= 4 ? 560 : 420
+                duration: revealPopup.strikeApex ? 760 : revealPopup.mythicCat ? 860 : revealPopup.resultRarity >= 4 ? 560 : 420
                 easing.type: Easing.OutBack
             }
         }
@@ -365,7 +413,7 @@ Item {
                 opacity: 0.08 + revealPopup.resultRarity * 0.035
 
                 Repeater {
-                    model: revealPopup.resultRarity >= 6 ? 44 : revealPopup.resultRarity >= 5 ? 28 : revealPopup.resultRarity >= 4 ? 22 : 14
+                    model: revealPopup.strikeApex ? 24 : revealPopup.resultRarity >= 6 ? 36 : revealPopup.resultRarity >= 5 ? 28 : revealPopup.resultRarity >= 4 ? 22 : 14
                     Rectangle {
                         required property int index
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -375,7 +423,7 @@ Item {
                         radius: width / 2
                         color: index % 5 === 0 && revealPopup.resultRarity >= 4 ? "white" : revealPopup.revealColor
                         transformOrigin: Item.Bottom
-                        rotation: index * (360 / (revealPopup.resultRarity >= 6 ? 44 : revealPopup.resultRarity >= 5 ? 28 : revealPopup.resultRarity >= 4 ? 22 : 14))
+                        rotation: index * (360 / (revealPopup.strikeApex ? 24 : revealPopup.resultRarity >= 6 ? 36 : revealPopup.resultRarity >= 5 ? 28 : revealPopup.resultRarity >= 4 ? 22 : 14))
                     }
                 }
 
@@ -389,10 +437,10 @@ Item {
             }
 
             Repeater {
-                model: revealPopup.resultRarity >= 6 ? 48 : revealPopup.resultRarity >= 5 ? 30 : revealPopup.resultRarity >= 4 ? 22 : 14
+                model: revealPopup.strikeApex ? 22 : revealPopup.resultRarity >= 6 ? 36 : revealPopup.resultRarity >= 5 ? 30 : revealPopup.resultRarity >= 4 ? 22 : 14
                 Rectangle {
                     required property int index
-                    property real angle: index * Math.PI * 2 / (revealPopup.resultRarity >= 6 ? 48 : revealPopup.resultRarity >= 5 ? 30 : revealPopup.resultRarity >= 4 ? 22 : 14)
+                    property real angle: index * Math.PI * 2 / (revealPopup.strikeApex ? 22 : revealPopup.resultRarity >= 6 ? 36 : revealPopup.resultRarity >= 5 ? 30 : revealPopup.resultRarity >= 4 ? 22 : 14)
                     property real travel: (70 + (index % 6) * 27) * Math.max(0, (revealPopup.revealProgress - 0.42) / 0.58)
                     width: 3 + (index % 3) * 2
                     height: width
@@ -511,7 +559,9 @@ Item {
             Text {
                 Layout.alignment: Qt.AlignHCenter
                 text: revealPopup.revealProgress < 0.58
-                      ? (revealPopup.animationStyle === "arcane-mage"
+                      ? (revealPopup.animationStyle === "strike-apex"
+                         ? "EL UNIVERSO SE DETIENE… STRIKE HA LLEGADO"
+                         : revealPopup.animationStyle === "arcane-mage"
                          ? "EL FIRMAMENTO RESPONDE AL GATO MAGO…"
                          : revealPopup.animationStyle === "playera-prismatic"
                            ? "¡EL CAOS PRISMÁTICO ESTÁ DESPERTANDO!"
@@ -520,7 +570,9 @@ Item {
                               : revealPopup.animationStyle === "blackbull-noir"
                                 ? "LAS LUCES DEL CLUB BLACK BULL SE ENCIENDEN…"
                               : revealPopup.resultRarity >= 4 ? "UNA PRESENCIA EXTRAORDINARIA…" : "DESCUBRIENDO TU GATO…")
-                      : revealPopup.result.isNew ? "¡NUEVO GATO DESBLOQUEADO!" : "GATO REPETIDO · BRILLO +1"
+                      : revealPopup.result.isNew
+                        ? "¡NUEVO GATO DESBLOQUEADO!"
+                        : "¡AURA MEJORADA! · NIVEL " + Number(revealPopup.result.effectLevel || 1)
                 color: revealPopup.revealProgress < 0.58 ? theme.colors.text : revealPopup.revealColor
                 font.pixelSize: 11
                 font.weight: Font.Bold
@@ -542,8 +594,10 @@ Item {
                     border.width: revealPopup.resultRarity >= 6 ? 6 : revealPopup.resultRarity >= 5 ? 4 : revealPopup.resultRarity >= 4 ? 3 : 2
                     border.color: revealPopup.revealColor
                     opacity: Math.max(0, Math.min(1, (revealPopup.revealProgress - 0.57) / 0.16))
-                    scale: 0.66 + Math.max(0, Math.min(1, (revealPopup.revealProgress - 0.57) / 0.43)) * 0.34
-                    rotation: -7 + Math.max(0, Math.min(1, (revealPopup.revealProgress - 0.57) / 0.43)) * 7
+                    readonly property real entrance: Math.max(0, Math.min(1, (revealPopup.revealProgress - 0.57) / 0.43))
+                    scale: (revealPopup.strikeApex ? 0.82 : 0.66) + entrance * (revealPopup.strikeApex ? 0.18 : 0.34)
+                    rotation: revealPopup.strikeApex ? 0 : -7 + entrance * 7
+                    layer.enabled: revealPopup.strikeApex
 
                     Rectangle {
                         anchors.fill: parent
@@ -577,6 +631,7 @@ Item {
                                 rarity: revealPopup.resultRarity
                                 rarityColor: revealPopup.revealColor
                                 animationStyle: revealPopup.result.animationStyle || "standard"
+                                effectLevel: Number(revealPopup.result.effectLevel || 0)
                                 animatedEffects: revealPopup.opened && revealPopup.revealProgress >= 0.66 && settingsController.state.animationsEnabled
                             }
                         }
@@ -597,27 +652,24 @@ Item {
                             font.letterSpacing: 5
                         }
                         Rectangle {
-                            objectName: "catThemeRewardBadge"
                             Layout.alignment: Qt.AlignHCenter
-                            Layout.preferredWidth: Math.min(330, revealCard.width - 30)
-                            Layout.preferredHeight: revealPopup.result.themeUnlocked === true ? 44 : 0
-                            visible: revealPopup.result.themeUnlocked === true
-                            radius: 12
-                            color: Qt.rgba(revealPopup.revealColor.r, revealPopup.revealColor.g, revealPopup.revealColor.b, 0.14)
-                            border.width: 2
+                            Layout.preferredWidth: auraUpgradeText.implicitWidth + 22
+                            Layout.preferredHeight: revealPopup.result.effectUpgraded === true ? 28 : 0
+                            visible: revealPopup.result.effectUpgraded === true
+                            radius: 10
+                            color: Qt.rgba(revealPopup.revealColor.r, revealPopup.revealColor.g,
+                                           revealPopup.revealColor.b, 0.16)
+                            border.width: 1
                             border.color: revealPopup.revealColor
                             Text {
-                                objectName: "catThemeRewardText"
-                                anchors.fill: parent
-                                anchors.margins: 6
-                                text: "✦ NUEVO TEMA DE XOMACITO\nDESBLOQUEADO CON BLACK BULL"
+                                id: auraUpgradeText
+                                anchors.centerIn: parent
+                                text: "✦ AURA " + Number(revealPopup.result.effectLevel || 1)
+                                    + " · " + String(revealPopup.result.effectName || "DESTELLO").toUpperCase()
                                 color: revealPopup.revealColor
                                 font.pixelSize: 10
                                 font.weight: Font.Bold
-                                font.letterSpacing: 0.5
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                                wrapMode: Text.Wrap
+                                font.letterSpacing: 0.8
                             }
                         }
                     }
@@ -655,9 +707,12 @@ Item {
         readonly property bool playeraPrismatic: result.animationStyle === "playera-prismatic"
         readonly property bool zarkingCyber: result.animationStyle === "zarking-cyber"
         readonly property bool blackbullNoir: result.animationStyle === "blackbull-noir"
+        readonly property bool strikeApex: result.animationStyle === "strike-apex"
         readonly property bool mythicCat: Number(result.rarity || 1) >= 6
         readonly property color effectColor: result.rarityColor || theme.colors.primary
-        readonly property string equipTitle: arcaneMage
+        readonly property string equipTitle: strikeApex
+                                                ? "CORONA SUPREMA ACTIVADA"
+                                                : arcaneMage
                                                 ? "PACTO ARCANO COMPLETADO"
                                                 : playeraPrismatic
                                                   ? "¡FIESTA PRISMÁTICA ACTIVADA!"
@@ -678,7 +733,9 @@ Item {
 
         Rectangle {
             anchors.fill: parent
-            color: equipCelebration.arcaneMage
+            color: equipCelebration.strikeApex
+                   ? "#EB170400"
+                   : equipCelebration.arcaneMage
                    ? "#D90A001A"
                    : equipCelebration.playeraPrismatic
                      ? "#D91D0A2D"
@@ -747,6 +804,7 @@ Item {
                 rarity: Number(equipCelebration.result.rarity || 1)
                 rarityColor: equipCelebration.effectColor
                 animationStyle: equipCelebration.result.animationStyle || "standard"
+                effectLevel: Number(equipCelebration.result.effectLevel || 0)
                 animatedEffects: equipCelebration.visible
             }
         }
@@ -788,7 +846,7 @@ Item {
                     property: "pulseScale"
                     from: 0.5
                     to: 1
-                    duration: equipCelebration.playeraPrismatic ? 760 : equipCelebration.zarkingCyber ? 620 : equipCelebration.blackbullNoir ? 1120 : equipCelebration.arcaneMage ? 980 : 420
+                    duration: equipCelebration.strikeApex ? 1450 : equipCelebration.playeraPrismatic ? 760 : equipCelebration.zarkingCyber ? 620 : equipCelebration.blackbullNoir ? 1120 : equipCelebration.arcaneMage ? 980 : 420
                     easing.type: equipCelebration.playeraPrismatic
                                  ? Easing.OutBounce
                                  : equipCelebration.zarkingCyber

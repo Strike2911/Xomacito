@@ -11,7 +11,8 @@ Item {
     readonly property bool playera: animationStyle === "playera-prismatic"
     readonly property bool zarking: animationStyle === "zarking-cyber"
     readonly property bool blackbull: animationStyle === "blackbull-noir"
-    visible: arcane || playera || zarking || blackbull
+    readonly property bool strike: animationStyle === "strike-apex"
+    visible: arcane || playera || zarking || blackbull || strike
 
     // GATO MAGO: astrolabio arcano, runas y órbitas en sentidos opuestos.
     Item {
@@ -22,7 +23,7 @@ Item {
         scale: 0.65 + root.progress * 0.35
 
         Repeater {
-            model: 4
+            model: 3
             Rectangle {
                 required property int index
                 anchors.centerIn: parent
@@ -43,15 +44,15 @@ Item {
             }
         }
         Repeater {
-            model: 18
+            model: 10
             Text {
                 required property int index
                 readonly property var glyphs: ["✦", "◇", "✧", "☾", "✶", "✺"]
                 text: glyphs[index % glyphs.length]
                 color: index % 3 ? root.effectColor : "#FFF2A8"
                 font.pixelSize: 13 + index % 3 * 3
-                x: parent.width / 2 + Math.cos(index * Math.PI / 9) * (parent.width / 2 - 20) - width / 2
-                y: parent.height / 2 + Math.sin(index * Math.PI / 9) * (parent.height / 2 - 20) - height / 2
+                x: parent.width / 2 + Math.cos(index * Math.PI / 5) * (parent.width / 2 - 20) - width / 2
+                y: parent.height / 2 + Math.sin(index * Math.PI / 5) * (parent.height / 2 - 20) - height / 2
             }
         }
     }
@@ -63,17 +64,17 @@ Item {
         scale: 0.78 + root.progress * 0.22
 
         Repeater {
-            model: 28
+            model: 16
             Rectangle {
                 required property int index
-                readonly property var palette: ["#FFDD42", "#FF6BAA", "#77F4FF", "#A7FF63", "#FFFFFF"]
+                readonly property var confettiColors: ["#FFDD42", "#FF6BAA", "#77F4FF", "#A7FF63", "#FFFFFF"]
                 width: index % 3 === 0 ? 10 : 6
                 height: index % 2 === 0 ? width * 2.5 : width
                 radius: 3
-                color: palette[index % palette.length]
+                color: confettiColors[index % confettiColors.length]
                 rotation: index * 31 + root.progress * 180
-                x: parent.width / 2 + Math.cos(index * Math.PI * 2 / 28) * (50 + root.progress * (120 + index % 5 * 18)) - width / 2
-                y: parent.height / 2 + Math.sin(index * Math.PI * 2 / 28) * (50 + root.progress * (120 + index % 5 * 18)) - height / 2
+                x: parent.width / 2 + Math.cos(index * Math.PI * 2 / 16) * (50 + root.progress * (120 + index % 5 * 18)) - width / 2
+                y: parent.height / 2 + Math.sin(index * Math.PI * 2 / 16) * (50 + root.progress * (120 + index % 5 * 18)) - height / 2
                 opacity: Math.max(0.12, 1 - root.progress * 0.5)
                 SequentialAnimation on scale {
                     running: root.active
@@ -85,7 +86,7 @@ Item {
             }
         }
         Repeater {
-            model: 3
+            model: 2
             Rectangle {
                 required property int index
                 anchors.centerIn: parent
@@ -139,7 +140,7 @@ Item {
             }
         }
         Repeater {
-            model: 24
+            model: 12
             Rectangle {
                 required property int index
                 width: index % 4 === 0 ? 11 : 6
@@ -153,9 +154,9 @@ Item {
                     running: root.active
                     loops: Animation.Infinite
                     PauseAnimation { duration: index * 31 }
-                    NumberAnimation { to: 1; duration: 110 }
-                    NumberAnimation { to: 0.12; duration: 240 }
-                    PauseAnimation { duration: 350 + index * 13 }
+                    NumberAnimation { to: 0.82; duration: 180 }
+                    NumberAnimation { to: 0.12; duration: 420 }
+                    PauseAnimation { duration: 520 + index * 21 }
                 }
             }
         }
@@ -195,14 +196,14 @@ Item {
         }
 
         Repeater {
-            model: 7
+            model: 5
             Rectangle {
                 required property int index
                 width: Math.max(90, root.width * 0.12)
                 height: root.height * 1.45
-                x: root.width / 2 - width / 2 + (index - 3) * root.width * 0.11
+                x: root.width / 2 - width / 2 + (index - 2) * root.width * 0.15
                 y: -root.height * 0.22
-                rotation: -28 + index * 9
+                rotation: -24 + index * 12
                 color: index % 2 ? "#20FFC857" : "#16FFF2B0"
                 opacity: 0.06 + (index % 3) * 0.025
                 transformOrigin: Item.Bottom
@@ -217,7 +218,7 @@ Item {
         }
 
         Repeater {
-            model: 4
+            model: 2
             Rectangle {
                 required property int index
                 anchors.centerIn: parent
@@ -240,7 +241,7 @@ Item {
         }
 
         Repeater {
-            model: 30
+            model: 14
             Rectangle {
                 required property int index
                 width: index % 5 === 0 ? 11 : 4 + index % 3 * 2
@@ -254,8 +255,58 @@ Item {
                     running: root.active
                     loops: Animation.Infinite
                     PauseAnimation { duration: index * 34 }
-                    NumberAnimation { from: 0.25; to: 1.45; duration: 300; easing.type: Easing.OutBack }
-                    NumberAnimation { to: 0.25; duration: 610 }
+                    NumberAnimation { from: 0.25; to: 1.18; duration: 420; easing.type: Easing.OutCubic }
+                    NumberAnimation { to: 0.25; duration: 980 }
+                }
+            }
+        }
+    }
+
+    // GATO STRIKE: eclipse dorado, corona estelar y energía carmesí en dos órbitas.
+    Item {
+        anchors.fill: parent
+        visible: root.strike
+        clip: true
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient {
+                GradientStop { position: 0; color: "#56000000" }
+                GradientStop { position: 0.5; color: "#667A1600" }
+                GradientStop { position: 1; color: "#4A000000" }
+            }
+        }
+        Repeater {
+            model: 3
+            Rectangle {
+                required property int index
+                anchors.centerIn: parent
+                width: Math.min(root.width, root.height) * (0.36 + index * 0.20)
+                height: width; radius: width / 2; color: "transparent"
+                border.width: index === 0 ? 6 : 2
+                border.color: index % 2 ? "#FFF4B0" : index === 0 ? "#FFFFFF" : "#FF6A22"
+                opacity: 0.7 - index * 0.09
+                scale: 0.64 + root.progress * 0.36
+                RotationAnimation on rotation {
+                    running: root.active; loops: Animation.Infinite
+                    from: index % 2 ? 360 : 0; to: index % 2 ? 0 : 360
+                duration: 2600 + index * 850
+                }
+            }
+        }
+        Repeater {
+            model: 12
+            Text {
+                required property int index
+                text: index % 5 === 0 ? "✦" : index % 3 === 0 ? "◆" : "·"
+                color: index % 4 === 0 ? "#FFFFFF" : index % 2 ? "#FFD45C" : "#FF5A22"
+                font.pixelSize: 9 + index % 4 * 3; font.weight: Font.Bold
+                x: (index * 97) % Math.max(1, root.width - width)
+                y: (index * 61) % Math.max(1, root.height - height)
+                SequentialAnimation on opacity {
+                    running: root.active; loops: Animation.Infinite
+                    PauseAnimation { duration: index * 34 }
+                    NumberAnimation { from: 0.08; to: 0.9; duration: 420 }
+                    NumberAnimation { to: 0.12; duration: 980 }
                 }
             }
         }
