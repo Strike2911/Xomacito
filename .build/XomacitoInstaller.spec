@@ -75,6 +75,21 @@ a = Analysis(
     noarchive=False,
     optimize=1,
 )
+
+# Qt 6.11 usa la ICU incluida por Windows. Algunos entornos de compilación
+# exponen en PATH una ICU de Poppler con el mismo nombre, pero con símbolos
+# versionados incompatibles. PyInstaller puede copiarla a la raíz y hacer que
+# QtCore falle antes de mostrar la ventana. Poppler conserva su propia copia
+# dentro de bin/poppler; la copia conflictiva de nivel superior se descarta.
+def is_conflicting_top_level_icu(entry):
+    destination = str(entry[0]).replace("\\", "/")
+    filename = destination.casefold()
+    return "/" not in destination and (
+        filename == "icuuc.dll" or filename.startswith("icudt") and filename.endswith(".dll")
+    )
+
+
+a.binaries = [entry for entry in a.binaries if not is_conflicting_top_level_icu(entry)]
 pyz = PYZ(a.pure)
 
 exe = EXE(

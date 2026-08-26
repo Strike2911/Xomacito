@@ -342,6 +342,15 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("PERRO ZANE", highlights)
         self.assertIn("modelos de IA", highlights)
 
+    def test_release_4011_explains_the_qt_startup_repair(self):
+        notice = release_notice_for_version("4.0.11")
+
+        self.assertIsNotNone(notice)
+        highlights = " ".join(notice["highlights"])
+        self.assertIn("QtCore", highlights)
+        self.assertIn("tiradas", highlights)
+        self.assertIn("modelos de IA", highlights)
+
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
         digest = "sha256:" + hashlib.sha256(payload).hexdigest()
@@ -1255,7 +1264,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("PrivilegesRequired=lowest", installer)
         self.assertIn("OutputBaseFilename=Xomacito-1.0-Setup", installer)
-        self.assertIn('#define MyAppVersion "4.0.10"', installer)
+        self.assertIn('#define MyAppVersion "4.0.11"', installer)
         self.assertIn('#define MyAppDisplayVersion "1.0"', installer)
         self.assertIn("shellexec postinstall skipifsilent skipifdoesntexist", installer)
         self.assertIn("CloseApplications=force", installer)
@@ -1285,6 +1294,8 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertNotIn('Source: "{#ProjectRoot}\\bin\\ffmpeg', installer)
         self.assertNotIn("bin\\models\\*", installer)
         self.assertNotIn("engine\\", installer)
+        self.assertIn("is_conflicting_top_level_icu", spec)
+        self.assertIn('filename == "icuuc.dll"', spec)
 
     def test_startup_uses_bundled_ffmpeg_without_auto_installing(self):
         application = (ROOT / "src" / "ui" / "application.py").read_text(encoding="utf-8")
@@ -1351,6 +1362,7 @@ class XomacitoWrapperTests(unittest.TestCase):
         main_body = source.split("def main() -> int:", 1)[1].split("def _run_safely", 1)[0]
         self.assertLess(main_body.index('"--self-test"'), main_body.index("_run_main_window"))
         self.assertIn('INTERNAL_DIR / "src" / "ui" / "qml" / "Main.qml"', source)
+        self.assertIn("from PySide6.QtCore import qVersion", source)
         self.assertNotIn("customtkinter", source)
         self.assertNotIn("_tcl_data", source)
         self.assertNotIn("_tk_data", source)
@@ -1367,6 +1379,8 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("Assert-ReadableApplicationSource", build_script)
         self.assertIn("pyarmor_runtime|__pyarmor__|pytransform", build_script)
         self.assertIn('PROJECT_ROOT / "main\\.py"', build_script)
+        self.assertIn("Start-Process -FilePath $Application -ArgumentList '--self-test'", build_script)
+        self.assertIn("$SelfTestProcess.ExitCode", build_script)
         self.assertNotIn("StableInstaller", build_script)
         self.assertNotIn("release\\setup.exe", build_script)
         installer_spec = (ROOT / ".build" / "XomacitoInstaller.spec").read_text(encoding="utf-8")

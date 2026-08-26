@@ -79,6 +79,12 @@ if (-not (Test-Path -LiteralPath $Application)) {
     throw "No existe la aplicación compilada: $Application"
 }
 
+$SelfTestProcess = Start-Process -FilePath $Application -ArgumentList '--self-test' `
+    -WindowStyle Hidden -Wait -PassThru
+if ($SelfTestProcess.ExitCode -ne 0) {
+    throw 'La distribución compilada no superó la prueba de Qt y recursos.'
+}
+
 $Launcher = Join-Path $ProjectRoot 'Xomacito.exe'
 if (-not (Test-Path -LiteralPath $Launcher)) {
     throw "No existe el lanzador portable: $Launcher"

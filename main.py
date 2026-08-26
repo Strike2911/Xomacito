@@ -12,7 +12,7 @@ APP_NAME = "Xomacito"
 # mantiene numérica para que el instalador de Windows y el actualizador puedan
 # comparar correctamente esta entrega con las instalaciones 3.x anteriores.
 APP_VERSION = "1.0"
-UPDATE_VERSION = "4.0.10"
+UPDATE_VERSION = "4.0.11"
 
 FROZEN = bool(getattr(sys, "frozen", False))
 PROJECT_ROOT = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
@@ -180,6 +180,13 @@ def _run_self_test() -> int:
     """Comprueba el runtime instalado sin crear una ventana gráfica."""
     if not FROZEN:
         return 0
+    try:
+        from PySide6.QtCore import qVersion
+
+        if not qVersion():
+            return 1
+    except (ImportError, OSError):
+        return 1
     required_runtime_files = (
         INTERNAL_DIR / "src" / "ui" / "qml" / "Main.qml",
         INTERNAL_DIR / "bin" / "ffmpeg" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg"),

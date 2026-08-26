@@ -25,6 +25,28 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "4.0.11": {
+        "eyebrow": "XOMACITO 1.0",
+        "title": "Xomacito 1.0",
+        "subtitle": "ARRANQUE SEGURO Y TU PROGRESO CONSERVADO",
+        "message": (
+            "Esta revisión corrige el inicio de Xomacito en equipos afectados por una "
+            "biblioteca incompatible incluida en la actualización anterior."
+        ),
+        "highlights": [
+            "Qt vuelve a iniciar correctamente sin una DLL de ICU incompatible.",
+            "Cada instalador valida QtCore y sus recursos antes de poder publicarse.",
+            "Las tiradas, la colección y los modelos de IA conservan las correcciones de 4.0.10.",
+            "PERRO ZANE permanece completamente contenido dentro de su marco circular.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Strike", "Zane", "Nuan",
+        ],
+        "closing": "Gracias a quienes compartieron el diagnóstico de inicio de la 4.0.10.",
+        "platinumCelebration": False,
+        "smoothMotionPromotion": False,
+    },
     "4.0.10": {
         "eyebrow": "XOMACITO 1.0",
         "title": "Xomacito 1.0",
