@@ -1,6 +1,7 @@
 import unittest
+import json
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 from unittest.mock import Mock, patch
 
 from src.ui.social_controller import SocialController
@@ -81,6 +82,22 @@ class SocialAuthTests(unittest.TestCase):
         self.assertEqual(result["xomacito_email"], "papu@example.com")
 
     @patch("src.ui.social_controller.requests.post")
+    def test_recovery_email_targets_the_running_local_callback(self, post):
+        post.return_value = Response()
+        social = self.controller()
+
+        self.assertEqual(
+            social._password_reset_request_worker("papu@example.com"),
+            "papu@example.com",
+        )
+
+        self.assertEqual(post.call_args.args[0], f"{social._url}/auth/v1/recover")
+        self.assertEqual(
+            post.call_args.kwargs["params"],
+            {"redirect_to": "http://localhost:3000/"},
+        )
+
+    @patch("src.ui.social_controller.requests.post")
     def test_email_bonus_claim_uses_the_authenticated_session(self, post):
         post.return_value = Response(payload=15)
         social = self.controller({"social_access_token": "opaque-session"})
@@ -156,7 +173,7 @@ class SocialAuthTests(unittest.TestCase):
             "Bearer opaque-session",
         )
 
-    def test_local_confirmation_page_says_email_was_verified(self):
+    def test_local_callback_page_supports_email_confirmation_and_password_reset(self):
         social = self.controller()
         social.RECOVERY_CALLBACK_PORT = 0
         self.assertTrue(social._start_recovery_callback_server())
@@ -167,8 +184,46 @@ class SocialAuthTests(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.headers["Cache-Control"], "no-store")
             self.assertIn("Correo verificado", page)
-            self.assertIn("15 tiradas", page)
-            self.assertNotIn("access_token", page)
+            self.assertIn("Crea una contraseña nueva", page)
+            self.assertIn('fetch("/password-reset"', page)
+            self.assertIn("window.history.replaceState", page)
+            self.assertNotIn("eyJ", page)
+        finally:
+            social.shutdown()
+
+    @patch("src.ui.social_controller.requests.put")
+    def test_local_recovery_page_changes_password_with_the_link_session(self, put):
+        put.return_value = Response(payload={
+            "id": "user-1",
+            "email": "papu@example.com",
+            "user_metadata": {"username": "papu_2911"},
+        })
+        social = self.controller()
+        social.RECOVERY_CALLBACK_PORT = 0
+        self.assertTrue(social._start_recovery_callback_server())
+        port = social._recovery_callback_server.server_address[1]
+        body = json.dumps({
+            "access_token": "recovery-access-token",
+            "refresh_token": "recovery-refresh-token",
+            "password": "contraseña-nueva",
+        }).encode("utf-8")
+        request = Request(
+            f"http://127.0.0.1:{port}/password-reset",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=3) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            self.assertEqual(response.status, 200)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(put.call_args.args[0], f"{social._url}/auth/v1/user")
+            self.assertEqual(put.call_args.kwargs["json"], {"password": "contraseña-nueva"})
+            self.assertEqual(
+                put.call_args.kwargs["headers"]["Authorization"],
+                "Bearer recovery-access-token",
+            )
         finally:
             social.shutdown()
 

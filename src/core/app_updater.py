@@ -25,6 +25,28 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "4.0.9": {
+        "eyebrow": "XOMACITO 1.0",
+        "title": "Xomacito 1.0",
+        "subtitle": "TU CUENTA Y TU COLECCION VIAJAN CONTIGO",
+        "message": (
+            "Recuperar la contraseña vuelve a funcionar con el correo oficial de Supabase, "
+            "y tu colección gatuna puede restaurarse al iniciar sesión en otro equipo."
+        ),
+        "highlights": [
+            "El enlace de recuperación abre una página local segura para crear la nueva contraseña.",
+            "La interfaz explica el enlace real y ya no solicita un código que el correo no envía.",
+            "El token desaparece inmediatamente de la barra del navegador y nunca se guarda en el equipo.",
+            "Gatos desbloqueados, repetidos y equipados se combinan de forma segura entre computadoras.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Strike", "Zane", "Nuan",
+        ],
+        "closing": "Gracias a quienes reportaron la recuperación rota y probaron su colección en varios equipos.",
+        "platinumCelebration": False,
+        "smoothMotionPromotion": False,
+    },
     "4.0.8": {
         "eyebrow": "XOMACITO 1.0",
         "title": "Xomacito 1.0",

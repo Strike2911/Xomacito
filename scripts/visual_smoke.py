@@ -13,5 +13,5 @@ if __name__ == "__main__":
     raise SystemExit(run_qt_app(
         project_root=ROOT,
         app_version="1.0",
-        update_version="4.0.8",
+        update_version="4.0.9",
     ))

@@ -15,12 +15,12 @@ import requests
 from PySide6.QtCore import QObject, Property, Signal, Slot
 
 
-_RECOVERY_EMAIL_VERIFIED_PAGE = """<!doctype html>
+_AUTH_CALLBACK_PAGE = """<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Correo verificado · Xomacito</title>
+  <title>Cuenta protegida · Xomacito</title>
   <style>
     :root { color-scheme: dark; font-family: Inter, "Segoe UI", sans-serif; }
     * { box-sizing: border-box; }
@@ -28,49 +28,182 @@ _RECOVERY_EMAIL_VERIFIED_PAGE = """<!doctype html>
       color: #edfaff; background: radial-gradient(circle at 50% 12%, #073247 0, #03131e 48%, #020a11 100%); }
     main { width: min(560px, 100%); padding: 42px; border: 1px solid #16d9ef; border-radius: 24px;
       background: rgba(4, 26, 38, .94); box-shadow: 0 24px 80px rgba(0, 0, 0, .5), 0 0 30px rgba(22, 217, 239, .13); }
-    .check { width: 66px; height: 66px; display: grid; place-items: center; margin-bottom: 24px;
+    .icon { width: 66px; height: 66px; display: grid; place-items: center; margin-bottom: 24px;
       border-radius: 50%; color: #06141b; background: #9af53e; font-size: 34px; font-weight: 900; }
     small { color: #1ee6f4; font-size: 12px; font-weight: 800; letter-spacing: 1.5px; }
     h1 { margin: 10px 0 12px; font-size: clamp(28px, 6vw, 40px); }
-    p { margin: 0; color: #9fc1d1; font-size: 17px; line-height: 1.55; }
+    p { margin: 0; color: #9fc1d1; font-size: 16px; line-height: 1.55; }
     strong { color: #edfaff; }
+    form { display: grid; gap: 14px; margin-top: 26px; }
+    label { color: #cce8f3; font-size: 13px; font-weight: 700; }
+    input { width: 100%; margin-top: 7px; padding: 14px 15px; border: 1px solid #315366; border-radius: 12px;
+      color: #edfaff; background: #071d29; font: inherit; outline: none; }
+    input:focus { border-color: #1ee6f4; box-shadow: 0 0 0 3px rgba(30, 230, 244, .12); }
+    button { padding: 14px 18px; border: 0; border-radius: 12px; color: #05141c; background: #69e7f4;
+      font: inherit; font-weight: 800; cursor: pointer; }
+    button:disabled { cursor: wait; opacity: .58; }
+    #status { min-height: 24px; margin-top: 14px; color: #ffcf70; font-size: 14px; }
+    [hidden] { display: none !important; }
   </style>
 </head>
 <body>
   <main>
-    <div class="check">✓</div>
-    <small>XOMACITO · CUENTA PROTEGIDA</small>
-    <h1>Correo verificado</h1>
-    <p><strong>La confirmación se completó correctamente.</strong><br>
-      Ya puedes cerrar esta pestaña y volver a Xomacito. La aplicación comprobará el cambio antes de entregar tus 15 tiradas.</p>
+    <section id="verifiedView">
+      <div class="icon">✓</div>
+      <small>XOMACITO · CUENTA PROTEGIDA</small>
+      <h1>Correo verificado</h1>
+      <p><strong>La confirmación se completó correctamente.</strong><br>
+        Ya puedes cerrar esta pestaña y volver a Xomacito.</p>
+    </section>
+    <section id="resetView" hidden>
+      <div class="icon">↻</div>
+      <small>XOMACITO · RECUPERAR CUENTA</small>
+      <h1>Crea una contraseña nueva</h1>
+      <p>El enlace ya verificó tu identidad. Elige una contraseña de al menos 8 caracteres.</p>
+      <form id="resetForm">
+        <label>Nueva contraseña
+          <input id="password" type="password" minlength="8" maxlength="256" autocomplete="new-password" required>
+        </label>
+        <label>Repite la contraseña
+          <input id="confirmation" type="password" minlength="8" maxlength="256" autocomplete="new-password" required>
+        </label>
+        <button id="submitButton" type="submit">Cambiar contraseña</button>
+      </form>
+      <p id="status" role="status" aria-live="polite"></p>
+    </section>
   </main>
+  <script>
+    (() => {
+      const fragment = new URLSearchParams(window.location.hash.slice(1));
+      const isRecovery = fragment.get("type") === "recovery";
+      const accessToken = fragment.get("access_token") || "";
+      const refreshToken = fragment.get("refresh_token") || "";
+      window.history.replaceState(null, "", window.location.pathname);
+
+      if (!isRecovery || !accessToken) {
+        fetch("/email-confirmed", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}"
+        }).catch(() => {});
+        return;
+      }
+
+      document.getElementById("verifiedView").hidden = true;
+      document.getElementById("resetView").hidden = false;
+      const form = document.getElementById("resetForm");
+      const status = document.getElementById("status");
+      const button = document.getElementById("submitButton");
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const password = document.getElementById("password").value;
+        const confirmation = document.getElementById("confirmation").value;
+        if (password.length < 8) {
+          status.textContent = "La contraseña debe tener al menos 8 caracteres.";
+          return;
+        }
+        if (password !== confirmation) {
+          status.textContent = "Las contraseñas no coinciden.";
+          return;
+        }
+        button.disabled = true;
+        status.textContent = "Protegiendo tu cuenta…";
+        try {
+          const response = await fetch("/password-reset", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ access_token: accessToken, refresh_token: refreshToken, password })
+          });
+          const result = await response.json();
+          if (!response.ok || !result.ok) throw new Error(result.message || "No se pudo cambiar la contraseña.");
+          form.hidden = true;
+          status.style.color = "#9af53e";
+          status.textContent = "Contraseña cambiada. Ya puedes cerrar esta pestaña y volver a Xomacito.";
+        } catch (error) {
+          button.disabled = false;
+          status.textContent = error.message || "El enlace venció. Solicita uno nuevo desde Xomacito.";
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
 """.encode("utf-8")
 
 
 class _RecoveryEmailCallbackHandler(BaseHTTPRequestHandler):
-    def _respond(self, *, include_body: bool):
-        body = _RECOVERY_EMAIL_VERIFIED_PAGE
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
+    def _respond(self, status: int, body: bytes, content_type: str, *, include_body: bool = True):
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
+        if content_type.startswith("text/html"):
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
+                "connect-src 'self'; form-action 'none'; base-uri 'none'",
+            )
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         if include_body:
             self.wfile.write(body)
-        callback = getattr(self.server, "xomacito_callback", None)
-        if callable(callback):
-            callback()
+
+    def _json(self, status: int, payload: dict):
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self._respond(status, body, "application/json; charset=utf-8")
 
     def do_GET(self):
-        self._respond(include_body=True)
+        self._respond(200, _AUTH_CALLBACK_PAGE, "text/html; charset=utf-8")
 
     def do_HEAD(self):
-        self._respond(include_body=False)
+        self._respond(200, _AUTH_CALLBACK_PAGE, "text/html; charset=utf-8", include_body=False)
+
+    def do_POST(self):
+        path = self.path.split("?", 1)[0]
+        if path == "/email-confirmed":
+            callback = getattr(self.server, "xomacito_callback", None)
+            if callable(callback):
+                callback()
+            self._json(200, {"ok": True})
+            return
+        if path != "/password-reset":
+            self._json(404, {"ok": False, "message": "Ruta no encontrada."})
+            return
+
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if length <= 0 or length > 16_384:
+            self._json(400, {"ok": False, "message": "Solicitud inválida."})
+            return
+        try:
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (UnicodeDecodeError, ValueError, TypeError):
+            self._json(400, {"ok": False, "message": "Solicitud inválida."})
+            return
+
+        access_token = str(payload.get("access_token") or "")
+        refresh_token = str(payload.get("refresh_token") or "")
+        password = str(payload.get("password") or "")
+        if not access_token or len(access_token) > 8192 or len(refresh_token) > 8192:
+            self._json(400, {"ok": False, "message": "El enlace es inválido o ya venció."})
+            return
+        if len(password) < 8 or len(password) > 256:
+            self._json(400, {"ok": False, "message": "La contraseña debe tener entre 8 y 256 caracteres."})
+            return
+
+        callback = getattr(self.server, "xomacito_password_reset", None)
+        if not callable(callback):
+            self._json(503, {"ok": False, "message": "Xomacito no está listo para cambiar la contraseña."})
+            return
+        try:
+            callback(access_token, refresh_token, password)
+        except (RuntimeError, requests.RequestException) as error:
+            self._json(400, {"ok": False, "message": str(error) or "El enlace venció. Solicita uno nuevo."})
+            return
+        self._json(200, {"ok": True})
 
     def log_message(self, _format, *_args):
         return
@@ -84,6 +217,7 @@ class SocialController(QObject):
     onboardingRequested = Signal()
     recoveryEmailRequired = Signal()
     recoveryEmailCallbackReceived = Signal()
+    passwordRecoveryCompleted = Signal("QVariantMap")
     collectionStateReceived = Signal("QVariantMap")
     signupBonusGranted = Signal(int)
 
@@ -112,6 +246,7 @@ class SocialController(QObject):
         self._recovery_callback_server = None
         self._recovery_callback_thread = None
         self.recoveryEmailCallbackReceived.connect(self._recovery_email_callback_received)
+        self.passwordRecoveryCompleted.connect(self._password_reset_succeeded)
         self._local_cat_count: int | None = None
         self._local_equipped_cat_id = ""
         self._local_collection_state: dict = {}
@@ -133,7 +268,7 @@ class SocialController(QObject):
             ),
             "recoveryEmailUpdatePending": False,
             "verificationPending": False,
-            "recoveryCodeSent": False,
+            "recoveryLinkSent": False,
             "recoveryEmail": "",
             "leaderboard": [],
             "currentRank": 0,
@@ -159,15 +294,16 @@ class SocialController(QObject):
                 _RecoveryEmailCallbackHandler,
             )
         except OSError as error:
-            print(f"No se pudo abrir la confirmación local de correo: {error}")
+            print(f"No se pudo abrir el callback local de cuenta: {error}")
             self.notificationRequested.emit(
-                "warning", "Confirmación en el navegador",
-                "El correo se puede verificar, pero otro programa está usando el puerto local 3000. "
-                "Después de abrir el enlace, vuelve a Xomacito y pulsa “Comprobar correo”.",
+                "warning", "Página local no disponible",
+                "Xomacito necesita el puerto local 3000 para recibir el enlace del correo. "
+                "Cierra el programa que lo esté usando y vuelve a intentarlo.",
             )
             return False
         server.daemon_threads = True
         server.xomacito_callback = self.recoveryEmailCallbackReceived.emit
+        server.xomacito_password_reset = self._password_reset_link_callback
         thread = threading.Thread(
             target=server.serve_forever,
             name="xomacito-email-confirmation",
@@ -443,7 +579,7 @@ class SocialController(QObject):
         })
         self._set_state(
             authenticated=True, username=username, email=email, busy=False, error="",
-            verificationPending=False, recoveryCodeSent=False, recoveryEmail="",
+            verificationPending=False, recoveryLinkSent=False, recoveryEmail="",
             needsRecoveryEmail=self._account_requires_recovery_email(email),
             recoveryEmailUpdatePending=False, emailError="",
         )
@@ -638,34 +774,75 @@ class SocialController(QObject):
         except ValueError as error:
             self._auth_failed(str(error), "")
             return
-        self._set_state(busy=True, error="", recoveryCodeSent=False)
+        if not self._start_recovery_callback_server():
+            self._auth_failed(
+                "No se pudo abrir la página local de recuperación. Libera el puerto 3000 e inténtalo otra vez.",
+                "",
+            )
+            return
+        self._set_state(busy=True, error="", recoveryLinkSent=False)
         self.pool.submit(
             self._password_reset_request_worker, normalized,
             on_result=self._password_reset_requested,
-            on_error=lambda message, detail: self._auth_failed(message, detail),
+            on_error=self._password_reset_request_failed,
         )
 
     def _password_reset_request_worker(self, email):
         response = requests.post(
             f"{self._url}/auth/v1/recover",
             headers=self._headers(),
+            params={"redirect_to": self._recovery_email_redirect_url()},
             json={"email": email},
             timeout=20,
         )
         if response.status_code >= 400:
             data = response.json() if response.content else {}
-            message = data.get("msg") or data.get("message") or "No se pudo enviar el código."
+            message = data.get("msg") or data.get("message") or "No se pudo enviar el enlace."
             raise RuntimeError(message)
         return email
 
     def _password_reset_requested(self, email):
         self._set_state(
-            busy=False, error="", recoveryCodeSent=True, recoveryEmail=str(email),
+            busy=False, error="", recoveryLinkSent=True, recoveryEmail=str(email),
         )
         self.notificationRequested.emit(
-            "info", "Código enviado",
-            "Si ese correo tiene una cuenta, recibirá un código de 6 dígitos.",
+            "info", "Enlace enviado",
+            "Abre el mensaje de Supabase mientras Xomacito permanece abierto.",
         )
+
+    @Slot()
+    def cancelPasswordReset(self):
+        self._stop_recovery_callback_server()
+        self._set_state(
+            busy=False, error="", recoveryLinkSent=False, recoveryEmail="",
+        )
+
+    def _password_reset_request_failed(self, message, detail):
+        self._stop_recovery_callback_server()
+        self._auth_failed(message, detail)
+
+    def _password_reset_link_callback(self, access_token, refresh_token, password):
+        data = self._password_reset_link_worker(access_token, refresh_token, password)
+        self.passwordRecoveryCompleted.emit(data)
+
+    def _password_reset_link_worker(self, access_token, refresh_token, password):
+        update = requests.put(
+            f"{self._url}/auth/v1/user",
+            headers=self._headers(authenticated=True, access_token=str(access_token)),
+            json={"password": str(password)},
+            timeout=20,
+        )
+        payload = update.json() if update.content else {}
+        if update.status_code >= 400:
+            message = payload.get("msg") or payload.get("message")
+            raise RuntimeError(message or "El enlace venció. Solicita uno nuevo desde Xomacito.")
+        user = dict(payload or {})
+        return {
+            "access_token": str(access_token),
+            "refresh_token": str(refresh_token),
+            "user": user,
+            "xomacito_email": str(user.get("email") or "").strip().lower(),
+        }
 
     @Slot(str, str, str)
     def confirmPasswordReset(self, email, code, new_password):
@@ -714,6 +891,7 @@ class SocialController(QObject):
         return data
 
     def _password_reset_succeeded(self, data):
+        self._stop_recovery_callback_server()
         self._auth_succeeded(data, welcome_title="Contraseña cambiada")
 
     def _claim_signup_bonus_worker(self):
@@ -793,7 +971,7 @@ class SocialController(QObject):
             authenticated=False, username="", email="", leaderboard=[], error="",
             emailBusy=False, emailError="", needsRecoveryEmail=False,
             recoveryEmailUpdatePending=False,
-            verificationPending=False, recoveryCodeSent=False, recoveryEmail="",
+            verificationPending=False, recoveryLinkSent=False, recoveryEmail="",
             currentRank=0, currentDownloads=0, currentCats=0,
             currentStreak=0, bestStreak=0, communityDownloads=0,
             communityCats=0, activePlayers=0, currentEquippedCatId="",

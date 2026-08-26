@@ -318,8 +318,8 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("BLACK BULL", highlights)
         self.assertTrue(notice["smoothMotionPromotion"])
 
-    def test_release_407_restores_every_historical_contributor(self):
-        notice = release_notice_for_version("4.0.8")
+    def test_release_409_restores_every_historical_contributor(self):
+        notice = release_notice_for_version("4.0.9")
 
         self.assertIsNotNone(notice)
         self.assertEqual(notice["title"], "Xomacito 1.0")
@@ -329,7 +329,8 @@ class XomacitoWrapperTests(unittest.TestCase):
         ):
             self.assertIn(contributor, notice["contributors"])
         self.assertNotIn("Frido", notice["contributors"])
-        self.assertIn("Premiere", " ".join(notice["highlights"]))
+        self.assertIn("contraseña", " ".join(notice["highlights"]))
+        self.assertIn("computadoras", " ".join(notice["highlights"]))
 
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
@@ -1244,7 +1245,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("PrivilegesRequired=lowest", installer)
         self.assertIn("OutputBaseFilename=Xomacito-1.0-Setup", installer)
-        self.assertIn('#define MyAppVersion "4.0.8"', installer)
+        self.assertIn('#define MyAppVersion "4.0.9"', installer)
         self.assertIn('#define MyAppDisplayVersion "1.0"', installer)
         self.assertIn("shellexec postinstall skipifsilent skipifdoesntexist", installer)
         self.assertIn("CloseApplications=force", installer)

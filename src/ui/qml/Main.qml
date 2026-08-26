@@ -1320,7 +1320,7 @@ ApplicationWindow {
         height: Math.min(
             socialOnboardingPopup.flow === "create" ? 520
             : socialOnboardingPopup.flow === "login" ? 450
-            : socialOnboardingPopup.flow === "recover-request" ? 405 : 490,
+            : socialOnboardingPopup.flow.indexOf("recover") === 0 ? 405 : 490,
             window.height - 36
         )
         modal: true; focus: true; padding: 0
@@ -1329,6 +1329,8 @@ ApplicationWindow {
         property string flow: "create"
         readonly property bool createMode: flow === "create"
         onClosed: {
+            if (socialOnboardingPopup.flow.indexOf("recover") === 0)
+                socialController.cancelPasswordReset()
             if (!socialController.state.authenticated)
                 socialController.dismissOnboarding()
         }
@@ -1367,7 +1369,7 @@ ApplicationWindow {
                 text: socialOnboardingPopup.flow === "create" ? "15 tiradas para empezar"
                       : socialOnboardingPopup.flow === "login" ? "Volver a tu cuenta"
                       : socialOnboardingPopup.flow === "recover-request" ? "Recupera tu contraseña"
-                      : "Escribe el código recibido"
+                      : "Revisa tu correo"
                 color: theme.colors.text
                 font.pixelSize: window.denseWindow ? 21 : 23
                 font.weight: Font.DemiBold
@@ -1381,7 +1383,7 @@ ApplicationWindow {
                         ? "Continúa tu colección y tu posición en el scoreboard."
                         : socialOnboardingPopup.flow === "recover-request"
                           ? "Usa el correo conectado a tu cuenta."
-                          : "El código solo sirve una vez y vence pronto."
+                          : "Abre el enlace de Supabase mientras Xomacito permanece abierto."
                 color: theme.colors.textMuted
                 font.pixelSize: 11
                 wrapMode: Text.WordWrap
@@ -1403,7 +1405,7 @@ ApplicationWindow {
                     text: socialOnboardingPopup.flow === "create"
                           ? "REGALO DE BIENVENIDA  ·  Conecta un correo real y recibe hasta 15 tiradas, una sola vez por cuenta."
                           : socialOnboardingPopup.flow.indexOf("recover") === 0
-                            ? "Te enviaremos un código de 6 dígitos. Si no pediste el cambio, puedes ignorar el correo."
+                            ? "Te enviaremos un enlace seguro. Al abrirlo podrás crear tu nueva contraseña en el navegador."
                             : "Tu contraseña se valida con Supabase Auth y no se guarda en este equipo."
                     color: theme.colors.textMuted
                     font.pixelSize: 10
@@ -1430,17 +1432,7 @@ ApplicationWindow {
                 placeholderText: socialOnboardingPopup.flow === "login"
                                  ? "Correo (o tu ID anterior)" : "Tu correo"
                 enabled: !socialController.state.busy
-            }
-            XTextField {
-                id: socialRecoveryCode
-                objectName: "socialRecoveryCodeField"
-                Layout.fillWidth: true
-                Layout.preferredHeight: visible ? 46 : 0
-                visible: socialOnboardingPopup.flow === "recover-confirm"
-                placeholderText: "Código de 6 dígitos"
-                inputMethodHints: Qt.ImhDigitsOnly
-                maximumLength: 6
-                enabled: !socialController.state.busy
+                         && socialOnboardingPopup.flow !== "recover-wait"
             }
             XTextField {
                 id: socialPassword
@@ -1449,10 +1441,7 @@ ApplicationWindow {
                 Layout.preferredHeight: visible ? 46 : 0
                 visible: socialOnboardingPopup.flow === "create"
                          || socialOnboardingPopup.flow === "login"
-                         || socialOnboardingPopup.flow === "recover-confirm"
-                placeholderText: socialOnboardingPopup.flow === "recover-confirm"
-                                 ? "Nueva contraseña (mínimo 8 caracteres)"
-                                 : "Contraseña (mínimo 8 caracteres)"
+                placeholderText: "Contraseña (mínimo 8 caracteres)"
                 echoMode: TextInput.Password
                 enabled: !socialController.state.busy
             }
@@ -1493,8 +1482,10 @@ ApplicationWindow {
                             socialOnboardingPopup.flow = "login"
                         else if (socialOnboardingPopup.flow === "login")
                             socialOnboardingPopup.flow = "create"
-                        else
+                        else {
+                            socialController.cancelPasswordReset()
                             socialOnboardingPopup.flow = "login"
+                        }
                     }
                 }
                 XButton {
@@ -1502,34 +1493,33 @@ ApplicationWindow {
                     text: "Ahora no"
                     kind: "secondary"
                     enabled: !socialController.state.busy
-                    onClicked: { socialController.dismissOnboarding(); socialOnboardingPopup.close() }
+                    onClicked: {
+                        if (socialOnboardingPopup.flow.indexOf("recover") === 0)
+                            socialController.cancelPasswordReset()
+                        socialController.dismissOnboarding()
+                        socialOnboardingPopup.close()
+                    }
                 }
                 XButton {
                     Layout.fillWidth: true
                     text: socialController.state.busy ? "Procesando…"
                           : socialOnboardingPopup.flow === "create" ? "Crear y recibir 15"
                           : socialOnboardingPopup.flow === "login" ? "Entrar"
-                          : socialOnboardingPopup.flow === "recover-request" ? "Enviar código"
-                          : "Cambiar contraseña"
+                          : socialOnboardingPopup.flow === "recover-request" ? "Enviar enlace"
+                          : "Reenviar enlace"
                     enabled: !socialController.state.busy
                              && socialEmail.text.length >= 3
-                             && (socialOnboardingPopup.flow === "recover-request"
-                                 || (socialOnboardingPopup.flow === "login" && socialPassword.text.length >= 8)
-                                 || (socialOnboardingPopup.flow === "create"
-                                     && socialUsername.text.length >= 3 && socialPassword.text.length >= 8)
-                                 || (socialOnboardingPopup.flow === "recover-confirm"
-                                     && socialRecoveryCode.text.length === 6 && socialPassword.text.length >= 8))
+                             && (socialOnboardingPopup.flow.indexOf("recover") === 0
+                                  || (socialOnboardingPopup.flow === "login" && socialPassword.text.length >= 8)
+                                  || (socialOnboardingPopup.flow === "create"
+                                      && socialUsername.text.length >= 3 && socialPassword.text.length >= 8))
                     onClicked: {
                         if (socialOnboardingPopup.flow === "create")
                             socialController.signUp(socialUsername.text, socialEmail.text, socialPassword.text)
                         else if (socialOnboardingPopup.flow === "login")
                             socialController.signIn(socialEmail.text, socialPassword.text)
-                        else if (socialOnboardingPopup.flow === "recover-request")
+                        else if (socialOnboardingPopup.flow.indexOf("recover") === 0)
                             socialController.requestPasswordReset(socialEmail.text)
-                        else
-                            socialController.confirmPasswordReset(
-                                socialEmail.text, socialRecoveryCode.text, socialPassword.text
-                            )
                     }
                 }
             }
@@ -1539,10 +1529,9 @@ ApplicationWindow {
             function onStateChanged() {
                 if (socialController.state.authenticated && socialOnboardingPopup.opened) {
                     socialPassword.text = ""
-                    socialRecoveryCode.text = ""
                     socialOnboardingPopup.close()
-                } else if (socialController.state.recoveryCodeSent) {
-                    socialOnboardingPopup.flow = "recover-confirm"
+                } else if (socialController.state.recoveryLinkSent) {
+                    socialOnboardingPopup.flow = "recover-wait"
                     socialEmail.text = socialController.state.recoveryEmail
                     socialPassword.text = ""
                 } else if (socialController.state.verificationPending) {
