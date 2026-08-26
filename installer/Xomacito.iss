@@ -1,5 +1,5 @@
 #define MyAppName "Xomacito"
-#define MyAppVersion "4.0.9"
+#define MyAppVersion "4.0.10"
 #define MyAppDisplayVersion "1.0"
 #define MyAppPublisher "Xomacito"
 #define MyAppExeName "Xomacito.exe"
@@ -35,7 +35,7 @@ RestartApplications=no
 Uninstallable=yes
 CreateUninstallRegKey=yes
 MinVersion=10.0.17763
-VersionInfoVersion=4.0.9.0
+VersionInfoVersion=4.0.10.0
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
 VersionInfoDescription=Xomacito 1.0
@@ -49,12 +49,6 @@ Name: "desktopicon"; Description: "Crear un acceso directo en el escritorio"; Gr
 
 [Files]
 Source: "{#ProjectRoot}\dist\Xomacito\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-
-[Dirs]
-Name: "{app}\_internal\bin\models\rembg"
-Name: "{app}\_internal\bin\models\inspyrenet"
-Name: "{app}\_internal\bin\models\rmbg2"
-Name: "{app}\_internal\bin\models\upscaling"
 
 [Icons]
 ; El acceso directo principal va directamente en Programas para que Windows
@@ -77,6 +71,8 @@ Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM ""{#MyAppExeName}"""; Flags:
 [UninstallDelete]
 ; Solo elimina datos que crea Xomacito. Los videos y archivos exportados se
 ; guardan fuera de {app} y nunca forman parte de esta limpieza.
+; Estas dos rutas son residuos de versiones antiguas. Los modelos actuales se
+; conservan en {localappdata}\Xomacito\models para sobrevivir actualizaciones.
 Type: filesandordirs; Name: "{app}\_internal\bin\models"
 Type: filesandordirs; Name: "{app}\bin\models"
 Type: filesandordirs; Name: "{userappdata}\Xomacito\cache"

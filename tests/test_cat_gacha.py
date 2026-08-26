@@ -126,6 +126,33 @@ class CatGachaTests(unittest.TestCase):
             )
             self.assertEqual(restored.state["earnedRolls"], 10)
 
+    def test_spent_roll_is_not_restored_by_an_older_cloud_snapshot(self):
+        today = date(2026, 8, 26)
+        with tempfile.TemporaryDirectory() as appdata, patch.dict(os.environ, {"APPDATA": appdata}):
+            controller = CatGachaController(
+                ROOT, SettingsStore("XomacitoSpentRollSyncTest"),
+                rng=random.Random(2911), today_provider=lambda: today,
+            )
+            controller._last_daily_roll = today.isoformat()
+            controller.grantBonusRolls(3)
+            stale_remote = controller.sync_snapshot()
+
+            controller.roll()
+
+            self.assertEqual(controller.state["earnedRolls"], 2)
+            self.assertGreater(
+                controller.sync_snapshot()["rollBalanceRevision"],
+                stale_remote["rollBalanceRevision"],
+            )
+            controller.mergeRemoteState(stale_remote)
+            self.assertEqual(controller.state["earnedRolls"], 2)
+
+            restored = CatGachaController(
+                ROOT, SettingsStore("XomacitoSpentRollSyncTest"),
+                today_provider=lambda: today,
+            )
+            self.assertEqual(restored.state["earnedRolls"], 2)
+
     def test_remote_collection_is_merged_and_persisted_on_a_new_pc(self):
         today = date(2026, 8, 25)
         with tempfile.TemporaryDirectory() as appdata, patch.dict(os.environ, {"APPDATA": appdata}):
@@ -135,12 +162,13 @@ class CatGachaTests(unittest.TestCase):
             remote_cat = next(cat for cat in controller.catalog if cat.id != starter_id)
 
             controller.mergeRemoteState({
-                "schema": 3,
+                "schema": 4,
                 "unlockedIds": [starter_id, remote_cat.id],
                 "equippedId": remote_cat.id,
                 "duplicates": {remote_cat.id: 3},
                 "totalRolls": 8,
                 "earnedRolls": 2,
+                "rollBalanceRevision": 50,
                 "lastDailyRoll": today.isoformat(),
             })
 

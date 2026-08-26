@@ -10,9 +10,10 @@ class ConsoleHandler:
     Handles command execution from the internal Xomacito console.
     Supports running integrated binaries (yt-dlp, ffmpeg) and custom Xomacito commands.
     """
-    def __init__(self, bin_dir: str, ffmpeg_bin_dir: str):
+    def __init__(self, bin_dir: str, ffmpeg_bin_dir: str, models_dir: str | None = None):
         self.bin_dir = bin_dir
         self.ffmpeg_bin_dir = ffmpeg_bin_dir
+        self.models_dir = models_dir or os.path.join(bin_dir, "models")
         self._cmd_process: Optional[subprocess.Popen] = None
         self._output_callback: Optional[Callable[[str, str], None]] = None
         self._finish_callback: Optional[Callable[[], None]] = None
@@ -85,7 +86,7 @@ class ConsoleHandler:
 
     def _run_upscaling_tool(self, tool_key: str, args_str: str):
         """Runs one of the ncnn-vulkan upscaling tools."""
-        upscaling_base = os.path.join(self.bin_dir, "models", "upscaling")
+        upscaling_base = os.path.join(self.models_dir, "upscaling")
         
         if tool_key == "waifu2x":
             exe_name = "waifu2x-ncnn-vulkan.exe" if os.name == 'nt' else "waifu2x-ncnn-vulkan"
@@ -111,7 +112,7 @@ class ConsoleHandler:
     def _list_models(self, tool: str):
         """Universal model scanner that explores the tool's directory for model folders and files."""
         from src.core.constants import UPSCAYL_MODELS_MAP
-        upscaling_base = os.path.join(self.bin_dir, "models", "upscaling")
+        upscaling_base = os.path.join(self.models_dir, "upscaling")
         
         tool_dirs = {"upy": "upscayl", "w2x": "waifu2x", "srmd": "srmd"}
         tool_key = tool_dirs.get(tool)

@@ -10,6 +10,8 @@ from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFileDialog, QInputDialog
 
+from main import BIN_PATH, FFMPEG_BIN_DIR, MODELS_PATH
+
 from src.core.console_handler import ConsoleHandler
 from src.core.downloader import apply_yt_patch, extract_info_resilient
 from src.core.setup import (
@@ -80,7 +82,7 @@ class SettingsController(QObject):
             "premierePanelAvailable": (self.project_root / "premiere-panel" / "manifest.json").is_file(),
             "premierePanelPackageAvailable": (self.project_root / "premiere-panel" / "Xomacito-Link.ccx").is_file(),
         }
-        self.console = ConsoleHandler(str(self.project_root / "bin"), str(self.project_root / "bin" / "ffmpeg"))
+        self.console = ConsoleHandler(str(BIN_PATH), FFMPEG_BIN_DIR, str(MODELS_PATH))
         self.console.connect_callbacks(
             lambda text, _tag="normal": self.consoleChunk.emit(str(text)),
             lambda: self.consoleFinished.emit(),
@@ -336,8 +338,8 @@ class SettingsController(QObject):
     @Slot()
     def refreshModels(self):
         roots = [
-            ("rembg", self.project_root / "bin" / "models" / "rembg", {".onnx"}),
-            ("upscaling", self.project_root / "bin" / "models" / "upscaling", {".param", ".bin"}),
+            ("rembg", MODELS_PATH / "rembg", {".onnx"}),
+            ("upscaling", MODELS_PATH / "upscaling", {".param", ".bin"}),
         ]
         rows = []
         for family, root, extensions in roots:
@@ -359,7 +361,7 @@ class SettingsController(QObject):
     @Slot(str)
     def deleteModel(self, model_path):
         path = Path(model_path).resolve()
-        allowed = (self.project_root / "bin" / "models").resolve()
+        allowed = MODELS_PATH.resolve()
         try:
             path.relative_to(allowed)
         except ValueError:
@@ -384,8 +386,8 @@ class SettingsController(QObject):
         folders = {
             "settings": self.settings.directory,
             "themes": self.settings.themes_dir,
-            "models": self.project_root / "bin" / "models",
-            "bin": self.project_root / "bin",
+            "models": MODELS_PATH,
+            "bin": BIN_PATH,
             "project": self.project_root,
         }
         folder = folders.get(key, self.project_root)

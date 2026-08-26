@@ -56,11 +56,12 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "release_notice_seen_version": "",
     "guided_tour_seen_version": "",
     "cat_gacha": {
-        "schema": 1,
+        "schema": 4,
         "downloadProgress": 0,
         "earnedRolls": 0,
         "totalDownloads": 0,
         "totalRolls": 0,
+        "rollBalanceRevision": 0,
         "lastDailyRoll": "",
         "unlockedIds": [],
         "equippedId": "",

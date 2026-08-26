@@ -593,7 +593,7 @@ def check_environment_status(progress_callback, check_updates=True): # <--- NUEV
 def check_and_download_rembg_models(progress_callback):
     """
     Verifica y descarga los modelos de rembg (u2netp, u2net, isnet-general-use)
-    en la carpeta bin/models/rembg.
+    en la carpeta persistente de modelos del usuario.
     """
     # Diccionario de modelos: Nombre archivo -> URL directa
     models_to_check = {
@@ -1058,7 +1058,7 @@ def check_and_download_upscaling_tools(progress_callback, target_tool=None):
                 if len(extracted_items) == 1 and os.path.isdir(os.path.join(temp_extract_dir, extracted_items[0])):
                     source_path = os.path.join(temp_extract_dir, extracted_items[0])
                 
-                # Mover a destino final (bin/models/upscaling/realesrgan)
+                # Mover al almacenamiento persistente de motores de reescalado.
                 # --- OPTIMIZACIÓN: Fusión segura en lugar de borrar todo ---
                 # Esto evita borrar los modelos que el usuario ya migró manualmente.
                 try:

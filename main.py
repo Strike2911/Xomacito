@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 import traceback
 from pathlib import Path
@@ -11,7 +12,7 @@ APP_NAME = "Xomacito"
 # mantiene numérica para que el instalador de Windows y el actualizador puedan
 # comparar correctamente esta entrega con las instalaciones 3.x anteriores.
 APP_VERSION = "1.0"
-UPDATE_VERSION = "4.0.9"
+UPDATE_VERSION = "4.0.10"
 
 FROZEN = bool(getattr(sys, "frozen", False))
 PROJECT_ROOT = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
@@ -37,9 +38,56 @@ BIN_DIR = str(BIN_PATH)
 FFMPEG_BIN_DIR = os.environ.get("XOMACITO_FFMPEG_BIN_DIR", str(BIN_PATH / "ffmpeg"))
 DENO_BIN_DIR = str(BIN_PATH / "deno")
 POPPLER_BIN_DIR = str(BIN_PATH / "poppler")
-MODELS_DIR = str(BIN_PATH / "models")
-REMBG_MODELS_DIR = str(BIN_PATH / "models" / "rembg")
-UPSCALING_DIR = str(BIN_PATH / "models" / "upscaling")
+
+
+def _persistent_models_path() -> Path:
+    """Return a model store that survives replacing the installed application."""
+    override = str(os.environ.get("XOMACITO_MODELS_DIR") or "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    if not FROZEN:
+        return BIN_PATH / "models"
+    local_data = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    return local_data / APP_NAME / "models"
+
+
+def migrate_legacy_models(source: Path, destination: Path) -> int:
+    """Copy missing downloaded models from an older install without overwriting user data."""
+    source = Path(source)
+    destination = Path(destination)
+    if not source.is_dir() or source.resolve() == destination.resolve():
+        return 0
+    copied = 0
+    for old_path in source.rglob("*"):
+        relative = old_path.relative_to(source)
+        new_path = destination / relative
+        if old_path.is_dir():
+            new_path.mkdir(parents=True, exist_ok=True)
+            continue
+        if not old_path.is_file():
+            continue
+        try:
+            if new_path.is_file() and new_path.stat().st_size > 0:
+                continue
+            new_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(old_path, new_path)
+            copied += 1
+        except OSError as error:
+            print(f"ADVERTENCIA: No se pudo conservar el modelo {old_path.name}: {error}")
+    return copied
+
+
+MODELS_PATH = _persistent_models_path()
+if FROZEN:
+    # Versiones anteriores descargaban los modelos dentro de la instalación.
+    # Copiarlos antes de usarlos permite actualizar Xomacito sin descargarlos otra vez.
+    for legacy_models in (INTERNAL_DIR / "bin" / "models", PROJECT_ROOT / "bin" / "models"):
+        migrate_legacy_models(legacy_models, MODELS_PATH)
+
+MODELS_DIR = str(MODELS_PATH)
+REMBG_MODELS_DIR = str(MODELS_PATH / "rembg")
+UPSCALING_DIR = str(MODELS_PATH / "upscaling")
+os.environ.setdefault("U2NET_HOME", REMBG_MODELS_DIR)
 
 
 def _recommended_ui_scale(width: int, height: int, dpi: int) -> float:

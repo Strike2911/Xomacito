@@ -332,6 +332,16 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("contraseña", " ".join(notice["highlights"]))
         self.assertIn("computadoras", " ".join(notice["highlights"]))
 
+    def test_release_4010_explains_roll_and_collection_repairs(self):
+        notice = release_notice_for_version("4.0.10")
+
+        self.assertIsNotNone(notice)
+        highlights = " ".join(notice["highlights"])
+        self.assertIn("tiradas gastadas", highlights)
+        self.assertIn("instalación nueva", highlights)
+        self.assertIn("PERRO ZANE", highlights)
+        self.assertIn("modelos de IA", highlights)
+
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
         digest = "sha256:" + hashlib.sha256(payload).hexdigest()
@@ -1245,7 +1255,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("PrivilegesRequired=lowest", installer)
         self.assertIn("OutputBaseFilename=Xomacito-1.0-Setup", installer)
-        self.assertIn('#define MyAppVersion "4.0.9"', installer)
+        self.assertIn('#define MyAppVersion "4.0.10"', installer)
         self.assertIn('#define MyAppDisplayVersion "1.0"', installer)
         self.assertIn("shellexec postinstall skipifsilent skipifdoesntexist", installer)
         self.assertIn("CloseApplications=force", installer)
@@ -1288,6 +1298,34 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn('BIN_PATH = INTERNAL_DIR / "bin"', main_source)
         self.assertIn('executable_root / "_internal"', runtime_source)
         self.assertGreater((ROOT / "bin" / "ffmpeg" / "ffmpeg.exe").stat().st_size, 100_000_000)
+
+    def test_ai_models_are_kept_outside_the_frozen_installation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.object(main, "FROZEN", True), patch.dict(
+                os.environ,
+                {"LOCALAPPDATA": temp_dir, "XOMACITO_MODELS_DIR": ""},
+            ):
+                self.assertEqual(
+                    main._persistent_models_path(),
+                    Path(temp_dir) / "Xomacito" / "models",
+                )
+
+    def test_legacy_model_migration_preserves_existing_user_copy(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            legacy = root / "installed" / "models"
+            persistent = root / "user" / "models"
+            (legacy / "rembg").mkdir(parents=True)
+            (legacy / "rembg" / "new.onnx").write_bytes(b"downloaded")
+            (legacy / "rembg" / "existing.onnx").write_bytes(b"old-install")
+            (persistent / "rembg").mkdir(parents=True)
+            (persistent / "rembg" / "existing.onnx").write_bytes(b"user-copy")
+
+            copied = main.migrate_legacy_models(legacy, persistent)
+
+            self.assertEqual(copied, 1)
+            self.assertEqual((persistent / "rembg" / "new.onnx").read_bytes(), b"downloaded")
+            self.assertEqual((persistent / "rembg" / "existing.onnx").read_bytes(), b"user-copy")
 
     def test_xomacito_is_standalone_without_editor_plugin_bridge(self):
         source_paths = tuple((ROOT / "src" / "ui").rglob("*.py")) + tuple((ROOT / "src" / "ui" / "qml").rglob("*.qml")) + (ROOT / "src" / "core" / "batch_processor.py",)

@@ -76,6 +76,10 @@ class CatGachaController(QObject):
         self._earned_rolls = max(0, int(saved.get("earnedRolls", 0)))
         self._total_downloads = max(0, int(saved.get("totalDownloads", 0)))
         self._total_rolls = max(0, int(saved.get("totalRolls", 0)))
+        legacy_balance_revision = self._total_downloads + self._total_rolls
+        self._roll_balance_revision = max(
+            0, int(saved.get("rollBalanceRevision", legacy_balance_revision) or 0),
+        )
         self._last_daily_roll = str(saved.get("lastDailyRoll", ""))
         claimed_promotions = saved.get("claimedPromotions", [])
         self._claimed_promotions = {
@@ -212,14 +216,19 @@ class CatGachaController(QObject):
             self.sync_snapshot(),
         )
 
+    def _advance_roll_balance_revision(self, amount=1):
+        """Marca una mutación del saldo para que una copia antigua no lo reviva."""
+        self._roll_balance_revision += max(1, int(amount or 1))
+
     def sync_snapshot(self) -> dict:
         """Estado portable de la colección para restaurarlo en otra PC."""
         return {
-            "schema": 3,
+            "schema": 4,
             "downloadProgress": self._download_progress,
             "earnedRolls": self._earned_rolls,
             "totalDownloads": self._total_downloads,
             "totalRolls": self._total_rolls,
+            "rollBalanceRevision": self._roll_balance_revision,
             "lastDailyRoll": self._last_daily_roll,
             "unlockedIds": sorted(self._unlocked),
             "equippedId": self._equipped_id,
@@ -252,17 +261,39 @@ class CatGachaController(QObject):
                     continue
                 self._duplicates[cat_id] = max(self._duplicates.get(cat_id, 0), normalized)
 
-        def maximum(field, current, *, modulo=None):
+        def normalized_number(source, field, maximum=10_000_000):
             try:
-                value = max(current, max(0, int(remote.get(field, 0) or 0)))
+                return max(0, min(maximum, int(source.get(field, 0) or 0)))
             except (TypeError, ValueError):
-                value = current
-            return value % modulo if modulo else value
+                return 0
 
-        self._download_progress = maximum("downloadProgress", self._download_progress, modulo=10)
-        self._earned_rolls = maximum("earnedRolls", self._earned_rolls)
-        self._total_downloads = maximum("totalDownloads", self._total_downloads)
-        self._total_rolls = maximum("totalRolls", self._total_rolls)
+        def balance_revision(source):
+            if "rollBalanceRevision" in source:
+                return normalized_number(source, "rollBalanceRevision")
+            # Los estados anteriores a schema 4 no tenían reloj de saldo. Esta
+            # base monotónica permite restaurarlos sin otorgar tiradas gastadas.
+            return normalized_number(source, "totalDownloads") + normalized_number(
+                source, "totalRolls",
+            )
+
+        local_revision = self._roll_balance_revision
+        remote_revision = balance_revision(remote)
+        local_rank = (local_revision, self._total_rolls, self._total_downloads)
+        remote_rank = (
+            remote_revision,
+            normalized_number(remote, "totalRolls"),
+            normalized_number(remote, "totalDownloads"),
+        )
+        local_is_fresh = len(before["unlockedIds"]) <= 1 and before["totalRolls"] == 0
+        if remote_rank > local_rank or (local_is_fresh and len(remote_unlocked) > 1):
+            self._download_progress = normalized_number(remote, "downloadProgress", 9)
+            self._earned_rolls = normalized_number(remote, "earnedRolls")
+            self._roll_balance_revision = remote_revision
+
+        self._total_downloads = max(
+            self._total_downloads, normalized_number(remote, "totalDownloads"),
+        )
+        self._total_rolls = max(self._total_rolls, normalized_number(remote, "totalRolls"))
         self._last_daily_roll = max(self._last_daily_roll, str(remote.get("lastDailyRoll") or ""))
 
         for attribute, field in (
@@ -276,7 +307,6 @@ class CatGachaController(QObject):
                 )
 
         remote_equipped = str(remote.get("equippedId") or "")
-        local_is_fresh = len(before["unlockedIds"]) <= 1 and before["totalRolls"] == 0
         if (
             remote_equipped in self._unlocked
             and remote_equipped in self._by_id
@@ -312,6 +342,7 @@ class CatGachaController(QObject):
         self._total_downloads += amount
         rolls, self._download_progress = divmod(self._download_progress + amount, 10)
         self._earned_rolls += rolls
+        self._advance_roll_balance_revision(amount)
         self._refresh()
         self._persist()
         if rolls:
@@ -329,6 +360,7 @@ class CatGachaController(QObject):
         if not amount:
             return
         self._earned_rolls += amount
+        self._advance_roll_balance_revision(amount)
         self._refresh()
         self._persist()
 
@@ -359,6 +391,7 @@ class CatGachaController(QObject):
             self._last_daily_roll = self._today().isoformat()
         else:
             self._earned_rolls -= 1
+        self._advance_roll_balance_revision()
 
         cat = self._choose_cat()
         is_new = cat.id not in self._unlocked
@@ -422,6 +455,7 @@ class CatGachaController(QObject):
 
         self._claimed_promotions.add(campaign)
         self._earned_rolls += 10
+        self._advance_roll_balance_revision(10)
         is_new = dog.id not in self._unlocked
         self._unlocked.add(dog.id)
         self._refresh()

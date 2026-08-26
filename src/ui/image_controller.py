@@ -29,6 +29,7 @@ from src.core.downloader import (
     is_x_status_url,
 )
 from src.core.processor import FFmpegProcessor
+from main import MODELS_PATH, UPSCALING_DIR
 
 from .list_model import ObjectListModel
 from .media_logic import safe_filename
@@ -570,7 +571,7 @@ class ImageController(QObject):
         filename = data.get("file")
         if not filename:
             raise RuntimeError("No se pudo resolver el modelo para quitar el fondo.")
-        folder = self.project_root / "bin" / "models" / data.get("folder", "rembg")
+        folder = MODELS_PATH / data.get("folder", "rembg")
         target = folder / filename
         if target.exists():
             return
@@ -687,7 +688,7 @@ class ImageController(QObject):
 
             upscaler = VideoUpscaler(
                 ffmpeg_dir=str(Path(self.ffmpeg.ffmpeg_path).parent),
-                upscaling_dir=str(self.project_root / "bin" / "models" / "upscaling"),
+                upscaling_dir=UPSCALING_DIR,
                 cancellation_event=self.cancel_event,
                 progress_callback=report,
             )
@@ -765,12 +766,12 @@ class ImageController(QObject):
 
     @Slot()
     def browseModelFolder(self):
-        folder = self.project_root / "bin" / "models" / "rembg"; folder.mkdir(parents=True, exist_ok=True)
+        folder = MODELS_PATH / "rembg"; folder.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     @Slot()
     def browseUpscaleFolder(self):
-        folder = self.project_root / "bin" / "models" / "upscaling"; folder.mkdir(parents=True, exist_ok=True)
+        folder = MODELS_PATH / "upscaling"; folder.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     @Slot(float, str)

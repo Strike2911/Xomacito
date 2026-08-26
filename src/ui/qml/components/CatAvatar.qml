@@ -14,6 +14,9 @@ Item {
     readonly property bool zarkingCyber: animationStyle === "zarking-cyber"
     readonly property bool blackbullNoir: animationStyle === "blackbull-noir"
     readonly property bool strikeApex: animationStyle === "strike-apex"
+    // El retrato de Zane ocupa casi todo el lienzo cuadrado. Un inset mayor
+    // mantiene incluso el hocico y el pelaje dentro del aro circular.
+    readonly property bool zanePortrait: source.toString().indexOf("cat-5a99d9f019f0-avatar.webp") >= 0
     readonly property bool bespokeMythic: arcaneMage || playeraPrismatic || zarkingCyber || blackbullNoir || strikeApex
     readonly property color signatureColor: arcaneMage ? "#B887FF"
                                              : playeraPrismatic ? "#FF7FB7"
@@ -136,6 +139,7 @@ Item {
 
     Rectangle {
         id: avatarFrame
+        objectName: "catAvatarFrame"
         anchors.centerIn: parent
         // BLACK BULL ya tiene un avatar circular preparado. Reducirlo otra vez
         // con el margen general hacía que su rostro se viera diminuto.
@@ -149,8 +153,9 @@ Item {
         clip: true
 
         Image {
+            objectName: "catAvatarImage"
             anchors.fill: parent
-            anchors.margins: root.blackbullNoir ? 1 : 3
+            anchors.margins: root.blackbullNoir ? 1 : root.zanePortrait ? avatarFrame.width * 0.15 : 3
             source: root.source
             fillMode: Image.PreserveAspectFit
             mipmap: true

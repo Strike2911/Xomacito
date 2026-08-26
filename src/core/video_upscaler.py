@@ -20,6 +20,7 @@ from src.core.constants import (
     UPSCALING_TOOLS,
 )
 from src.core.exceptions import UserCancelledError
+from main import UPSCALING_DIR
 
 
 # ─── Ruta raiz de los binarios ───────────────────────────────────────────────
@@ -58,10 +59,7 @@ class VideoUpscaler:
         if upscaling_dir:
             self.models_root = upscaling_dir
         else:
-            # Fallback (no recomendado en EXE)
-            _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-            BIN_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "..", "bin"))
-            self.models_root = os.path.join(BIN_DIR, "models", "upscaling")
+            self.models_root = UPSCALING_DIR
 
     # ─── Helpers ────────────────────────────────────────────────────────────
 

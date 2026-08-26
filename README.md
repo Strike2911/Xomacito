@@ -1,6 +1,6 @@
 # Xomacito
 
-Versión visible actual: **Xomacito 1.0**. Revisión interna de actualización: **4.0.9**.
+Versión visible actual: **Xomacito 1.0**. Revisión interna de actualización: **4.0.10**.
 
 Aplicación independiente para Windows que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike** pero principalmente inspirado en Dowp hecho por Marck.
 
@@ -64,7 +64,7 @@ Los runtimes de compilación, herramientas externas, modelos, builds y preferenc
 
 El release se genera directamente desde `main.py` y la carpeta `src`, sin PyArmor ni otra etapa de ofuscación. `scripts/build_release.ps1` cancela la compilación si detecta envoltorios de PyArmor o si el spec deja de apuntar al código fuente legible.
 
-La revisión interna 4.0.9 mantiene el nombre público Xomacito 1.0, corrige la recuperación de contraseña mediante el enlace seguro de Supabase y sincroniza la colección gatuna entre equipos.
+La revisión interna 4.0.10 mantiene el nombre público Xomacito 1.0, descuenta correctamente cada tirada, restaura la colección al iniciar sesión en otra PC, encuadra a PERRO ZANE dentro de su avatar circular y conserva los modelos de IA descargados después de actualizar.
 
 Para volver a importar o ampliar la colección sin cambiar las rarezas ya asignadas:
 

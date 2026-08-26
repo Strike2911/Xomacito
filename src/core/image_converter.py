@@ -9,7 +9,7 @@ from src.core.inkscape_service import InkscapeService
 
 from src.core.constants import WAIFU2X_MODELS, SRMD_MODELS
 from src.core.constants import IMAGE_RASTER_FORMATS, IMAGE_INPUT_FORMATS, IMAGE_RAW_FORMATS
-from main import BIN_DIR, REMBG_MODELS_DIR, MODELS_DIR
+from main import REMBG_MODELS_DIR, MODELS_DIR, UPSCALING_DIR
 
 try:
     from pdf2image import convert_from_path, pdfinfo_from_path
@@ -2397,7 +2397,7 @@ class ImageConverter:
                 else:
                     threads_arg = "1:1:1"
 
-            models_root = os.path.join(BIN_DIR, "models", "upscaling")
+            models_root = UPSCALING_DIR
             cmd = []
             
             if "SRMD" in engine: # <-- MODIFICADO

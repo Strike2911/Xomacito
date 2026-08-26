@@ -283,6 +283,32 @@ class SocialAuthTests(unittest.TestCase):
         self.assertEqual(merged["duplicates"], {"gato-strike": 2})
         self.assertEqual(merged["totalRolls"], 12)
 
+    def test_collection_merge_keeps_the_newer_lower_roll_balance(self):
+        social = self.controller()
+        merged = social._merge_collection_states(
+            {
+                "schema": 4,
+                "unlockedIds": ["starter", "new-cat"],
+                "equippedId": "new-cat",
+                "earnedRolls": 8,
+                "totalRolls": 7,
+                "rollBalanceRevision": 107,
+            },
+            {
+                "schema": 4,
+                "unlockedIds": ["starter"],
+                "equippedId": "starter",
+                "earnedRolls": 10,
+                "totalRolls": 5,
+                "rollBalanceRevision": 105,
+            },
+        )
+
+        self.assertEqual(merged["earnedRolls"], 8)
+        self.assertEqual(merged["rollBalanceRevision"], 107)
+        self.assertEqual(merged["totalRolls"], 7)
+        self.assertEqual(merged["unlockedIds"], ["new-cat", "starter"])
+
     @patch("src.ui.social_controller.requests.post")
     @patch("src.ui.social_controller.requests.get")
     def test_collection_sync_downloads_merges_and_upserts_private_state(self, get, post):

@@ -180,6 +180,11 @@ class QtMigrationTests(unittest.TestCase):
         self.assertIn("CELEBRACIÓN ESPECIAL · 26 DE AGOSTO", main)
         self.assertIn("+10 ROLLEOS · PERRO ZANE 5★", main)
         self.assertIn("zaneBirthdayPopup.visible", main)
+        avatar = (ROOT / "src" / "ui" / "qml" / "components" / "CatAvatar.qml").read_text(
+            encoding="utf-8",
+        )
+        self.assertIn('readonly property bool zanePortrait:', avatar)
+        self.assertIn('root.zanePortrait ? avatarFrame.width * 0.15', avatar)
         self.assertIn("claimZaneBirthdayReward", application)
 
     def test_guided_tour_opens_advances_and_remembers_this_update(self):

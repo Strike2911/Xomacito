@@ -25,6 +25,29 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "4.0.10": {
+        "eyebrow": "XOMACITO 1.0",
+        "title": "Xomacito 1.0",
+        "subtitle": "TU COLECCION Y TUS MODELOS, SIEMPRE EN ORDEN",
+        "message": (
+            "Cada tirada se descuenta de forma definitiva y la nube conserva la colección "
+            "correcta cuando inicias sesión desde otra computadora."
+        ),
+        "highlights": [
+            "Las tiradas gastadas ya no reaparecen al sincronizar con una copia anterior.",
+            "Una instalación nueva restaura gatos, duplicados, equipamiento y saldo de la cuenta.",
+            "La fusión entre equipos utiliza una revisión del saldo para distinguir el progreso más reciente.",
+            "PERRO ZANE queda completamente contenido dentro de su marco circular.",
+            "Los modelos de IA descargados se conservan al actualizar Xomacito.",
+        ],
+        "contributors": [
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Strike", "Zane", "Nuan",
+        ],
+        "closing": "Gracias a quienes detectaron el saldo infinito y probaron su colección en equipos nuevos.",
+        "platinumCelebration": False,
+        "smoothMotionPromotion": False,
+    },
     "4.0.9": {
         "eyebrow": "XOMACITO 1.0",
         "title": "Xomacito 1.0",

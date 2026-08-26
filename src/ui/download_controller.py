@@ -37,6 +37,7 @@ from src.core.file_naming import next_available_media_stem, next_available_path
 from src.core.processor import FFmpegProcessor, clean_and_convert_vtt_to_srt, pixel_format_has_alpha
 from src.core.video_upscaler import VideoUpscaler
 from src.core.ytdlp_runtime import configure_ytdlp_options, friendly_ytdlp_error, safe_console_print
+from main import UPSCALING_DIR
 
 from .dialog_broker import DialogBroker
 from .media_logic import (
@@ -1351,7 +1352,7 @@ class DownloadController(QObject):
             raise UserCancelledError("Reescalado cancelado.")
         upscaler = VideoUpscaler(
             ffmpeg_dir=str(Path(self.ffmpeg.ffmpeg_path).parent),
-            upscaling_dir=str(self.project_root / "bin" / "models" / "upscaling"),
+            upscaling_dir=UPSCALING_DIR,
             cancellation_event=self.cancellation,
             progress_callback=self._ffmpeg_progress,
         )

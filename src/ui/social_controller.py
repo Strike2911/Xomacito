@@ -1075,7 +1075,7 @@ class SocialController(QObject):
 
     @staticmethod
     def _merge_collection_states(local_state, remote_state):
-        """Conserva el progreso mayor de cada equipo y une los gatos únicos."""
+        """Une colecciones y conserva el saldo de tiradas de la revisión más nueva."""
         local = dict(local_state or {})
         remote = dict(remote_state or {})
 
@@ -1095,14 +1095,24 @@ class SocialController(QObject):
                         return sorted(values)
             return sorted(values)
 
+        def normalized_number(source, field, maximum=10_000_000):
+            try:
+                return max(0, min(maximum, int(source.get(field, 0) or 0)))
+            except (TypeError, ValueError):
+                return 0
+
         def number(field, maximum=10_000_000):
             values = []
             for source in (local, remote):
-                try:
-                    values.append(max(0, min(maximum, int(source.get(field, 0) or 0))))
-                except (TypeError, ValueError):
-                    values.append(0)
+                values.append(normalized_number(source, field, maximum))
             return max(values)
+
+        def balance_revision(source):
+            if "rollBalanceRevision" in source:
+                return normalized_number(source, "rollBalanceRevision")
+            return normalized_number(source, "totalDownloads") + normalized_number(
+                source, "totalRolls",
+            )
 
         duplicates = {}
         for source in (remote.get("duplicates", {}), local.get("duplicates", {})):
@@ -1125,17 +1135,32 @@ class SocialController(QObject):
         except (TypeError, ValueError):
             local_rolls = 0
         local_is_fresh = len(local_unlocked) <= 1 and local_rolls == 0
+        local_balance_rank = (
+            balance_revision(local),
+            normalized_number(local, "totalRolls"),
+            normalized_number(local, "totalDownloads"),
+        )
+        remote_balance_rank = (
+            balance_revision(remote),
+            normalized_number(remote, "totalRolls"),
+            normalized_number(remote, "totalDownloads"),
+        )
+        balance_source = remote if (
+            remote_balance_rank > local_balance_rank
+            or (local_is_fresh and len(remote_unlocked) > 1)
+        ) else local
         equipped = str(
             (remote.get("equippedId") if local_is_fresh else local.get("equippedId"))
             or remote.get("equippedId") or local.get("equippedId") or ""
         )[:128]
 
         return {
-            "schema": 3,
-            "downloadProgress": number("downloadProgress", maximum=9),
-            "earnedRolls": number("earnedRolls"),
+            "schema": 4,
+            "downloadProgress": normalized_number(balance_source, "downloadProgress", 9),
+            "earnedRolls": normalized_number(balance_source, "earnedRolls"),
             "totalDownloads": number("totalDownloads"),
             "totalRolls": number("totalRolls"),
+            "rollBalanceRevision": balance_revision(balance_source),
             "lastDailyRoll": max(
                 str(local.get("lastDailyRoll") or "")[:10],
                 str(remote.get("lastDailyRoll") or "")[:10],
