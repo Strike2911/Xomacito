@@ -206,6 +206,50 @@ class SocialAuthTests(unittest.TestCase):
         self.assertEqual(granted, [])
         self.assertEqual(notices, [])
 
+    def test_collection_merge_restores_remote_cats_on_a_fresh_pc(self):
+        social = self.controller()
+        merged = social._merge_collection_states(
+            {
+                "unlockedIds": ["starter"],
+                "equippedId": "starter",
+                "totalRolls": 0,
+                "duplicates": {},
+            },
+            {
+                "unlockedIds": ["starter", "gato-strike"],
+                "equippedId": "gato-strike",
+                "totalRolls": 12,
+                "duplicates": {"gato-strike": 2},
+            },
+        )
+
+        self.assertEqual(merged["unlockedIds"], ["gato-strike", "starter"])
+        self.assertEqual(merged["equippedId"], "gato-strike")
+        self.assertEqual(merged["duplicates"], {"gato-strike": 2})
+        self.assertEqual(merged["totalRolls"], 12)
+
+    @patch("src.ui.social_controller.requests.post")
+    @patch("src.ui.social_controller.requests.get")
+    def test_collection_sync_downloads_merges_and_upserts_private_state(self, get, post):
+        get.return_value = Response(payload=[{"state": {
+            "unlockedIds": ["remote-cat"], "equippedId": "remote-cat", "totalRolls": 4,
+        }}])
+        post.return_value = Response(status_code=201)
+        social = self.controller({
+            "social_access_token": "opaque-session",
+            "social_user_id": "0f3a93dd-3c31-4ca4-9f6c-8aec3d15c7f9",
+        })
+
+        merged = social._collection_sync_worker({
+            "unlockedIds": ["starter"], "equippedId": "starter", "totalRolls": 0,
+        })
+
+        self.assertEqual(merged["unlockedIds"], ["remote-cat", "starter"])
+        self.assertEqual(merged["equippedId"], "remote-cat")
+        self.assertIn("Bearer opaque-session", get.call_args.kwargs["headers"]["Authorization"])
+        self.assertEqual(post.call_args.kwargs["params"], {"on_conflict": "user_id"})
+        self.assertEqual(post.call_args.kwargs["json"]["state"], merged)
+
 
 if __name__ == "__main__":
     unittest.main()

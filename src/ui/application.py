@@ -169,6 +169,7 @@ class AppController(QObject):
         self.download.successfulDownload.connect(self.social.recordDownload)
         self.batch.successfulDownload.connect(self.social.recordDownload)
         self.social.signupBonusGranted.connect(self.cats.grantBonusRolls)
+        self.social.collectionStateReceived.connect(self.cats.mergeRemoteState)
         QTimer.singleShot(0, self.social.claimCreatorGiftIfEligible)
         QTimer.singleShot(0, self.social.claimAccountRollGifts)
         self.cats.stateChanged.connect(
@@ -191,6 +192,7 @@ class AppController(QObject):
             int(self.cats.state.get("unlockedCount", 0)),
             str(self.cats.state.get("equippedId", "")),
         )
+        self.social.syncCollection(self.cats.sync_snapshot())
 
     @Slot()
     def _check_collection_completion(self):

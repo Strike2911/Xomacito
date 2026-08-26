@@ -7,6 +7,7 @@ import os
 import re
 import threading
 import time
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -83,6 +84,7 @@ class SocialController(QObject):
     onboardingRequested = Signal()
     recoveryEmailRequired = Signal()
     recoveryEmailCallbackReceived = Signal()
+    collectionStateReceived = Signal("QVariantMap")
     signupBonusGranted = Signal(int)
 
     RECOVERY_CALLBACK_HOST = "127.0.0.1"
@@ -112,6 +114,9 @@ class SocialController(QObject):
         self.recoveryEmailCallbackReceived.connect(self._recovery_email_callback_received)
         self._local_cat_count: int | None = None
         self._local_equipped_cat_id = ""
+        self._local_collection_state: dict = {}
+        self._collection_sync_inflight = False
+        self._collection_sync_queued = False
         saved_email = str(settings.get("social_email", "")).strip().lower()
         self._state = {
             "configured": bool(self._url and self._anon_key),
@@ -889,6 +894,158 @@ class SocialController(QObject):
                 print(f"Supabase RPC {name}: {response.status_code} {response.text[:300]}")
         except requests.RequestException as error:
             print(f"Supabase RPC {name}: {error}")
+
+    @staticmethod
+    def _merge_collection_states(local_state, remote_state):
+        """Conserva el progreso mayor de cada equipo y une los gatos únicos."""
+        local = dict(local_state or {})
+        remote = dict(remote_state or {})
+
+        def strings(field, limit, length=128):
+            values = []
+            seen = set()
+            for source in (remote.get(field, []), local.get(field, [])):
+                if not isinstance(source, list):
+                    continue
+                for value in source:
+                    value = str(value or "")[:length]
+                    if not value or value in seen:
+                        continue
+                    seen.add(value)
+                    values.append(value)
+                    if len(values) >= limit:
+                        return sorted(values)
+            return sorted(values)
+
+        def number(field, maximum=10_000_000):
+            values = []
+            for source in (local, remote):
+                try:
+                    values.append(max(0, min(maximum, int(source.get(field, 0) or 0))))
+                except (TypeError, ValueError):
+                    values.append(0)
+            return max(values)
+
+        duplicates = {}
+        for source in (remote.get("duplicates", {}), local.get("duplicates", {})):
+            if not isinstance(source, dict):
+                continue
+            for cat_id, amount in list(source.items())[:2000]:
+                cat_id = str(cat_id or "")[:128]
+                if not cat_id:
+                    continue
+                try:
+                    amount = max(0, min(1_000_000, int(amount or 0)))
+                except (TypeError, ValueError):
+                    continue
+                duplicates[cat_id] = max(duplicates.get(cat_id, 0), amount)
+
+        local_unlocked = local.get("unlockedIds", []) if isinstance(local.get("unlockedIds"), list) else []
+        remote_unlocked = remote.get("unlockedIds", []) if isinstance(remote.get("unlockedIds"), list) else []
+        try:
+            local_rolls = max(0, int(local.get("totalRolls", 0) or 0))
+        except (TypeError, ValueError):
+            local_rolls = 0
+        local_is_fresh = len(local_unlocked) <= 1 and local_rolls == 0
+        equipped = str(
+            (remote.get("equippedId") if local_is_fresh else local.get("equippedId"))
+            or remote.get("equippedId") or local.get("equippedId") or ""
+        )[:128]
+
+        return {
+            "schema": 3,
+            "downloadProgress": number("downloadProgress", maximum=9),
+            "earnedRolls": number("earnedRolls"),
+            "totalDownloads": number("totalDownloads"),
+            "totalRolls": number("totalRolls"),
+            "lastDailyRoll": max(
+                str(local.get("lastDailyRoll") or "")[:10],
+                str(remote.get("lastDailyRoll") or "")[:10],
+            ),
+            "unlockedIds": strings("unlockedIds", 2000),
+            "equippedId": equipped,
+            "duplicates": dict(sorted(duplicates.items())),
+            "rewardedSourceHashes": strings("rewardedSourceHashes", 20_000, 128),
+            "claimedPromotions": strings("claimedPromotions", 1000, 128),
+        }
+
+    def _collection_sync_worker(self, local_state):
+        if not self._ensure_fresh_session():
+            raise RuntimeError("La sesión venció. Vuelve a iniciar sesión para sincronizar tus gatitos.")
+        user_id = str(self.settings.get("social_user_id", "") or "").strip()
+        if not user_id:
+            raise RuntimeError("La cuenta no tiene un identificador válido.")
+
+        access_token = self._access_token()
+        response = requests.get(
+            f"{self._url}/rest/v1/cat_collection_states",
+            headers=self._headers(authenticated=True, access_token=access_token),
+            params={"user_id": f"eq.{user_id}", "select": "state", "limit": "1"},
+            timeout=20,
+        )
+        if response.status_code == 401 and self._refresh_session(failed_access_token=access_token):
+            response = requests.get(
+                f"{self._url}/rest/v1/cat_collection_states",
+                headers=self._headers(authenticated=True),
+                params={"user_id": f"eq.{user_id}", "select": "state", "limit": "1"},
+                timeout=20,
+            )
+        if response.status_code >= 400:
+            raise RuntimeError("No se pudo descargar tu colección gatuna.")
+        rows = response.json() if response.content else []
+        remote_state = rows[0].get("state", {}) if isinstance(rows, list) and rows else {}
+        merged = self._merge_collection_states(local_state, remote_state)
+
+        headers = self._headers(authenticated=True)
+        headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
+        saved = requests.post(
+            f"{self._url}/rest/v1/cat_collection_states",
+            headers=headers,
+            params={"on_conflict": "user_id"},
+            json={
+                "user_id": user_id,
+                "state": merged,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            },
+            timeout=20,
+        )
+        if saved.status_code >= 400:
+            raise RuntimeError("No se pudo guardar tu colección gatuna.")
+        return merged
+
+    def _start_collection_sync(self):
+        if self._collection_sync_inflight or not self._state.get("authenticated"):
+            return
+        self._collection_sync_inflight = True
+        self.pool.submit(
+            self._collection_sync_worker,
+            dict(self._local_collection_state),
+            on_result=self._collection_sync_completed,
+            on_error=self._collection_sync_failed,
+        )
+
+    def _collection_sync_completed(self, state):
+        self._collection_sync_inflight = False
+        self.collectionStateReceived.emit(dict(state or {}))
+        if self._collection_sync_queued:
+            self._collection_sync_queued = False
+            self._start_collection_sync()
+
+    def _collection_sync_failed(self, message, detail):
+        self._collection_sync_inflight = False
+        self._collection_sync_queued = False
+        print(detail or message)
+        self.notificationRequested.emit("warning", "Sincronización pendiente", str(message))
+
+    @Slot("QVariantMap")
+    def syncCollection(self, state):
+        self._local_collection_state = dict(state or {})
+        if not self._state.get("authenticated"):
+            return
+        if self._collection_sync_inflight:
+            self._collection_sync_queued = True
+            return
+        self._start_collection_sync()
 
     @Slot(int)
     def recordDownload(self, completed_items=1):

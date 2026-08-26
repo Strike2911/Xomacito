@@ -126,6 +126,38 @@ class CatGachaTests(unittest.TestCase):
             )
             self.assertEqual(restored.state["earnedRolls"], 10)
 
+    def test_remote_collection_is_merged_and_persisted_on_a_new_pc(self):
+        today = date(2026, 8, 25)
+        with tempfile.TemporaryDirectory() as appdata, patch.dict(os.environ, {"APPDATA": appdata}):
+            store = SettingsStore("XomacitoCloudCollectionTest")
+            controller = CatGachaController(ROOT, store, today_provider=lambda: today)
+            starter_id = controller.state["equippedId"]
+            remote_cat = next(cat for cat in controller.catalog if cat.id != starter_id)
+
+            controller.mergeRemoteState({
+                "schema": 3,
+                "unlockedIds": [starter_id, remote_cat.id],
+                "equippedId": remote_cat.id,
+                "duplicates": {remote_cat.id: 3},
+                "totalRolls": 8,
+                "earnedRolls": 2,
+                "lastDailyRoll": today.isoformat(),
+            })
+
+            self.assertEqual(controller.state["unlockedCount"], 2)
+            self.assertEqual(controller.state["equippedId"], remote_cat.id)
+            self.assertEqual(controller.state["earnedRolls"], 2)
+
+            restored = CatGachaController(
+                ROOT, SettingsStore("XomacitoCloudCollectionTest"), today_provider=lambda: today,
+            )
+            restored_item = next(
+                item for item in restored.collection.items() if item["catId"] == remote_cat.id
+            )
+            self.assertTrue(restored_item["unlocked"])
+            self.assertEqual(restored_item["duplicateCount"], 3)
+            self.assertEqual(restored.state["equippedId"], remote_cat.id)
+
     def test_duplicate_rolls_after_platinum_upgrade_a_visible_persistent_aura(self):
         today = date(2026, 8, 21)
 

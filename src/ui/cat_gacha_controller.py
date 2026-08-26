@@ -209,20 +209,85 @@ class CatGachaController(QObject):
     def _persist(self):
         self.settings.set(
             "cat_gacha",
-            {
-                "schema": 2,
-                "downloadProgress": self._download_progress,
-                "earnedRolls": self._earned_rolls,
-                "totalDownloads": self._total_downloads,
-                "totalRolls": self._total_rolls,
-                "lastDailyRoll": self._last_daily_roll,
-                "unlockedIds": sorted(self._unlocked),
-                "equippedId": self._equipped_id,
-                "duplicates": dict(sorted(self._duplicates.items())),
-                "rewardedSourceHashes": sorted(self._rewarded_source_hashes),
-                "claimedPromotions": sorted(self._claimed_promotions),
-            },
+            self.sync_snapshot(),
         )
+
+    def sync_snapshot(self) -> dict:
+        """Estado portable de la colección para restaurarlo en otra PC."""
+        return {
+            "schema": 3,
+            "downloadProgress": self._download_progress,
+            "earnedRolls": self._earned_rolls,
+            "totalDownloads": self._total_downloads,
+            "totalRolls": self._total_rolls,
+            "lastDailyRoll": self._last_daily_roll,
+            "unlockedIds": sorted(self._unlocked),
+            "equippedId": self._equipped_id,
+            "duplicates": dict(sorted(self._duplicates.items())),
+            "rewardedSourceHashes": sorted(self._rewarded_source_hashes),
+            "claimedPromotions": sorted(self._claimed_promotions),
+        }
+
+    @Slot("QVariantMap")
+    def mergeRemoteState(self, remote_state):
+        """Une el progreso remoto sin borrar premios obtenidos en este equipo."""
+        remote = dict(remote_state or {})
+        before = self.sync_snapshot()
+
+        remote_unlocked = {
+            str(cat_id) for cat_id in remote.get("unlockedIds", [])
+            if str(cat_id) in self._by_id
+        }
+        self._unlocked.update(remote_unlocked)
+
+        remote_duplicates = remote.get("duplicates", {})
+        if isinstance(remote_duplicates, dict):
+            for cat_id, amount in remote_duplicates.items():
+                cat_id = str(cat_id)
+                if cat_id not in self._by_id:
+                    continue
+                try:
+                    normalized = max(0, int(amount))
+                except (TypeError, ValueError):
+                    continue
+                self._duplicates[cat_id] = max(self._duplicates.get(cat_id, 0), normalized)
+
+        def maximum(field, current, *, modulo=None):
+            try:
+                value = max(current, max(0, int(remote.get(field, 0) or 0)))
+            except (TypeError, ValueError):
+                value = current
+            return value % modulo if modulo else value
+
+        self._download_progress = maximum("downloadProgress", self._download_progress, modulo=10)
+        self._earned_rolls = maximum("earnedRolls", self._earned_rolls)
+        self._total_downloads = maximum("totalDownloads", self._total_downloads)
+        self._total_rolls = maximum("totalRolls", self._total_rolls)
+        self._last_daily_roll = max(self._last_daily_roll, str(remote.get("lastDailyRoll") or ""))
+
+        for attribute, field in (
+            ("_rewarded_source_hashes", "rewardedSourceHashes"),
+            ("_claimed_promotions", "claimedPromotions"),
+        ):
+            values = remote.get(field, [])
+            if isinstance(values, list):
+                getattr(self, attribute).update(
+                    str(value) for value in values if isinstance(value, str) and value
+                )
+
+        remote_equipped = str(remote.get("equippedId") or "")
+        local_is_fresh = len(before["unlockedIds"]) <= 1 and before["totalRolls"] == 0
+        if (
+            remote_equipped in self._unlocked
+            and remote_equipped in self._by_id
+            and (local_is_fresh or self._equipped_id not in self._unlocked)
+        ):
+            self._equipped_id = remote_equipped
+
+        if self.sync_snapshot() == before:
+            return
+        self._refresh()
+        self._persist()
 
     def _choose_cat(self) -> CatDefinition:
         rollable = [cat for cat in self.catalog if not cat.exclusive]
