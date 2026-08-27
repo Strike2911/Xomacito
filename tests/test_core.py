@@ -351,6 +351,14 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("tiradas", highlights)
         self.assertIn("modelos de IA", highlights)
 
+    def test_release_4012_is_a_single_bugfix_notice_credited_to_maog(self):
+        notice = release_notice_for_version("4.0.12")
+
+        self.assertEqual(notice["title"], "Xomacito 1.0")
+        self.assertEqual(notice["highlights"], ["Arreglo de Bugs de la versión 1.0"])
+        self.assertEqual(notice["contributors"], ["Maog"])
+        self.assertFalse(notice["smoothMotionPromotion"])
+
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
         digest = "sha256:" + hashlib.sha256(payload).hexdigest()
@@ -1264,7 +1272,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("PrivilegesRequired=lowest", installer)
         self.assertIn("OutputBaseFilename=Xomacito-1.0-Setup", installer)
-        self.assertIn('#define MyAppVersion "4.0.11"', installer)
+        self.assertIn('#define MyAppVersion "4.0.12"', installer)
         self.assertIn('#define MyAppDisplayVersion "1.0"', installer)
         self.assertIn("shellexec postinstall skipifsilent skipifdoesntexist", installer)
         self.assertIn("CloseApplications=force", installer)
@@ -1296,6 +1304,9 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertNotIn("engine\\", installer)
         self.assertIn("is_conflicting_top_level_icu", spec)
         self.assertIn('filename == "icuuc.dll"', spec)
+        public_spec = (ROOT / ".build" / "XomacitoPublic.spec").read_text(encoding="utf-8")
+        self.assertIn("is_conflicting_top_level_icu", public_spec)
+        self.assertIn('filename == "icuuc.dll"', public_spec)
 
     def test_startup_uses_bundled_ffmpeg_without_auto_installing(self):
         application = (ROOT / "src" / "ui" / "application.py").read_text(encoding="utf-8")

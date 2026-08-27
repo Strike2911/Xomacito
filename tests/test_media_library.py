@@ -105,6 +105,11 @@ class MediaLibraryTests(unittest.TestCase):
             self.assertEqual(controller.library_rows.count(), 3)
             grouped = library / "Proyecto"
             self.assertEqual(controller.library_rows.item(0)["folderPath"], str(grouped))
+            self.assertRegex(controller.library_rows.item(0)["folderColor"], r"^#[0-9A-F]{6}$")
+            self.assertEqual(
+                controller.library_rows.item(0)["folderColor"],
+                controller.library_rows.item(1)["folderColor"],
+            )
             controller.toggleFolder(str(grouped))
             self.assertEqual(controller.library_rows.count(), 1)
             self.assertFalse(controller.library_rows.item(0)["expanded"])
@@ -232,6 +237,9 @@ class MediaLibraryTests(unittest.TestCase):
         self.assertIn("Xomacito Link", qml)
         self.assertNotIn("Premiere listo", qml)
         self.assertIn("mediaLibraryController.connectPremiere()", qml)
+        self.assertIn("selectedFolderColor", qml)
+        self.assertIn("folderColor", qml)
+        self.assertIn("libraryAccent", qml)
         controller = (ROOT / "src/ui/media_library_controller.py").read_text(encoding="utf-8")
         self.assertIn("Ventana > Plugins UXP > Xomacito Link", controller)
         self.assertIn("_premiere_panel_installed()", controller)

@@ -70,6 +70,24 @@ class CatGachaTests(unittest.TestCase):
             self.assertEqual(avatar.mode, "RGBA")
             self.assertEqual(avatar.getpixel((0, 0))[3], 0)
 
+    def test_historical_scoreboard_count_rebuilds_missing_ids_without_granting_exclusives(self):
+        today = date(2026, 8, 27)
+        with tempfile.TemporaryDirectory() as appdata, patch.dict(os.environ, {"APPDATA": appdata}):
+            store = SettingsStore("XomacitoHistoricalCollectionTest")
+            controller = CatGachaController(ROOT, store, today_provider=lambda: today)
+            zane = next(cat for cat in controller.catalog if cat.name == "PERRO ZANE")
+            remote = controller.sync_snapshot()
+            remote["historicalUnlockedCount"] = 149
+
+            controller.mergeRemoteState(remote)
+
+            self.assertEqual(controller.state["unlockedCount"], 149)
+            self.assertNotIn(zane.id, controller._unlocked)
+            self.assertEqual(len(controller.sync_snapshot()["unlockedIds"]), 149)
+            restored = CatGachaController(ROOT, store, today_provider=lambda: today)
+            self.assertEqual(restored.state["unlockedCount"], 149)
+            self.assertNotIn(zane.id, restored._unlocked)
+
     def test_daily_roll_and_every_ten_downloads_are_persistent(self):
         today = date(2026, 7, 22)
         with tempfile.TemporaryDirectory() as appdata, patch.dict(os.environ, {"APPDATA": appdata}):

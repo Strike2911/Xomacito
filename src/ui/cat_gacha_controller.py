@@ -71,6 +71,11 @@ class CatGachaController(QObject):
                 except (TypeError, ValueError):
                     continue
         self._unlocked = unlocked
+        self._historical_unlocked_count = max(
+            len(unlocked),
+            self._normalized_historical_count(saved.get("historicalUnlockedCount", 0)),
+        )
+        self._restore_historical_unlocks(self._historical_unlocked_count)
         self._equipped_id = equipped
         self._download_progress = max(0, int(saved.get("downloadProgress", 0))) % 10
         self._earned_rolls = max(0, int(saved.get("earnedRolls", 0)))
@@ -109,6 +114,36 @@ class CatGachaController(QObject):
 
     def _url(self, cat: CatDefinition) -> str:
         return QUrl.fromLocalFile(str(cat.avatar_path)).toString()
+
+    def _normalized_historical_count(self, value) -> int:
+        """Limita el contador heredado al catálogo restaurable actual."""
+        try:
+            requested = max(0, int(value or 0))
+        except (TypeError, ValueError):
+            return 0
+        restorable = sum(not cat.exclusive for cat in self.catalog) + sum(
+            cat.exclusive and cat.id in self._unlocked for cat in self.catalog
+        )
+        return min(requested, restorable)
+
+    def _restore_historical_unlocks(self, requested_count: int) -> int:
+        """Reconstruye IDs perdidos usando el máximo histórico de la misma cuenta.
+
+        Versiones antiguas sólo enviaban el número al scoreboard. Si la fila
+        privada se creó después, el conteo sobrevivió pero no la lista de IDs.
+        Los exclusivos nunca se inventan: sólo se completan gatos normales.
+        """
+        target = self._normalized_historical_count(requested_count)
+        missing = max(0, target - len(self._unlocked))
+        if not missing:
+            return 0
+        candidates = [
+            cat for cat in self.catalog
+            if not cat.exclusive and cat.id not in self._unlocked
+        ]
+        restored = candidates[:missing]
+        self._unlocked.update(cat.id for cat in restored)
+        return len(restored)
 
     @staticmethod
     def _animation_style(cat: CatDefinition) -> str:
@@ -223,7 +258,7 @@ class CatGachaController(QObject):
     def sync_snapshot(self) -> dict:
         """Estado portable de la colección para restaurarlo en otra PC."""
         return {
-            "schema": 4,
+            "schema": 5,
             "downloadProgress": self._download_progress,
             "earnedRolls": self._earned_rolls,
             "totalDownloads": self._total_downloads,
@@ -231,6 +266,9 @@ class CatGachaController(QObject):
             "rollBalanceRevision": self._roll_balance_revision,
             "lastDailyRoll": self._last_daily_roll,
             "unlockedIds": sorted(self._unlocked),
+            "historicalUnlockedCount": max(
+                self._historical_unlocked_count, len(self._unlocked),
+            ),
             "equippedId": self._equipped_id,
             "duplicates": dict(sorted(self._duplicates.items())),
             "rewardedSourceHashes": sorted(self._rewarded_source_hashes),
@@ -248,6 +286,12 @@ class CatGachaController(QObject):
             if str(cat_id) in self._by_id
         }
         self._unlocked.update(remote_unlocked)
+        self._historical_unlocked_count = max(
+            self._historical_unlocked_count,
+            self._normalized_historical_count(remote.get("historicalUnlockedCount", 0)),
+            len(self._unlocked),
+        )
+        self._restore_historical_unlocks(self._historical_unlocked_count)
 
         remote_duplicates = remote.get("duplicates", {})
         if isinstance(remote_duplicates, dict):

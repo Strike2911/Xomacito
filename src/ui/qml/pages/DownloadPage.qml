@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtMultimedia
 import "../components"
 
 Item {
@@ -8,6 +9,17 @@ Item {
     property var viewState: downloadController.state
     property var options: downloadController.options
     property bool denseLayout: height < 640
+
+    MediaPlayer {
+        id: trimPlayer
+        objectName: "downloadTrimPreviewPlayer"
+        source: trimPopup.opened ? (viewState.trimPreviewSource || "") : ""
+        audioOutput: AudioOutput {
+            id: trimAudio
+            volume: 0.32
+        }
+        videoOutput: trimPreviewVideo
+    }
 
     function clockText(seconds) {
         var total = Math.max(0, Math.floor(Number(seconds) || 0))
@@ -273,7 +285,7 @@ Item {
                 x: Math.round((parent.width - width) / 2)
                 y: Math.round((parent.height - height) / 2)
                 width: Math.min(900, parent.width - 28)
-                height: Math.min(520, parent.height - 28)
+                height: Math.min(690, parent.height - 28)
                 padding: 18
                 modal: true
                 focus: true
@@ -287,7 +299,10 @@ Item {
                     if (page.clockSeconds(options.endTime) <= 0)
                         downloadController.setOption("endTime", page.clockText(viewState.duration))
                     downloadController.prepareWaveform()
+                    trimPlayer.stop()
+                    trimPlayer.position = Math.max(0, page.clockSeconds(options.startTime)) * 1000
                 }
+                onClosed: trimPlayer.stop()
 
                 contentItem: ColumnLayout {
                     spacing: 12
@@ -309,6 +324,106 @@ Item {
                                 downloadController.setOption("endTime", trimPopup.previousEnd)
                                 downloadController.setOption("fragmentEnabled", trimPopup.previousEnabled)
                                 trimPopup.close()
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        id: trimPreviewPanel
+                        objectName: "downloadTrimPreview"
+                        visible: Boolean(viewState.trimPreviewSource)
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: trimPopup.height < 650 ? 118 : 164
+                        Layout.minimumHeight: 104
+                        radius: 12
+                        color: "#090B0F"
+                        border.color: theme.colors.border
+                        clip: true
+
+                        VideoOutput {
+                            id: trimPreviewVideo
+                            anchors.fill: parent
+                            anchors.bottomMargin: 39
+                            visible: Boolean(viewState.hasVideo)
+                            fillMode: VideoOutput.PreserveAspectFit
+                        }
+                        Image {
+                            anchors.fill: trimPreviewVideo
+                            visible: Boolean(viewState.hasVideo)
+                                     && trimPlayer.mediaStatus !== MediaPlayer.LoadedMedia
+                                     && trimPlayer.playbackState !== MediaPlayer.PlayingState
+                            source: viewState.thumbnailSource || ""
+                            fillMode: Image.PreserveAspectFit
+                            asynchronous: true
+                            opacity: 0.78
+                        }
+                        Text {
+                            anchors.centerIn: trimPreviewVideo
+                            visible: !viewState.hasVideo
+                            text: "♫  Vista previa de audio"
+                            color: theme.colors.textMuted
+                            font.pixelSize: 12
+                        }
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            height: 39
+                            color: "#E611141B"
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                spacing: 7
+                                XButton {
+                                    objectName: "trimPreviewPlayButton"
+                                    compact: true
+                                    implicitWidth: 38
+                                    text: trimPlayer.playbackState === MediaPlayer.PlayingState ? "Ⅱ" : "▶"
+                                    kind: "ghost"
+                                    onClicked: trimPlayer.playbackState === MediaPlayer.PlayingState
+                                               ? trimPlayer.pause() : trimPlayer.play()
+                                }
+                                Slider {
+                                    Layout.fillWidth: true
+                                    from: 0
+                                    to: Math.max(1, Number(viewState.duration || 0) * 1000)
+                                    value: Math.max(0, trimPlayer.position)
+                                    onMoved: trimPlayer.position = value
+                                }
+                                Text {
+                                    text: page.clockText(trimPlayer.position / 1000)
+                                    color: theme.colors.textMuted
+                                    font.pixelSize: 9
+                                    font.family: "Consolas"
+                                }
+                                XButton {
+                                    objectName: "trimVolumeDownButton"
+                                    compact: true; implicitWidth: 32; text: "−"; kind: "ghost"
+                                    onClicked: trimAudio.volume = Math.max(0, trimAudio.volume - 0.1)
+                                    ToolTip.visible: hovered; ToolTip.text: "Bajar volumen"
+                                }
+                                Slider {
+                                    objectName: "trimVolumeSlider"
+                                    Layout.preferredWidth: 88
+                                    from: 0; to: 1; stepSize: 0.05
+                                    value: trimAudio.volume
+                                    onMoved: trimAudio.volume = value
+                                }
+                                XButton {
+                                    objectName: "trimVolumeUpButton"
+                                    compact: true; implicitWidth: 32; text: "+"; kind: "ghost"
+                                    onClicked: trimAudio.volume = Math.min(1, trimAudio.volume + 0.1)
+                                    ToolTip.visible: hovered; ToolTip.text: "Subir volumen"
+                                }
+                                XButton {
+                                    compact: true; implicitWidth: 38
+                                    text: trimAudio.muted || trimAudio.volume <= 0 ? "M" : "♪"
+                                    kind: "ghost"
+                                    onClicked: trimAudio.muted = !trimAudio.muted
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: trimAudio.muted ? "Activar audio" : "Silenciar"
+                                }
                             }
                         }
                     }
@@ -354,14 +469,25 @@ Item {
                         radius: 11
                         color: theme.colors.surfaceSoft
                         border.color: theme.colors.border
-                        ColumnLayout {
-                            id: outputPathColumn
+                        RowLayout {
                             anchors.fill: parent
                             anchors.margins: 10
-                            spacing: 3
-                            Text { text: "CARPETA DE SALIDA"; color: theme.colors.textDim; font.pixelSize: 8; font.weight: Font.Bold; font.letterSpacing: 0.9 }
-                            Text { Layout.fillWidth: true; text: viewState.effectiveOutputPath; color: theme.colors.text; font.pixelSize: 10; elide: Text.ElideMiddle }
-                            Text { Layout.fillWidth: true; text: "Al pulsar Iniciar descarga se generará únicamente este fragmento."; color: theme.colors.textMuted; font.pixelSize: 9; wrapMode: Text.WordWrap }
+                            spacing: 10
+                            ColumnLayout {
+                                id: outputPathColumn
+                                Layout.fillWidth: true
+                                spacing: 3
+                                Text { text: "CARPETA DE SALIDA"; color: theme.colors.textDim; font.pixelSize: 8; font.weight: Font.Bold; font.letterSpacing: 0.9 }
+                                Text { Layout.fillWidth: true; text: viewState.effectiveOutputPath; color: theme.colors.text; font.pixelSize: 10; elide: Text.ElideMiddle }
+                                Text { Layout.fillWidth: true; text: "Al pulsar Iniciar descarga se generará únicamente este fragmento."; color: theme.colors.textMuted; font.pixelSize: 9; wrapMode: Text.WordWrap }
+                            }
+                            XButton {
+                                objectName: "trimOutputFolderButton"
+                                compact: true
+                                text: "Cambiar carpeta"
+                                kind: "secondary"
+                                onClicked: downloadController.chooseOutputFolder()
+                            }
                         }
                     }
 

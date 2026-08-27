@@ -63,6 +63,19 @@ a = Analysis(
     optimize=2,
 )
 
+# Qt debe cargar su runtime compatible, no la ICU que algunas dependencias de
+# imagen exponen en la raíz durante el análisis de PyInstaller. Poppler conserva
+# su copia aislada dentro de bin/poppler.
+def is_conflicting_top_level_icu(entry):
+    destination = str(entry[0]).replace("\\", "/")
+    filename = destination.casefold()
+    return "/" not in destination and (
+        filename == "icuuc.dll" or filename.startswith("icudt") and filename.endswith(".dll")
+    )
+
+
+a.binaries = [entry for entry in a.binaries if not is_conflicting_top_level_icu(entry)]
+
 for index, entry in enumerate(a.pure):
     module_name, source_path, type_code = entry
     if module_name == "src" or module_name.startswith("src."):

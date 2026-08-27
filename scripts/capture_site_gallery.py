@@ -103,8 +103,8 @@ def main() -> int:
             "appearance_mode": "Dark",
             "selected_theme_accent": "Strike",
             "theme_selection_explicit": True,
-            "release_notice_seen_version": "4.0.10",
-            "guided_tour_seen_version": "4.0.10",
+            "release_notice_seen_version": "4.0.12",
+            "guided_tour_seen_version": "4.0.12",
             "social_onboarding_dismissed": True,
             "premiere_library_enabled": True,
             "premiere_library_path": str(library),
@@ -113,7 +113,7 @@ def main() -> int:
             "image_output_path": str(library / "Resultados"),
             "platinum_collection_reward_seen_total": 9999,
             "cat_gacha": {
-                "schema": 1,
+                "schema": 5,
                 "downloadProgress": 7,
                 "earnedRolls": 8,
                 "totalDownloads": 286,
@@ -133,7 +133,7 @@ def main() -> int:
 
         app = QApplication.instance() or QApplication(["xomacito-gallery"])
         QGuiApplication.setApplicationDisplayName("Xomacito 1.0")
-        controller = AppController(app, ROOT, "1.0", "4.0.10")
+        controller = AppController(app, ROOT, "1.0", "4.0.12")
         public_library_path = r"C:\Xomacito\Biblioteca"
         engine = QQmlApplicationEngine()
         context = engine.rootContext()
@@ -178,6 +178,7 @@ def main() -> int:
         )
         controller.download.setOption("startTime", "00:00:06")
         controller.download.setOption("endTime", "00:00:14")
+        controller.download._refresh_trim_preview_source()
         controller.download.prepareWaveform()
         _wait(app, lambda: not controller.download.state["waveformBusy"], 15)
         controller.setPage(0)

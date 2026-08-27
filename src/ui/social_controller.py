@@ -1155,7 +1155,7 @@ class SocialController(QObject):
         )[:128]
 
         return {
-            "schema": 4,
+            "schema": 5,
             "downloadProgress": normalized_number(balance_source, "downloadProgress", 9),
             "earnedRolls": normalized_number(balance_source, "earnedRolls"),
             "totalDownloads": number("totalDownloads"),
@@ -1166,6 +1166,7 @@ class SocialController(QObject):
                 str(remote.get("lastDailyRoll") or "")[:10],
             ),
             "unlockedIds": strings("unlockedIds", 2000),
+            "historicalUnlockedCount": number("historicalUnlockedCount", 2000),
             "equippedId": equipped,
             "duplicates": dict(sorted(duplicates.items())),
             "rewardedSourceHashes": strings("rewardedSourceHashes", 20_000, 128),
@@ -1198,6 +1199,29 @@ class SocialController(QObject):
         rows = response.json() if response.content else []
         remote_state = rows[0].get("state", {}) if isinstance(rows, list) and rows else {}
         merged = self._merge_collection_states(local_state, remote_state)
+
+        # Antes de existir cat_collection_states, el scoreboard ya conservaba
+        # un máximo histórico. Se usa sólo para reconstruir IDs faltantes de la
+        # misma cuenta; el controlador nunca inventa recompensas exclusivas.
+        try:
+            profile = requests.get(
+                f"{self._url}/rest/v1/profiles",
+                headers=self._headers(authenticated=True),
+                params={"id": f"eq.{user_id}", "select": "cats_count", "limit": "1"},
+                timeout=20,
+            )
+            profile_rows = profile.json() if profile.status_code < 400 and profile.content else []
+            historical_count = (
+                profile_rows[0].get("cats_count", 0)
+                if isinstance(profile_rows, list) and profile_rows else 0
+            )
+        except (requests.RequestException, ValueError, TypeError):
+            historical_count = 0
+        merged["historicalUnlockedCount"] = max(
+            int(merged.get("historicalUnlockedCount", 0) or 0),
+            max(0, min(2000, int(historical_count or 0))),
+            len(merged.get("unlockedIds", [])),
+        )
 
         headers = self._headers(authenticated=True)
         headers["Prefer"] = "resolution=merge-duplicates,return=minimal"

@@ -56,7 +56,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "release_notice_seen_version": "",
     "guided_tour_seen_version": "",
     "cat_gacha": {
-        "schema": 4,
+        "schema": 5,
         "downloadProgress": 0,
         "earnedRolls": 0,
         "totalDownloads": 0,
@@ -64,6 +64,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "rollBalanceRevision": 0,
         "lastDailyRoll": "",
         "unlockedIds": [],
+        "historicalUnlockedCount": 0,
         "equippedId": "",
         "duplicates": {},
         "rewardedSourceHashes": [],

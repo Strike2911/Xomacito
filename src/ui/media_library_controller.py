@@ -32,6 +32,16 @@ IMAGE_MEDIA = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".bmp", ".tif", ".tiff
 GREEN_SCREEN_WORDS = ("green screen", "greenscreen", "chroma", "croma", "fondo verde")
 MUSIC_WORDS = ("music", "musica", "música", "song", "cancion", "canción", "beat", "instrumental", "track")
 PREMIERE_PLUGIN_ID = "com.strike2911.xomacito.link"
+FOLDER_ACCENTS = (
+    "#F5A623", "#22C7A9", "#5BA7FF", "#A77BFF", "#F06F91", "#E3C34C",
+)
+
+
+def _folder_accent(path: str | Path) -> str:
+    """Asigna un color estable a cada carpeta sin guardar estado adicional."""
+    normalized = str(Path(path).expanduser()).replace("\\", "/").casefold()
+    digest = hashlib.sha1(normalized.encode("utf-8")).digest()
+    return FOLDER_ACCENTS[digest[0] % len(FOLDER_ACCENTS)]
 
 
 def _editorial_category(path: Path, kind: str, duration: float) -> str:
@@ -164,7 +174,8 @@ class MediaLibraryController(QObject):
         "metadataCount", "category", "searchText", "isFavorite",
     ]
     LIBRARY_ROW_ROLES = [
-        "rowType", "folderPath", "folderName", "folderCount", "expanded", "canRemove", *ROLES,
+        "rowType", "folderPath", "folderName", "folderCount", "folderColor",
+        "expanded", "canRemove", *ROLES,
     ]
 
     def __init__(
@@ -205,11 +216,13 @@ class MediaLibraryController(QObject):
         self._status_after_refresh = ""
         self._state: dict[str, Any] = {
             "rootPath": str(self.root),
+            "rootAccent": _folder_accent(self.root),
             "busy": False,
             "progress": 0.0,
             "status": "Biblioteca lista.",
             "selectedIndex": -1,
             "selected": {},
+            "selectedFolderColor": _folder_accent(self.root),
             "clipIn": 0.0,
             "clipOut": 0.0,
             "clipMode": "Video + audio",
@@ -277,13 +290,20 @@ class MediaLibraryController(QObject):
             }
             folder_row.update({
                 "rowType": "folder", "folderPath": folder, "folderName": label,
-                "folderCount": len(items), "expanded": expanded,
+                "folderCount": len(items), "folderColor": _folder_accent(folder),
+                "expanded": expanded,
                 "canRemove": folder_path.resolve() != self.root.resolve(),
             })
             rows.append(folder_row)
             if expanded:
                 items.sort(key=lambda item: (not bool(item.get("isFavorite")), str(item.get("name") or "").casefold()))
-                rows.extend({**item, "rowType": "file", "folderPath": folder} for item in items)
+                rows.extend(
+                    {
+                        **item, "rowType": "file", "folderPath": folder,
+                        "folderColor": _folder_accent(folder),
+                    }
+                    for item in items
+                )
         self.library_rows.replace(rows)
         self._set_state(visibleCount=len(visible_items), favoriteCount=len(self._favorite_paths))
 
@@ -436,6 +456,10 @@ class MediaLibraryController(QObject):
         self._set_state(
             selectedIndex=int(index) if row else -1,
             selected=row,
+            selectedFolderColor=(
+                _folder_accent(self._group_folder(Path(row["path"])))
+                if row.get("path") else _folder_accent(self.root)
+            ),
             clipIn=0.0,
             clipOut=duration,
             clipMode="Video + audio" if row.get("kind") == "Video" else "Solo audio" if row.get("kind") == "Audio" else "Vista previa",
@@ -613,7 +637,7 @@ class MediaLibraryController(QObject):
         self.clips_dir.mkdir(parents=True, exist_ok=True)
         self.thumbnails_dir.mkdir(parents=True, exist_ok=True)
         self.settings.set("premiere_library_path", str(self.root))
-        self._set_state(rootPath=str(self.root))
+        self._set_state(rootPath=str(self.root), rootAccent=_folder_accent(self.root))
         self._set_state(clipOutputDir=str(self.clips_dir), lastClipPath="")
         self.libraryPathChanged.emit(str(self.root))
         self.refresh()

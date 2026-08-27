@@ -190,6 +190,7 @@ class DownloadController(QObject):
             "selectedTag": "Sin etiqueta", "selectedTagColor": "#6F7F8F",
             "effectiveOutputPath": output,
             "waveformSource": "", "waveformBusy": False, "waveformError": "",
+            "trimPreviewSource": "", "trimPreviewHasAudio": False,
         }
         self._tags = self._load_download_tags()
         saved_tag = str(settings.get("selected_download_tag", "Sin etiqueta"))
@@ -287,6 +288,8 @@ class DownloadController(QObject):
             self._refresh_subtitle_formats(str(value))
         elif key == "selectedAudio":
             self.prepareWaveform()
+        elif key == "selectedVideo":
+            self._refresh_trim_preview_source()
 
     @Slot(str, "QVariant")
     def setOption(self, key: str, value):
@@ -419,6 +422,32 @@ class DownloadController(QObject):
                 self.setValue("outputPath", folder)
                 self._refresh_tag_state()
 
+    def _refresh_trim_preview_source(self):
+        """Expone una fuente reproducible sin descargar el archivo completo."""
+        local_file = str(self._state.get("localFile") or "")
+        if local_file and Path(local_file).is_file():
+            self._set_state(
+                trimPreviewSource=QUrl.fromLocalFile(local_file).toString(),
+                trimPreviewHasAudio=bool(self._state.get("hasAudio")),
+            )
+            return
+
+        selected = dict(self._video_map.get(self._state.get("selectedVideo"), {}) or {})
+        candidates = [selected, *self._video_map.values()]
+        playable = next(
+            (
+                entry for entry in candidates
+                if entry.get("combined") and str((entry.get("raw") or {}).get("url") or "")
+            ),
+            selected,
+        )
+        raw = dict(playable.get("raw") or {})
+        source = str(raw.get("url") or "")
+        self._set_state(
+            trimPreviewSource=QUrl(source).toString() if source else "",
+            trimPreviewHasAudio=bool(playable.get("combined")),
+        )
+
     @Slot()
     def chooseLocalFile(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -439,7 +468,7 @@ class DownloadController(QObject):
             localFile=str(Path(path)), url="", title=Path(path).stem, busy=True,
             analyzed=False, progress=0.0, status="Analizando archivo local…",
             thumbnailSource="", imagePost=False, waveformSource="", waveformBusy=False,
-            waveformError="",
+            waveformError="", trimPreviewSource="", trimPreviewHasAudio=False,
         )
         self._active_worker = self.pool.submit(
             self._analyze_local_worker, str(Path(path)),
@@ -488,6 +517,7 @@ class DownloadController(QObject):
             localFile="", title="", analyzed=False, thumbnailSource="", imagePost=False, imageCount=0,
             hasVideo=False, hasAudio=False, sourceHasAlpha=False, status="Pega un enlace o importa un archivo.",
             waveformSource="", waveformBusy=False, waveformError="",
+            trimPreviewSource="", trimPreviewHasAudio=False,
         )
 
     @Slot()
@@ -506,6 +536,7 @@ class DownloadController(QObject):
             localFile="", title="Analizando…", busy=True, analyzed=False, progress=-1.0,
             status="Contactando el sitio y leyendo formatos…", thumbnailSource="", imagePost=False, imageCount=0,
             waveformSource="", waveformBusy=False, waveformError="",
+            trimPreviewSource="", trimPreviewHasAudio=False,
         )
         self._active_worker = self.pool.submit(
             self._analyze_url_worker, url,
@@ -659,6 +690,7 @@ class DownloadController(QObject):
         )
         if not image_post:
             self._ensure_preset_for_mode(mode)
+            self._refresh_trim_preview_source()
             self.prepareWaveform()
 
     def _apply_local_analysis(self, result: dict):
@@ -699,6 +731,7 @@ class DownloadController(QObject):
         })
         self.optionsChanged.emit()
         self._ensure_preset_for_mode("Video+Audio" if self._video_choices else "Solo Audio")
+        self._refresh_trim_preview_source()
         self.prepareWaveform()
 
     @Slot()

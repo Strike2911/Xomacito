@@ -796,7 +796,13 @@ assert advanced_popup.property("opened") is False
 
 trim_popup = window.findChild(QObject, "downloadTrimPopup")
 trim_button = window.findChild(QObject, "openTrimButton")
+trim_preview = window.findChild(QObject, "downloadTrimPreview")
+volume_down = window.findChild(QObject, "trimVolumeDownButton")
+volume_up = window.findChild(QObject, "trimVolumeUpButton")
+folder_button = window.findChild(QObject, "trimOutputFolderButton")
 assert trim_popup is not None and trim_button is not None
+assert trim_preview is not None and volume_down is not None and volume_up is not None
+assert folder_button is not None
 assert QMetaObject.invokeMethod(trim_popup, "open", Qt.DirectConnection)
 QTest.qWait(120)
 assert trim_popup.property("opened") is True
@@ -900,7 +906,8 @@ controller.shutdown()
         self.assertIn('text: options.fragmentEnabled ? "Recorte ✓" : "Recortar"', download)
         self.assertIn("WaveformTrimmer", download)
         waveform = (ROOT / "src" / "ui" / "qml" / "components" / "WaveformTrimmer.qml").read_text(encoding="utf-8")
-        self.assertIn("Ctrl + rueda", waveform)
+        self.assertIn("acceptedModifiers: Qt.NoModifier", waveform)
+        self.assertIn("Usa la rueda para acercar", waveform)
         self.assertIn("Enfocar recorte", waveform)
         self.assertIn("to: 16", waveform)
         self.assertNotIn('model: ["Fragmento",', download)

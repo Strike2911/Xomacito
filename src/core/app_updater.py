@@ -25,6 +25,19 @@ REQUEST_HEADERS = {
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 UPDATE_PROMPT_NOTES_LIMIT = 1200
 RELEASE_NOTICES = {
+    "4.0.12": {
+        "eyebrow": "XOMACITO 1.0",
+        "title": "Xomacito 1.0",
+        "subtitle": "ARREGLO DE BUGS DE LA VERSIÓN 1.0",
+        "message": "Una revisión enfocada en estabilidad, colección y comodidad de edición.",
+        "highlights": [
+            "Arreglo de Bugs de la versión 1.0",
+        ],
+        "contributors": ["Maog"],
+        "closing": "Gracias a Maog por aportar a esta revisión.",
+        "platinumCelebration": False,
+        "smoothMotionPromotion": False,
+    },
     "4.0.11": {
         "eyebrow": "XOMACITO 1.0",
         "title": "Xomacito 1.0",

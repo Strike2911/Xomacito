@@ -12,7 +12,7 @@ APP_NAME = "Xomacito"
 # mantiene numérica para que el instalador de Windows y el actualizador puedan
 # comparar correctamente esta entrega con las instalaciones 3.x anteriores.
 APP_VERSION = "1.0"
-UPDATE_VERSION = "4.0.11"
+UPDATE_VERSION = "4.0.12"
 
 FROZEN = bool(getattr(sys, "frozen", False))
 PROJECT_ROOT = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent

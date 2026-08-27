@@ -509,14 +509,15 @@ class AppController(QObject):
             self.releaseNoticeRequested.emit(notice)
         QTimer.singleShot(450, lambda: self.checkUpdates(False))
         QTimer.singleShot(900, lambda: self.config.refreshDependencies(False))
-        QTimer.singleShot(1150, self.smoothMotionPromotionRequested.emit)
         # Registra como máximo una visita por día en el servidor. El RPC es
         # idempotente y no expone la fecha exacta de actividad al scoreboard.
         QTimer.singleShot(1750, self.social.refresh)
         # Las IDs creadas antes de admitir correos reales deben completar esta
         # migración para conservar una vía de recuperación de contraseña.
         QTimer.singleShot(2200, self.social.checkRecoveryEmail)
-        if str(self.settings.get("guided_tour_seen_version", "")) != self.update_version:
+        # El recorrido completo es onboarding, no una novedad que deba volver a
+        # abrirse con cada revisión interna de Xomacito 1.0.
+        if not str(self.settings.get("guided_tour_seen_version", "")):
             QTimer.singleShot(2700, self.guidedTourRequested.emit)
 
     @Slot()

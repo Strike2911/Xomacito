@@ -15,6 +15,7 @@ Item {
     property bool dense: height < 760
     property string pendingFolderPath: ""
     property string pendingFolderName: ""
+    readonly property color libraryAccent: viewState.rootAccent || theme.colors.primary
 
     function clock(seconds) {
         var value = Math.max(0, Math.round(Number(seconds || 0)))
@@ -47,6 +48,7 @@ Item {
             Layout.fillWidth: true
             implicitHeight: page.compactWidth ? 104 : page.dense ? 62 : 72
             cardColor: theme.colors.surfaceRaised
+            border.color: viewState.rootAccent || theme.colors.border
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 10
@@ -56,7 +58,11 @@ Item {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 2
-                        Text { text: "CARPETA VINCULADA"; color: theme.colors.primary; font.pixelSize: 9; font.weight: Font.Bold; font.letterSpacing: 1.1 }
+                        RowLayout {
+                            spacing: 6
+                            Rectangle { width: 8; height: 8; radius: 4; color: viewState.rootAccent || theme.colors.primary }
+                            Text { text: "CARPETA VINCULADA"; color: viewState.rootAccent || theme.colors.primary; font.pixelSize: 9; font.weight: Font.Bold; font.letterSpacing: 1.1 }
+                        }
                         Text { Layout.fillWidth: true; text: viewState.rootPath; color: theme.colors.text; font.pixelSize: 11; elide: Text.ElideMiddle }
                     }
                     RowLayout {
@@ -118,6 +124,7 @@ Item {
                 Layout.minimumHeight: 280
                 clip: true
                 cardColor: libraryDropArea.containsDrag ? theme.colors.surfaceRaised : theme.colors.surface
+                border.color: viewState.rootAccent || theme.colors.border
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 12
@@ -139,12 +146,35 @@ Item {
                         placeholderText: "Buscar nombre, carpeta o metadata…"
                         onTextEdited: mediaLibraryController.setSearchText(text)
                     }
-                    XComboBox {
+                    Flow {
                         Layout.fillWidth: true
-                        compact: true
-                        model: ["Todos", "Favoritos", "Video", "SFX", "Música", "Imágenes", "Green screen"]
-                        currentIndex: Math.max(0, find(viewState.categoryFilter || "Todos"))
-                        onActivated: mediaLibraryController.setCategoryFilter(currentText)
+                        Layout.preferredHeight: childrenRect.height
+                        spacing: 5
+                        Repeater {
+                            model: ["Todos", "Favoritos", "Video", "SFX", "Música", "Imágenes", "Green screen"]
+                            Rectangle {
+                                required property string modelData
+                                readonly property bool active: viewState.categoryFilter === modelData
+                                width: filterLabel.implicitWidth + 16
+                                height: 27
+                                radius: 8
+                                color: active ? Qt.rgba(
+                                    page.libraryAccent.r,
+                                    page.libraryAccent.g,
+                                    page.libraryAccent.b, 0.18
+                                ) : theme.colors.surfaceSoft
+                                border.color: active ? (viewState.rootAccent || theme.colors.primary) : theme.colors.border
+                                Text {
+                                    id: filterLabel
+                                    anchors.centerIn: parent
+                                    text: modelData
+                                    color: active ? theme.colors.text : theme.colors.textMuted
+                                    font.pixelSize: 8
+                                    font.weight: active ? Font.Bold : Font.Medium
+                                }
+                                TapHandler { onTapped: mediaLibraryController.setCategoryFilter(modelData) }
+                            }
+                        }
                     }
                     Rectangle { Layout.fillWidth: true; height: 1; color: theme.colors.border }
                     ListView {
@@ -161,6 +191,7 @@ Item {
                             required property string folderPath
                             required property string folderName
                             required property int folderCount
+                            required property string folderColor
                             required property bool expanded
                             required property bool canRemove
                             required property string path
@@ -171,16 +202,23 @@ Item {
                             required property string thumbnailSource
                             required property string category
                             required property bool isFavorite
+                            readonly property color accentColor: folderColor || theme.colors.primary
                             width: mediaList.width
-                            height: rowType === "folder" ? 32 : 38
-                            radius: 7
+                            height: rowType === "folder" ? 40 : 52
+                            radius: 9
                             color: rowType === "folder"
-                                   ? theme.colors.surfaceSoft
+                                   ? Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.11)
                                    : selected.path === path ? theme.colors.surfaceRaised
                                    : hover.hovered ? theme.colors.surfaceSoft : "transparent"
                             border.width: selected.path === path && rowType === "file" ? 2 : 1
                             border.color: selected.path === path && rowType === "file"
-                                          ? theme.colors.primary : theme.colors.border
+                                          ? accentColor : rowType === "folder" ? accentColor : theme.colors.border
+                            Rectangle {
+                                visible: rowType === "file" && selected.path === path
+                                width: 3; radius: 2; color: accentColor
+                                anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
+                                anchors.topMargin: 6; anchors.bottomMargin: 6
+                            }
                             HoverHandler { id: hover }
                             TapHandler {
                                 onTapped: {
@@ -197,7 +235,11 @@ Item {
                                 Rectangle {
                                     Layout.preferredWidth: rowType === "folder" ? 24 : 42
                                     Layout.fillHeight: true; radius: 6
-                                    color: theme.colors.backgroundAlt; clip: true
+                                    color: rowType === "folder"
+                                           ? Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.16)
+                                           : theme.colors.backgroundAlt
+                                    border.color: rowType === "folder" ? accentColor : "transparent"
+                                    clip: true
                                     Image {
                                         anchors.fill: parent
                                         source: rowType === "file" && thumbnailSource ? thumbnailSource : ""
@@ -208,8 +250,8 @@ Item {
                                     Text {
                                         anchors.centerIn: parent
                                         visible: rowType === "folder" || thumbnailSource === ""
-                                        text: rowType === "folder" ? (expanded ? "▾" : "▸") : kind === "Video" ? "▶" : kind === "Imagen" ? "▧" : "♫"
-                                        color: theme.colors.primary; font.pixelSize: rowType === "folder" ? 13 : 14
+                                        text: rowType === "folder" ? (expanded ? "▾  ▰" : "▸  ▰") : kind === "Video" ? "▶" : kind === "Imagen" ? "▧" : "♫"
+                                        color: accentColor; font.pixelSize: rowType === "folder" ? 11 : 14
                                     }
                                 }
                                 ColumnLayout {
@@ -217,14 +259,14 @@ Item {
                                     Text {
                                         Layout.fillWidth: true
                                         text: rowType === "folder" ? folderName : name
-                                        color: theme.colors.text; font.pixelSize: 9; font.weight: Font.DemiBold
+                                        color: theme.colors.text; font.pixelSize: rowType === "folder" ? 10 : 9; font.weight: Font.DemiBold
                                         elide: Text.ElideRight
                                     }
                                     Text {
                                         Layout.fillWidth: true
                                         visible: rowType === "file"
                                         text: category + " · " + (kind === "Imagen" ? sizeLabel : durationLabel + " · " + sizeLabel)
-                                        color: theme.colors.textMuted; font.pixelSize: 7; elide: Text.ElideRight
+                                        color: theme.colors.textMuted; font.pixelSize: 8; elide: Text.ElideRight
                                     }
                                 }
                                 Text { visible: rowType === "folder"; text: folderCount; color: theme.colors.textMuted; font.pixelSize: 9; font.weight: Font.Bold }
@@ -304,6 +346,7 @@ Item {
                 Layout.minimumHeight: 280
                 clip: true
                 cardColor: theme.colors.surfaceRaised
+                border.color: viewState.selectedFolderColor || theme.colors.border
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 12
@@ -464,6 +507,7 @@ Item {
                 Layout.columnSpan: page.wide ? 4 : 1
                 Layout.minimumHeight: 280
                 clip: true
+                border.color: viewState.selectedFolderColor || theme.colors.border
                 ColumnLayout {
                     anchors.fill: parent; anchors.margins: page.dense ? 11 : 16; spacing: page.dense ? 8 : 13
                     RowLayout {

@@ -312,9 +312,12 @@ class SocialAuthTests(unittest.TestCase):
     @patch("src.ui.social_controller.requests.post")
     @patch("src.ui.social_controller.requests.get")
     def test_collection_sync_downloads_merges_and_upserts_private_state(self, get, post):
-        get.return_value = Response(payload=[{"state": {
-            "unlockedIds": ["remote-cat"], "equippedId": "remote-cat", "totalRolls": 4,
-        }}])
+        get.side_effect = [
+            Response(payload=[{"state": {
+                "unlockedIds": ["remote-cat"], "equippedId": "remote-cat", "totalRolls": 4,
+            }}]),
+            Response(payload=[{"cats_count": 149}]),
+        ]
         post.return_value = Response(status_code=201)
         social = self.controller({
             "social_access_token": "opaque-session",
@@ -327,7 +330,13 @@ class SocialAuthTests(unittest.TestCase):
 
         self.assertEqual(merged["unlockedIds"], ["remote-cat", "starter"])
         self.assertEqual(merged["equippedId"], "remote-cat")
-        self.assertIn("Bearer opaque-session", get.call_args.kwargs["headers"]["Authorization"])
+        self.assertEqual(merged["historicalUnlockedCount"], 149)
+        self.assertEqual(get.call_count, 2)
+        self.assertIn("Bearer opaque-session", get.call_args_list[0].kwargs["headers"]["Authorization"])
+        self.assertEqual(
+            get.call_args_list[1].kwargs["params"],
+            {"id": "eq.0f3a93dd-3c31-4ca4-9f6c-8aec3d15c7f9", "select": "cats_count", "limit": "1"},
+        )
         self.assertEqual(post.call_args.kwargs["params"], {"on_conflict": "user_id"})
         self.assertEqual(post.call_args.kwargs["json"]["state"], merged)
 

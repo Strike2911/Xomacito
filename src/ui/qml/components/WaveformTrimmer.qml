@@ -188,7 +188,7 @@ Item {
             }
 
             WheelHandler {
-                acceptedModifiers: Qt.ControlModifier
+                acceptedModifiers: Qt.NoModifier
                 onWheel: function(event) {
                     root.setZoom(root.zoomLevel * (event.angleDelta.y > 0 ? 1.35 : 0.74))
                 }
@@ -226,7 +226,7 @@ Item {
             Text {
                 visible: root.zoomLevel <= 1.01
                 Layout.fillWidth: true
-                text: "Ctrl + rueda también acerca la onda"
+                text: "Usa la rueda para acercar la onda"
                 color: theme.colors.textDim
                 font.pixelSize: 8
                 elide: Text.ElideRight
