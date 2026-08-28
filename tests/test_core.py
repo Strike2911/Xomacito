@@ -351,12 +351,17 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("tiradas", highlights)
         self.assertIn("modelos de IA", highlights)
 
-    def test_release_4012_is_a_single_bugfix_notice_credited_to_maog(self):
-        notice = release_notice_for_version("4.0.12")
+    def test_release_4013_is_a_single_bugfix_notice_with_all_idea_contributors(self):
+        notice = release_notice_for_version("4.0.13")
 
         self.assertEqual(notice["title"], "Xomacito 1.0")
         self.assertEqual(notice["highlights"], ["Arreglo de Bugs de la versión 1.0"])
-        self.assertEqual(notice["contributors"], ["Maog"])
+        for contributor in (
+            "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
+            "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan",
+        ):
+            self.assertIn(contributor, notice["contributors"])
+        self.assertNotIn("Strike", notice["contributors"])
         self.assertFalse(notice["smoothMotionPromotion"])
 
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
@@ -1272,7 +1277,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("PrivilegesRequired=lowest", installer)
         self.assertIn("OutputBaseFilename=Xomacito-1.0-Setup", installer)
-        self.assertIn('#define MyAppVersion "4.0.12"', installer)
+        self.assertIn('#define MyAppVersion "4.0.13"', installer)
         self.assertIn('#define MyAppDisplayVersion "1.0"', installer)
         self.assertIn("shellexec postinstall skipifsilent skipifdoesntexist", installer)
         self.assertIn("CloseApplications=force", installer)

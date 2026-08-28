@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QFileDialog
 from src.core.processor import FFmpegProcessor
 
 from .list_model import ObjectListModel
+from .filmstrip import filmstrip_target, render_filmstrip
 from .media_logic import safe_filename
 from .settings_store import SettingsStore
 from .waveform import render_waveform, waveform_target
@@ -231,6 +232,9 @@ class MediaLibraryController(QObject):
             "waveformSource": "",
             "waveformBusy": False,
             "waveformError": "",
+            "filmstripSource": "",
+            "filmstripBusy": False,
+            "filmstripError": "",
             "itemCount": 0,
             "hiddenFolderCount": len(self._hidden_folders),
             "searchText": "",
@@ -466,8 +470,67 @@ class MediaLibraryController(QObject):
             waveformSource="",
             waveformBusy=False,
             waveformError="",
+            filmstripSource="",
+            filmstripBusy=False,
+            filmstripError="",
         )
-        self._request_waveform(row)
+        if row.get("kind") == "Video":
+            self._request_filmstrip(row)
+            self._request_waveform(row)
+        elif row.get("kind") == "Audio":
+            self._request_waveform(row)
+
+    def _request_filmstrip(self, selected: dict[str, Any], force: bool = False):
+        if not selected or selected.get("kind") != "Video" or float(selected.get("duration") or 0) <= 0:
+            self._set_state(filmstripSource="", filmstripBusy=False, filmstripError="")
+            return
+        source = Path(str(selected.get("path") or ""))
+        if not source.is_file():
+            self._set_state(
+                filmstripSource="", filmstripBusy=False,
+                filmstripError="El archivo ya no está disponible.",
+            )
+            return
+        cache_key = f"{source.resolve()}|{source.stat().st_mtime_ns}|{source.stat().st_size}|filmstrip-v2"
+        target = filmstrip_target(self.thumbnails_dir, cache_key)
+        if force:
+            target.unlink(missing_ok=True)
+        if target.is_file() and target.stat().st_size > 256:
+            self._set_state(
+                filmstripSource=QUrl.fromLocalFile(str(target)).toString(),
+                filmstripBusy=False,
+                filmstripError="",
+            )
+            return
+        selected_path = str(source)
+        self._set_state(filmstripSource="", filmstripBusy=True, filmstripError="")
+        self.pool.submit(
+            render_filmstrip,
+            self.ffmpeg.ffmpeg_path,
+            selected_path,
+            target,
+            float(selected.get("duration") or 0),
+            on_result=lambda path: self._filmstrip_ready(selected_path, path),
+            on_error=lambda message, _detail: self._filmstrip_failed(selected_path, message),
+        )
+
+    def _filmstrip_ready(self, selected_path: str, path: str):
+        if str((self._state.get("selected") or {}).get("path") or "") != selected_path:
+            return
+        self._set_state(
+            filmstripSource=QUrl.fromLocalFile(str(path)).toString(),
+            filmstripBusy=False,
+            filmstripError="",
+        )
+
+    def _filmstrip_failed(self, selected_path: str, _message: str):
+        if str((self._state.get("selected") or {}).get("path") or "") != selected_path:
+            return
+        self._set_state(
+            filmstripSource="",
+            filmstripBusy=False,
+            filmstripError="Se usará la miniatura del video para seleccionar el recorte.",
+        )
 
     def _request_waveform(self, selected: dict[str, Any], force: bool = False):
         if not selected or selected.get("kind") == "Imagen" or selected.get("audioCodec") in {"", "—", None}:

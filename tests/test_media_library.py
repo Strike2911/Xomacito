@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from src.core.processor import FFmpegProcessor
 from src.ui.download_controller import DownloadController
+from src.ui.filmstrip import render_filmstrip
 from src.ui.media_library_controller import MediaLibraryController
 from src.ui.waveform import render_waveform
 
@@ -219,6 +220,10 @@ class MediaLibraryTests(unittest.TestCase):
         self.assertIn("Enfocar recorte", waveform)
         self.assertIn("waveformViewport", waveform)
         self.assertIn('objectName: "mediaClipRange"', qml)
+        self.assertIn('objectName: "libraryPremiereTimeline"', qml)
+        self.assertIn("toggleLibraryPreview", qml)
+        self.assertIn("position >= endMs", qml)
+        self.assertIn("Math.max(Number(viewState.clipIn", qml)
         self.assertIn("SALIDA WAV", qml)
         self.assertIn("SALIDA MP4", qml)
         self.assertIn("El original siempre queda intacto", qml)
@@ -265,6 +270,30 @@ class MediaLibraryTests(unittest.TestCase):
             self.assertEqual(output, target)
             self.assertTrue(output.is_file())
             self.assertGreater(output.stat().st_size, 256)
+
+    def test_filmstrip_renderer_samples_the_whole_video_as_a_horizontal_gallery(self):
+        ffmpeg_path = ROOT / "bin" / "ffmpeg" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        if not ffmpeg_path.is_file():
+            self.skipTest("FFmpeg portable no disponible")
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            source = folder / "galeria.mp4"
+            target = folder / "filmstrip.png"
+            created = subprocess.run(
+                [
+                    str(ffmpeg_path), "-y", "-f", "lavfi", "-i",
+                    "testsrc2=size=320x180:rate=12:duration=3",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", str(source),
+                ],
+                capture_output=True, timeout=30, check=False,
+            )
+            self.assertEqual(created.returncode, 0, created.stderr.decode(errors="ignore"))
+            output = Path(render_filmstrip(str(ffmpeg_path), str(source), target, 3.0))
+            self.assertEqual(output, target)
+            self.assertGreater(output.stat().st_size, 256)
+            from PIL import Image
+            with Image.open(output) as image:
+                self.assertGreater(image.width, image.height * 6)
 
     def test_accurate_clip_is_created_as_premiere_ready_mp4_and_original_survives(self):
         ffmpeg_path = ROOT / "bin" / "ffmpeg" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")

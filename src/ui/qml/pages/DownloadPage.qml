@@ -9,16 +9,53 @@ Item {
     property var viewState: downloadController.state
     property var options: downloadController.options
     property bool denseLayout: height < 640
+    property bool trimUserMuted: false
 
     MediaPlayer {
         id: trimPlayer
         objectName: "downloadTrimPreviewPlayer"
-        source: trimPopup.opened ? (viewState.trimPreviewSource || "") : ""
+        source: trimPopup.opened
+                && (Boolean(viewState.localFile) || Boolean(viewState.trimPreviewFallback))
+                ? (viewState.trimPreviewSource || "") : ""
         audioOutput: AudioOutput {
             id: trimAudio
             volume: 0.32
+            muted: page.trimUserMuted
         }
         videoOutput: trimPreviewVideo
+        onSourceChanged: trimPopup.mediaLoadSeekPending = Boolean(source)
+        onMediaStatusChanged: {
+            if (mediaStatus === MediaPlayer.LoadedMedia || mediaStatus === MediaPlayer.BufferedMedia) {
+                trimPopup.playbackError = ""
+                if (trimPopup.mediaLoadSeekPending) {
+                    trimPopup.mediaLoadSeekPending = false
+                    position = Math.max(0, trimPopup.pendingSeekSeconds - Number(viewState.trimPreviewOffset || 0)) * 1000
+                }
+            }
+        }
+        onErrorOccurred: function(_error, errorString) {
+            if (!trimPopup.fallbackRequested && !viewState.localFile) {
+                trimPopup.fallbackRequested = true
+                trimPopup.playbackError = "Preparando una vista previa compatible…"
+                downloadController.prepareFallbackTrimPreview()
+            } else if (viewState.trimPreviewBusy) {
+                trimPopup.playbackError = "Preparando una vista previa compatible…"
+            } else {
+                trimPopup.playbackError = errorString || "No se pudo abrir esta vista previa."
+            }
+        }
+        onPositionChanged: {
+            if (!trimPopup.opened || playbackState !== MediaPlayer.PlayingState)
+                return
+            var offset = Number(viewState.trimPreviewOffset || 0)
+            var globalPosition = position / 1000 + offset
+            var endSeconds = Math.max(0, page.clockSeconds(options.endTime))
+            if (endSeconds > 0 && globalPosition >= endSeconds) {
+                pause()
+                position = Math.max(0, endSeconds - offset) * 1000
+                trimPopup.pendingSeekSeconds = endSeconds
+            }
+        }
     }
 
     function clockText(seconds) {
@@ -36,6 +73,61 @@ Item {
         if (!match)
             return -1
         return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])
+    }
+
+    function preciseClockText(seconds) {
+        var total = Math.max(0, Number(seconds) || 0)
+        var hours = Math.floor(total / 3600)
+        var minutes = Math.floor((total % 3600) / 60)
+        var secs = total % 60
+        var secsText = secs.toFixed(2)
+        if (secs < 10)
+            secsText = "0" + secsText
+        return (hours < 10 ? "0" : "") + hours + ":" +
+               (minutes < 10 ? "0" : "") + minutes + ":" + secsText
+    }
+
+    function setTrimBoundary(optionName, seconds) {
+        var bounded = Math.max(0, Math.min(Number(viewState.duration || 0), Number(seconds) || 0))
+        downloadController.setOption(optionName, page.preciseClockText(bounded))
+        trimPopup.pendingSeekSeconds = bounded
+        trimPopup.previewActivated = true
+        if (trimPlayer.playbackState === MediaPlayer.PlayingState)
+            trimPlayer.pause()
+        trimPlayer.position = Math.max(0, bounded - Number(viewState.trimPreviewOffset || 0)) * 1000
+    }
+
+    function seekTrimPreview(seconds) {
+        var start = Math.max(0, page.clockSeconds(options.startTime))
+        var end = Math.max(start, page.clockSeconds(options.endTime))
+        var bounded = Math.max(start, Math.min(end, Number(seconds) || 0))
+        trimPopup.pendingSeekSeconds = bounded
+        trimPopup.previewActivated = true
+        trimPlaybackStartDelay.stop()
+        if (trimPlayer.playbackState === MediaPlayer.PlayingState)
+            trimPlayer.pause()
+        trimPlayer.position = Math.max(0, bounded - Number(viewState.trimPreviewOffset || 0)) * 1000
+    }
+
+    function toggleTrimPreview() {
+        if (trimPlayer.playbackState === MediaPlayer.PlayingState) {
+            trimPlaybackStartDelay.stop()
+            trimPlayer.pause()
+            return
+        }
+        var offsetMs = Number(viewState.trimPreviewOffset || 0) * 1000
+        var startMs = Math.max(0, page.clockSeconds(options.startTime) * 1000 - offsetMs)
+        var endMs = Math.max(startMs, page.clockSeconds(options.endTime) * 1000 - offsetMs)
+        trimPopup.previewActivated = true
+        if (trimPlayer.position < startMs || trimPlayer.position >= endMs) {
+            trimPlayer.pause()
+            trimPlayer.position = startMs
+            trimPopup.pendingSeekSeconds = page.clockSeconds(options.startTime)
+            trimPopup.playbackSeekRetries = 0
+            trimPlaybackStartDelay.restart()
+            return
+        }
+        trimPlayer.play()
     }
 
     function fragmentMessage() {
@@ -281,11 +373,17 @@ Item {
                 property bool previousEnabled: false
                 property string previousStart: "00:00:00"
                 property string previousEnd: ""
+                property bool previewActivated: false
+                property real pendingSeekSeconds: 0
+                property string playbackError: ""
+                property bool fallbackRequested: false
+                property bool mediaLoadSeekPending: false
+                property int playbackSeekRetries: 0
                 parent: Overlay.overlay
                 x: Math.round((parent.width - width) / 2)
                 y: Math.round((parent.height - height) / 2)
-                width: Math.min(900, parent.width - 28)
-                height: Math.min(690, parent.height - 28)
+                width: Math.min(1050, parent.width - 24)
+                height: Math.min(800, parent.height - 24)
                 padding: 18
                 modal: true
                 focus: true
@@ -298,11 +396,60 @@ Item {
                     downloadController.setOption("fragmentEnabled", true)
                     if (page.clockSeconds(options.endTime) <= 0)
                         downloadController.setOption("endTime", page.clockText(viewState.duration))
-                    downloadController.prepareWaveform()
+                    trimWaveformDelay.restart()
+                    trimFilmstripDelay.restart()
+                    previewActivated = false
+                    playbackError = ""
+                    fallbackRequested = false
+                    mediaLoadSeekPending = false
+                    playbackSeekRetries = 0
+                    pendingSeekSeconds = Math.max(0, page.clockSeconds(options.startTime))
                     trimPlayer.stop()
-                    trimPlayer.position = Math.max(0, page.clockSeconds(options.startTime)) * 1000
+                    trimPlayer.position = pendingSeekSeconds * 1000
+                    if (!viewState.localFile && viewState.hasVideo) {
+                        fallbackRequested = true
+                        playbackError = "Preparando una vista previa estable…"
+                        downloadController.prepareFallbackTrimPreview()
+                    }
                 }
-                onClosed: trimPlayer.stop()
+                onClosed: {
+                    trimPlaybackStartDelay.stop()
+                    trimPlayer.stop()
+                    trimWaveformDelay.stop()
+                    trimFilmstripDelay.stop()
+                }
+
+                Timer {
+                    id: trimWaveformDelay
+                    interval: 1400
+                    repeat: false
+                    onTriggered: downloadController.prepareWaveform()
+                }
+                Timer {
+                    id: trimFilmstripDelay
+                    interval: 3200
+                    repeat: false
+                    onTriggered: downloadController.prepareTrimFilmstrip()
+                }
+                Timer {
+                    id: trimPlaybackStartDelay
+                    interval: 90
+                    repeat: false
+                    onTriggered: {
+                        if (!trimPopup.opened)
+                            return
+                        var offsetMs = Number(viewState.trimPreviewOffset || 0) * 1000
+                        var startMs = Math.max(0, page.clockSeconds(options.startTime) * 1000 - offsetMs)
+                        if (Math.abs(trimPlayer.position - startMs) > 180 && trimPopup.playbackSeekRetries < 4) {
+                            trimPopup.playbackSeekRetries += 1
+                            trimPlayer.position = startMs
+                            restart()
+                            return
+                        }
+                        trimPopup.playbackSeekRetries = 0
+                        trimPlayer.play()
+                    }
+                }
 
                 contentItem: ColumnLayout {
                     spacing: 12
@@ -313,7 +460,7 @@ Item {
                             spacing: 3
                             Text { text: "RECORTADOR"; color: "#8D88EB"; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.2 }
                             Text { text: "Quédate sólo con lo que necesitas"; color: theme.colors.text; font.pixelSize: 20; font.weight: Font.DemiBold }
-                            Text { Layout.fillWidth: true; text: "Arrastra Entrada y Salida sobre la forma de onda. Las zonas planas son silencios."; color: theme.colors.textMuted; font.pixelSize: 10; wrapMode: Text.WordWrap }
+                            Text { Layout.fillWidth: true; text: viewState.hasVideo ? "Arrastra las asas blancas sobre los fotogramas y conserva sólo lo que necesitas." : "Arrastra Entrada y Salida sobre la forma de onda."; color: theme.colors.textMuted; font.pixelSize: 12; wrapMode: Text.WordWrap }
                         }
                         XButton {
                             text: "Cancelar"
@@ -333,120 +480,173 @@ Item {
                         objectName: "downloadTrimPreview"
                         visible: Boolean(viewState.trimPreviewSource)
                         Layout.fillWidth: true
-                        Layout.preferredHeight: trimPopup.height < 650 ? 118 : 164
-                        Layout.minimumHeight: 104
+                        Layout.preferredHeight: viewState.hasVideo ? Math.max(240, trimPopup.height - 520) : 108
+                        Layout.minimumHeight: viewState.hasVideo ? 240 : 100
                         radius: 12
-                        color: "#090B0F"
+                        color: "#050609"
                         border.color: theme.colors.border
                         clip: true
 
                         VideoOutput {
                             id: trimPreviewVideo
                             anchors.fill: parent
-                            anchors.bottomMargin: 39
+                            anchors.bottomMargin: 46
                             visible: Boolean(viewState.hasVideo)
                             fillMode: VideoOutput.PreserveAspectFit
                         }
                         Image {
                             anchors.fill: trimPreviewVideo
-                            visible: Boolean(viewState.hasVideo)
-                                     && trimPlayer.mediaStatus !== MediaPlayer.LoadedMedia
-                                     && trimPlayer.playbackState !== MediaPlayer.PlayingState
+                            visible: Boolean(viewState.hasVideo) && (!trimPopup.previewActivated || trimPlayer.mediaStatus === MediaPlayer.LoadingMedia)
                             source: viewState.thumbnailSource || ""
                             fillMode: Image.PreserveAspectFit
                             asynchronous: true
-                            opacity: 0.78
+                            opacity: 0.92
+                        }
+                        RoundButton {
+                            anchors.centerIn: trimPreviewVideo
+                            visible: Boolean(viewState.hasVideo)
+                                     && !Boolean(viewState.trimPreviewBusy)
+                                     && !Boolean(trimPopup.playbackError || viewState.trimPreviewError)
+                                     && trimPlayer.playbackState !== MediaPlayer.PlayingState
+                            width: 58; height: 58
+                            text: "▶"
+                            onClicked: page.toggleTrimPreview()
+                            contentItem: Text { text: parent.text; color: "white"; font.pixelSize: 20; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                            background: Rectangle { radius: 29; color: "#C9161921"; border.color: "#A29DFF"; border.width: 2 }
                         }
                         Text {
                             anchors.centerIn: trimPreviewVideo
+                            visible: Boolean(viewState.trimPreviewBusy)
+                                     || Boolean(trimPopup.playbackError || viewState.trimPreviewError)
+                            width: Math.min(parent.width - 80, 500)
+                            text: viewState.trimPreviewBusy
+                                  ? "Preparando una copia ligera para la vista previa…"
+                                  : "No se pudo reproducir la vista previa.\n" + (viewState.trimPreviewError || trimPopup.playbackError)
+                            color: "#F1F2F7"
+                            font.pixelSize: 11
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                        }
+                        XButton {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 50
+                            visible: Boolean(trimPopup.playbackError || viewState.trimPreviewError) && !Boolean(viewState.trimPreviewBusy)
+                            text: "Preparar vista previa"
+                            compact: true
+                            onClicked: {
+                                trimPopup.playbackError = ""
+                                trimPopup.fallbackRequested = true
+                                downloadController.prepareFallbackTrimPreview()
+                            }
+                        }
+                        BusyIndicator {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 52
+                            running: Boolean(viewState.trimPreviewBusy)
+                            visible: running
+                        }
+                        Text {
+                            anchors.centerIn: parent
                             visible: !viewState.hasVideo
                             text: "♫  Vista previa de audio"
                             color: theme.colors.textMuted
-                            font.pixelSize: 12
+                            font.pixelSize: 13
                         }
                         Rectangle {
                             anchors.left: parent.left
                             anchors.right: parent.right
                             anchors.bottom: parent.bottom
-                            height: 39
-                            color: "#E611141B"
+                            height: 46
+                            color: "#F011141B"
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: 8
-                                anchors.rightMargin: 8
-                                spacing: 7
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                spacing: 8
                                 XButton {
                                     objectName: "trimPreviewPlayButton"
-                                    compact: true
-                                    implicitWidth: 38
+                                    compact: true; implicitWidth: 40
                                     text: trimPlayer.playbackState === MediaPlayer.PlayingState ? "Ⅱ" : "▶"
                                     kind: "ghost"
-                                    onClicked: trimPlayer.playbackState === MediaPlayer.PlayingState
-                                               ? trimPlayer.pause() : trimPlayer.play()
-                                }
-                                Slider {
-                                    Layout.fillWidth: true
-                                    from: 0
-                                    to: Math.max(1, Number(viewState.duration || 0) * 1000)
-                                    value: Math.max(0, trimPlayer.position)
-                                    onMoved: trimPlayer.position = value
+                                    enabled: Boolean(trimPlayer.source) && !Boolean(viewState.trimPreviewBusy)
+                                    onClicked: page.toggleTrimPreview()
                                 }
                                 Text {
-                                    text: page.clockText(trimPlayer.position / 1000)
-                                    color: theme.colors.textMuted
-                                    font.pixelSize: 9
+                                    text: page.clockText(trimPlayer.position / 1000 + Number(viewState.trimPreviewOffset || 0)) + "  /  " + page.clockText(viewState.duration || 0)
+                                    color: theme.colors.text
+                                    font.pixelSize: 12
                                     font.family: "Consolas"
+                                    font.weight: Font.DemiBold
                                 }
+                                Item { Layout.fillWidth: true }
                                 XButton {
                                     objectName: "trimVolumeDownButton"
-                                    compact: true; implicitWidth: 32; text: "−"; kind: "ghost"
+                                    compact: true; implicitWidth: 34; text: "−"; kind: "ghost"
                                     onClicked: trimAudio.volume = Math.max(0, trimAudio.volume - 0.1)
-                                    ToolTip.visible: hovered; ToolTip.text: "Bajar volumen"
                                 }
                                 Slider {
                                     objectName: "trimVolumeSlider"
-                                    Layout.preferredWidth: 88
+                                    Layout.preferredWidth: 100
                                     from: 0; to: 1; stepSize: 0.05
                                     value: trimAudio.volume
                                     onMoved: trimAudio.volume = value
                                 }
                                 XButton {
                                     objectName: "trimVolumeUpButton"
-                                    compact: true; implicitWidth: 32; text: "+"; kind: "ghost"
+                                    compact: true; implicitWidth: 34; text: "+"; kind: "ghost"
                                     onClicked: trimAudio.volume = Math.min(1, trimAudio.volume + 0.1)
-                                    ToolTip.visible: hovered; ToolTip.text: "Subir volumen"
                                 }
                                 XButton {
                                     compact: true; implicitWidth: 38
-                                    text: trimAudio.muted || trimAudio.volume <= 0 ? "M" : "♪"
+                                    text: page.trimUserMuted || trimAudio.volume <= 0 ? "M" : "♪"
                                     kind: "ghost"
-                                    onClicked: trimAudio.muted = !trimAudio.muted
-                                    ToolTip.visible: hovered
-                                    ToolTip.text: trimAudio.muted ? "Activar audio" : "Silenciar"
+                                    onClicked: page.trimUserMuted = !page.trimUserMuted
                                 }
                             }
                         }
                     }
 
+                    PremiereTimeline {
+                        id: trimPremiereTimeline
+                        objectName: "trimPremiereTimeline"
+                        visible: Boolean(viewState.hasVideo) && Number(viewState.duration || 0) > 0
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 184
+                        duration: Number(viewState.duration || 0)
+                        inPoint: Math.max(0, page.clockSeconds(options.startTime))
+                        outPoint: Math.max(0, page.clockSeconds(options.endTime))
+                        playhead: trimPlayer.position / 1000 + Number(viewState.trimPreviewOffset || 0)
+                        filmstripSource: viewState.trimFilmstripSource || ""
+                        fallbackSource: viewState.thumbnailSource || ""
+                        waveformSource: viewState.waveformSource || ""
+                        filmstripBusy: Boolean(viewState.trimFilmstripBusy)
+                        waveformBusy: Boolean(viewState.waveformBusy)
+                        onInPointMoved: function(value) { page.setTrimBoundary("startTime", value) }
+                        onOutPointMoved: function(value) { page.setTrimBoundary("endTime", value) }
+                        onSeekRequested: function(value) { page.seekTrimPreview(value) }
+                    }
+
                     WaveformTrimmer {
                         objectName: "downloadWaveformTrimmer"
+                        visible: !viewState.hasVideo && Boolean(viewState.hasAudio)
                         Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        Layout.minimumHeight: compact ? 174 : 208
-                        Layout.preferredHeight: compact ? 174 : 208
-                        compact: trimPopup.height < 560
+                        Layout.preferredHeight: 190
+                        compact: true
                         waveformSource: viewState.waveformSource || ""
                         busy: Boolean(viewState.waveformBusy)
                         errorText: viewState.waveformError || ""
                         duration: Number(viewState.duration || 0)
                         inPoint: Math.max(0, page.clockSeconds(options.startTime))
                         outPoint: Math.max(0, page.clockSeconds(options.endTime))
-                        onInPointMoved: function(value) { downloadController.setOption("startTime", page.clockText(value)) }
-                        onOutPointMoved: function(value) { downloadController.setOption("endTime", page.clockText(value)) }
+                        onInPointMoved: function(value) { page.setTrimBoundary("startTime", value) }
+                        onOutPointMoved: function(value) { page.setTrimBoundary("endTime", value) }
                         onRetryRequested: downloadController.prepareWaveform()
                     }
 
                     GridLayout {
+                        visible: !viewState.hasVideo
                         Layout.fillWidth: true
                         columns: trimPopup.width > 650 ? 2 : 1
                         columnSpacing: 10

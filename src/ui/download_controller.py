@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import hashlib
 import os
 import re
 import shutil
@@ -36,7 +37,12 @@ from src.core.exceptions import UserCancelledError
 from src.core.file_naming import next_available_media_stem, next_available_path
 from src.core.processor import FFmpegProcessor, clean_and_convert_vtt_to_srt, pixel_format_has_alpha
 from src.core.video_upscaler import VideoUpscaler
-from src.core.ytdlp_runtime import configure_ytdlp_options, friendly_ytdlp_error, safe_console_print
+from src.core.ytdlp_runtime import (
+    configure_ytdlp_options,
+    friendly_ytdlp_error,
+    is_youtube_url,
+    safe_console_print,
+)
 from main import UPSCALING_DIR
 
 from .dialog_broker import DialogBroker
@@ -51,6 +57,8 @@ from .media_logic import (
 from .presets import ALPHA_PRESET, BUILT_IN_PRESETS, PresetStore, resolve_recode_parameters
 from .settings_store import SettingsStore
 from .waveform import render_waveform, waveform_target
+from .filmstrip import filmstrip_target, render_filmstrip
+from .media_preview_proxy import MediaPreviewProxy
 from .workers import TaskPool
 
 
@@ -175,6 +183,12 @@ class DownloadController(QObject):
         cache_root = QStandardPaths.writableLocation(QStandardPaths.CacheLocation)
         self.waveform_dir = Path(cache_root or tempfile.gettempdir()) / "waveforms"
         self.waveform_dir.mkdir(parents=True, exist_ok=True)
+        self.filmstrip_dir = Path(cache_root or tempfile.gettempdir()) / "filmstrips"
+        self.filmstrip_dir.mkdir(parents=True, exist_ok=True)
+        self.preview_dir = Path(cache_root or tempfile.gettempdir()) / "trim-previews"
+        self.preview_dir.mkdir(parents=True, exist_ok=True)
+        self._trim_preview_request = ""
+        self.preview_proxy = MediaPreviewProxy()
         self.cancellation = threading.Event()
         output = settings.get("default_download_path") or str(Path.home() / "Downloads")
         self._state: dict[str, Any] = {
@@ -191,6 +205,9 @@ class DownloadController(QObject):
             "effectiveOutputPath": output,
             "waveformSource": "", "waveformBusy": False, "waveformError": "",
             "trimPreviewSource": "", "trimPreviewHasAudio": False,
+            "trimPreviewOffset": 0.0, "trimPreviewBusy": False,
+            "trimPreviewFallback": False, "trimPreviewError": "",
+            "trimFilmstripSource": "", "trimFilmstripBusy": False, "trimFilmstripError": "",
         }
         self._tags = self._load_download_tags()
         saved_tag = str(settings.get("selected_download_tag", "Sin etiqueta"))
@@ -290,6 +307,7 @@ class DownloadController(QObject):
             self.prepareWaveform()
         elif key == "selectedVideo":
             self._refresh_trim_preview_source()
+            self.prepareTrimFilmstrip()
 
     @Slot(str, "QVariant")
     def setOption(self, key: str, value):
@@ -424,17 +442,35 @@ class DownloadController(QObject):
 
     def _refresh_trim_preview_source(self):
         """Expone una fuente reproducible sin descargar el archivo completo."""
+        self._trim_preview_request = ""
         local_file = str(self._state.get("localFile") or "")
         if local_file and Path(local_file).is_file():
             self._set_state(
                 trimPreviewSource=QUrl.fromLocalFile(local_file).toString(),
                 trimPreviewHasAudio=bool(self._state.get("hasAudio")),
+                trimPreviewOffset=0.0, trimPreviewBusy=False,
+                trimPreviewFallback=False, trimPreviewError="",
             )
             return
 
         selected = dict(self._video_map.get(self._state.get("selectedVideo"), {}) or {})
         candidates = [selected, *self._video_map.values()]
+        def progressive_combined(entry):
+            raw_entry = dict(entry.get("raw") or {})
+            source_url = str(raw_entry.get("url") or "").lower()
+            protocol = str(raw_entry.get("protocol") or "").lower()
+            return (
+                entry.get("combined")
+                and source_url
+                and "m3u8" not in source_url
+                and "dash" not in protocol
+                and "m3u8" not in protocol
+                and protocol not in {"http_dash_segments", "mhtml"}
+            )
         playable = next(
+            (entry for entry in candidates if progressive_combined(entry)),
+            None,
+        ) or next(
             (
                 entry for entry in candidates
                 if entry.get("combined") and str((entry.get("raw") or {}).get("url") or "")
@@ -443,9 +479,419 @@ class DownloadController(QObject):
         )
         raw = dict(playable.get("raw") or {})
         source = str(raw.get("url") or "")
+        preview_source = self.preview_proxy.url_for(source, dict(raw.get("http_headers") or {})) if source else ""
         self._set_state(
-            trimPreviewSource=QUrl(source).toString() if source else "",
+            trimPreviewSource=preview_source,
             trimPreviewHasAudio=bool(playable.get("combined")),
+            trimPreviewOffset=0.0, trimPreviewBusy=False,
+            trimPreviewFallback=False, trimPreviewError="",
+        )
+
+    @Slot()
+    def refreshTrimPreview(self):
+        self._refresh_trim_preview_source()
+
+    @Slot()
+    def prepareFallbackTrimPreview(self):
+        """Crea un MP4 local corto cuando Qt no acepta el flujo web directo."""
+        local_file = str(self._state.get("localFile") or "")
+        if local_file:
+            self._refresh_trim_preview_source()
+            return
+        playable, raw = self._selected_trim_video()
+        source = str(raw.get("url") or "")
+        if not source:
+            self._set_state(
+                trimPreviewBusy=False,
+                trimPreviewError="El sitio no entregó un flujo reproducible.",
+            )
+            return
+        start = self._parse_clock(str(self._options.get("startTime") or "")) or 0.0
+        end = self._parse_clock(str(self._options.get("endTime") or ""))
+        total = float(self._state.get("duration") or 0.0)
+        if end is None or end <= start:
+            end = total if total > start else start + 30.0
+        duration = max(0.5, end - start)
+        request_seed = (
+            f"{self._current_filmstrip_key()}|full-preview-proxy|"
+            f"{raw.get('format_id') or playable.get('formatId') or ''}"
+        )
+        request_key = hashlib.sha256(request_seed.encode("utf-8", "ignore")).hexdigest()
+        target = self.preview_dir / f"{request_key}.mp4"
+        self._trim_preview_request = request_key
+        if target.is_file() and target.stat().st_size > 4096:
+            self._fallback_trim_preview_ready(request_key, 0.0, str(target))
+            return
+        self._set_state(
+            trimPreviewBusy=True, trimPreviewFallback=True, trimPreviewError="",
+        )
+        cookie_options, using_cookies = self._cookie_options()
+        self.pool.submit(
+            self._remote_fallback_trim_preview_worker,
+            self.ffmpeg.ffmpeg_path,
+            str(self._state.get("url") or ""),
+            source,
+            target,
+            0.0,
+            max(0.5, total or duration),
+            dict(raw.get("http_headers") or {}),
+            str(raw.get("format_id") or playable.get("formatId") or ""),
+            cookie_options if using_cookies else {},
+            on_result=lambda path: self._fallback_trim_preview_ready(request_key, 0.0, path),
+            on_error=lambda message, _detail: self._fallback_trim_preview_failed(request_key, message),
+        )
+
+    def _remote_fallback_trim_preview_worker(
+        self,
+        ffmpeg_path: str,
+        page_url: str,
+        direct_source: str,
+        target: Path,
+        start: float,
+        duration: float,
+        headers: dict[str, str],
+        format_id: str,
+        cookie_options: dict[str, Any],
+    ) -> str:
+        """Prepara un proxy completo y estable para poder mover libremente el cabezal."""
+        if direct_source:
+            safe_console_print(
+                "Preparando un proxy completo y ligero con el descargador nativo."
+            )
+        if not page_url:
+            raise RuntimeError("No se conservó el enlace original para renovar la vista previa.")
+
+        # download_ranges usa el descargador externo de FFmpeg. YouTube puede
+        # entregar una URL firmada que funciona en el navegador pero devuelve
+        # 403 cuando FFmpeg intenta abrirla. Descargamos una sola copia MP4
+        # progresiva y pequeña con el cliente HTTP nativo de yt-dlp; después el
+        # recorte y la reproducción suceden enteramente desde disco.
+        source_key = hashlib.sha256(page_url.encode("utf-8", "ignore")).hexdigest()
+        preview_root = target.parent / "sources" / source_key
+        preview_root.mkdir(parents=True, exist_ok=True)
+
+        def downloaded_candidates() -> list[Path]:
+            return [
+                path for path in preview_root.iterdir()
+                if path.is_file()
+                and path.suffix.lower() not in {".part", ".ytdl", ".json"}
+                and path.stat().st_size > 4096
+            ]
+
+        candidates = downloaded_candidates()
+        if not candidates:
+            combined_proxy = (
+                "best[height<=480][ext=mp4][vcodec!=none][acodec!=none]/"
+                "best[height<=480][vcodec!=none][acodec!=none]/"
+                "worst[ext=mp4][vcodec!=none][acodec!=none]/"
+                "worst[vcodec!=none][acodec!=none]"
+            )
+            base_options: dict[str, Any] = {
+                "quiet": True,
+                "no_warnings": True,
+                "noplaylist": True,
+                "playlist_items": "1",
+                "format": combined_proxy,
+                "outtmpl": str(preview_root / "source.%(ext)s"),
+                "continuedl": True,
+                "retries": 3,
+                "fragment_retries": 3,
+                "socket_timeout": 25,
+            }
+            if is_youtube_url(page_url):
+                # El cliente automático puede entregar enlaces ANDROID_VR que
+                # el CDN rechaza con 403. web_embedded produjo el proxy válido
+                # en el mismo equipo y evita primero repetir esa ruta fallida.
+                base_options["extractor_args"] = {
+                    "youtube": {"player_client": ["web_embedded"]},
+                }
+            configured = configure_ytdlp_options({**base_options, **cookie_options})
+            try:
+                extract_info_resilient(page_url, configured, download=True)
+            except Exception:
+                # Conserva un segundo intento limpio por si un sitio no admite
+                # el selector limitado pero sí ofrece otro formato combinado.
+                fallback = dict(configured)
+                fallback["format"] = "best[vcodec!=none][acodec!=none]/worst"
+                try:
+                    extract_info_resilient(page_url, fallback, download=True)
+                except Exception as fallback_error:
+                    raise RuntimeError(
+                        "YouTube rechazó también la copia ligera. El video puede requerir Cookies, "
+                        "tener restricción regional, de edad o de privacidad."
+                    ) from fallback_error
+            candidates = downloaded_candidates()
+
+        if not candidates:
+            raise RuntimeError("La copia ligera terminó sin un archivo de video válido.")
+        downloaded = max(candidates, key=lambda path: path.stat().st_size)
+        if downloaded.suffix.lower() == ".mp4":
+            # El proxy progresivo H.264/AAC se reproduce directamente. Evitar
+            # una segunda recodificación reduce mucho la espera y, al contener
+            # el video completo, permite mover la selección sin quedar fuera.
+            return str(downloaded)
+        return self._fallback_trim_preview_worker(
+            ffmpeg_path, str(downloaded), target, 0.0, duration, {},
+        )
+
+    @staticmethod
+    def _fallback_trim_preview_worker(
+        ffmpeg_path: str,
+        source: str,
+        target: Path,
+        start: float,
+        duration: float,
+        headers: dict[str, str],
+    ) -> str:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_name(f"{target.stem}.part.mp4")
+        temporary.unlink(missing_ok=True)
+        header_args: list[str] = []
+        if headers:
+            header_blob = "".join(f"{key}: {value}\r\n" for key, value in headers.items())
+            header_args = ["-headers", header_blob]
+        creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        input_args = [
+            str(ffmpeg_path), "-hide_banner", "-loglevel", "error", "-y",
+            "-ss", f"{start:.3f}", *header_args, "-i", source,
+            "-t", f"{duration:.3f}", "-map", "0:v:0", "-map", "0:a:0?",
+        ]
+        attempts = [
+            [
+                *input_args,
+                "-vf", "scale=960:-2:force_original_aspect_ratio=decrease",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+                "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+                str(temporary),
+            ],
+            [*input_args, "-c", "copy", "-movflags", "+faststart", str(temporary)],
+        ]
+        last_error = ""
+        for command in attempts:
+            temporary.unlink(missing_ok=True)
+            completed = subprocess.run(
+                command, capture_output=True, text=True, errors="ignore",
+                creationflags=creationflags,
+            )
+            if completed.returncode == 0 and temporary.is_file() and temporary.stat().st_size > 4096:
+                os.replace(temporary, target)
+                return str(target)
+            last_error = (completed.stderr or completed.stdout or "FFmpeg no pudo abrir el flujo").strip()
+        temporary.unlink(missing_ok=True)
+        raise RuntimeError(last_error[-800:])
+
+    def _fallback_trim_preview_ready(self, request_key: str, offset: float, path: str):
+        if request_key != self._trim_preview_request or not Path(path).is_file():
+            return
+        self._set_state(
+            trimPreviewSource=QUrl.fromLocalFile(str(path)).toString(),
+            trimPreviewHasAudio=True, trimPreviewOffset=float(offset),
+            trimPreviewBusy=False, trimPreviewFallback=True, trimPreviewError="",
+        )
+        # La tira y la forma de onda reutilizan este proxy local. Así no abren
+        # de nuevo el enlace remoto ni descargan copias temporales separadas.
+        self.prepareTrimFilmstrip()
+        self.prepareWaveform()
+
+    def _fallback_trim_preview_failed(self, request_key: str, message: str):
+        if request_key != self._trim_preview_request:
+            return
+        friendly = str(message or "").strip()
+        if not friendly or "YouTube" not in friendly:
+            friendly = (
+                "No se pudo crear la copia local. El video puede requerir Cookies, "
+                "tener restricción regional, de edad o de privacidad."
+            )
+        self._set_state(
+            trimPreviewBusy=False,
+            trimPreviewError=friendly,
+        )
+
+    def _selected_trim_video(self) -> tuple[dict, dict]:
+        selected = dict(self._video_map.get(self._state.get("selectedVideo"), {}) or {})
+        candidates = [selected, *self._video_map.values()]
+        playable = next(
+            (
+                dict(entry) for entry in candidates
+                if entry.get("combined")
+                and "m3u8" not in str((entry.get("raw") or {}).get("url") or "").lower()
+                and "dash" not in str((entry.get("raw") or {}).get("protocol") or "").lower()
+                and "m3u8" not in str((entry.get("raw") or {}).get("protocol") or "").lower()
+            ),
+            None,
+        ) or next(
+            (
+                dict(entry) for entry in candidates
+                if str((entry.get("raw") or {}).get("url") or "")
+            ),
+            selected,
+        )
+        return playable, dict(playable.get("raw") or {})
+
+    def _current_filmstrip_key(self) -> str:
+        local_path = str(self._state.get("localFile") or "")
+        if local_path and Path(local_path).is_file():
+            local = Path(local_path)
+            stat = local.stat()
+            return f"{local.resolve()}|{stat.st_mtime_ns}|{stat.st_size}"
+        return f"{self._state.get('url')}|{self._state.get('selectedVideo')}"
+
+    def _local_trim_preview_path(self) -> str:
+        if not self._state.get("trimPreviewFallback"):
+            return ""
+        preview_url = QUrl(str(self._state.get("trimPreviewSource") or ""))
+        candidate = Path(preview_url.toLocalFile()) if preview_url.isLocalFile() else None
+        return str(candidate) if candidate and candidate.is_file() else ""
+
+    @Slot()
+    def prepareTrimFilmstrip(self):
+        """Genera miniaturas cronológicas para seleccionar el fragmento de video."""
+        duration = float(self._state.get("duration") or 0)
+        if not self._state.get("analyzed") or not self._state.get("hasVideo") or duration <= 0:
+            self._set_state(trimFilmstripSource="", trimFilmstripBusy=False, trimFilmstripError="")
+            return
+        if self._state.get("trimFilmstripBusy"):
+            return
+
+        local_path = str(self._state.get("localFile") or "")
+        preview_path = self._local_trim_preview_path()
+        render_locally = bool(local_path or preview_path)
+        headers: dict[str, str] = {}
+        format_id = ""
+        if render_locally:
+            source = local_path or preview_path
+            if not Path(source).is_file():
+                self._set_state(
+                    trimFilmstripSource="", trimFilmstripBusy=False,
+                    trimFilmstripError="El archivo ya no está disponible.",
+                )
+                return
+        else:
+            playable, raw = self._selected_trim_video()
+            source = str(raw.get("url") or "")
+            headers = dict(raw.get("http_headers") or {})
+            format_id = str(playable.get("formatId") or raw.get("format_id") or "")
+            if not source:
+                self._set_state(
+                    trimFilmstripSource="", trimFilmstripBusy=False,
+                    trimFilmstripError="El sitio no ofrece fotogramas de previsualización.",
+                )
+                return
+
+        request_key = f"{self._current_filmstrip_key()}|filmstrip-v2"
+        target = filmstrip_target(self.filmstrip_dir, request_key)
+        if target.is_file() and target.stat().st_size > 256:
+            self._set_state(
+                trimFilmstripSource=QUrl.fromLocalFile(str(target)).toString(),
+                trimFilmstripBusy=False,
+                trimFilmstripError="",
+            )
+            return
+
+        self._set_state(trimFilmstripSource="", trimFilmstripBusy=True, trimFilmstripError="")
+        if render_locally:
+            self.pool.submit(
+                render_filmstrip,
+                self.ffmpeg.ffmpeg_path,
+                source,
+                target,
+                duration,
+                headers,
+                on_result=lambda path: self._download_filmstrip_ready(request_key, path),
+                on_error=lambda message, _detail: self._download_filmstrip_failed(request_key, message),
+            )
+            return
+
+        cookie_options, using_cookies = self._cookie_options()
+        self.pool.submit(
+            self._remote_filmstrip_worker,
+            str(self._state.get("url") or ""),
+            source,
+            format_id,
+            target,
+            duration,
+            headers,
+            cookie_options,
+            using_cookies,
+            on_result=lambda path: self._download_filmstrip_ready(request_key, path),
+            on_error=lambda message, _detail: self._download_filmstrip_failed(request_key, message),
+        )
+
+    def _remote_filmstrip_worker(
+        self,
+        page_url: str,
+        direct_source: str,
+        format_id: str,
+        target: Path,
+        duration: float,
+        headers: dict[str, str],
+        cookie_options: dict[str, Any],
+        using_cookies: bool,
+    ) -> str:
+        """Prueba la URL directa y renueva el video temporal si el sitio la expiró."""
+        try:
+            return render_filmstrip(
+                self.ffmpeg.ffmpeg_path, direct_source, target, duration, headers,
+            )
+        except Exception as direct_error:
+            safe_console_print(
+                f"Filmstrip directo rechazado; creando copia temporal: {direct_error}"
+            )
+        if not page_url:
+            raise RuntimeError("No hay un enlace original para recuperar los fotogramas.")
+
+        with tempfile.TemporaryDirectory(prefix="xomacito-filmstrip-") as temporary_dir:
+            preview_root = Path(temporary_dir)
+            base_options: dict[str, Any] = {
+                "quiet": True,
+                "no_warnings": True,
+                "noplaylist": True,
+                "playlist_items": "1",
+                "format": format_id or "bestvideo/best",
+                "outtmpl": str(preview_root / "video.%(ext)s"),
+                "overwrites": True,
+            }
+            configured = configure_ytdlp_options(base_options)
+            if using_cookies:
+                configured = apply_yt_patch({**configured, **cookie_options})
+            try:
+                extract_info_resilient(page_url, configured, download=True)
+            except Exception as selected_error:
+                if not format_id:
+                    raise RuntimeError(
+                        "El sitio no permitió recuperar los fotogramas del video."
+                    ) from selected_error
+                fallback = dict(configured)
+                fallback["format"] = "bestvideo/best"
+                extract_info_resilient(page_url, fallback, download=True)
+
+            candidates = [
+                path for path in preview_root.iterdir()
+                if path.is_file() and path.suffix.lower() not in {".part", ".ytdl"}
+            ]
+            if not candidates:
+                raise RuntimeError("El video temporal terminó sin fotogramas reproducibles.")
+            preview = max(candidates, key=lambda path: path.stat().st_size)
+            return render_filmstrip(
+                self.ffmpeg.ffmpeg_path, str(preview), target, duration,
+            )
+
+    def _download_filmstrip_ready(self, request_key: str, path: str):
+        if request_key != self._current_filmstrip_key():
+            return
+        self._set_state(
+            trimFilmstripSource=QUrl.fromLocalFile(str(path)).toString(),
+            trimFilmstripBusy=False,
+            trimFilmstripError="",
+        )
+
+    def _download_filmstrip_failed(self, request_key: str, _message: str):
+        if request_key != self._current_filmstrip_key():
+            return
+        self._set_state(
+            trimFilmstripSource="",
+            trimFilmstripBusy=False,
+            trimFilmstripError="No se pudieron generar las miniaturas de este video.",
         )
 
     @Slot()
@@ -469,6 +915,9 @@ class DownloadController(QObject):
             analyzed=False, progress=0.0, status="Analizando archivo local…",
             thumbnailSource="", imagePost=False, waveformSource="", waveformBusy=False,
             waveformError="", trimPreviewSource="", trimPreviewHasAudio=False,
+            trimPreviewOffset=0.0, trimPreviewBusy=False, trimPreviewFallback=False,
+            trimPreviewError="",
+            trimFilmstripSource="", trimFilmstripBusy=False, trimFilmstripError="",
         )
         self._active_worker = self.pool.submit(
             self._analyze_local_worker, str(Path(path)),
@@ -518,6 +967,9 @@ class DownloadController(QObject):
             hasVideo=False, hasAudio=False, sourceHasAlpha=False, status="Pega un enlace o importa un archivo.",
             waveformSource="", waveformBusy=False, waveformError="",
             trimPreviewSource="", trimPreviewHasAudio=False,
+            trimPreviewOffset=0.0, trimPreviewBusy=False, trimPreviewFallback=False,
+            trimPreviewError="",
+            trimFilmstripSource="", trimFilmstripBusy=False, trimFilmstripError="",
         )
 
     @Slot()
@@ -537,6 +989,9 @@ class DownloadController(QObject):
             status="Contactando el sitio y leyendo formatos…", thumbnailSource="", imagePost=False, imageCount=0,
             waveformSource="", waveformBusy=False, waveformError="",
             trimPreviewSource="", trimPreviewHasAudio=False,
+            trimPreviewOffset=0.0, trimPreviewBusy=False, trimPreviewFallback=False,
+            trimPreviewError="",
+            trimFilmstripSource="", trimFilmstripBusy=False, trimFilmstripError="",
         )
         self._active_worker = self.pool.submit(
             self._analyze_url_worker, url,
@@ -584,6 +1039,12 @@ class DownloadController(QObject):
             "logger": Logger(),
             "progress_hooks": [lambda _data: self.cancellation.is_set() and (_ for _ in ()).throw(UserCancelledError("Análisis cancelado."))],
         })
+        if is_youtube_url(url):
+            # El cliente incrustado evita el enlace ANDROID_VR que YouTube
+            # rechaza después con 403 y ahorra ese segundo análisis fallido.
+            options["extractor_args"] = {
+                "youtube": {"player_client": ["web_embedded"]},
+            }
         if not instagram_url:
             options["playlist_items"] = "1"
         cookie, using_cookies = self._cookie_options()
@@ -691,7 +1152,6 @@ class DownloadController(QObject):
         if not image_post:
             self._ensure_preset_for_mode(mode)
             self._refresh_trim_preview_source()
-            self.prepareWaveform()
 
     def _apply_local_analysis(self, result: dict):
         video_choices = []
@@ -732,6 +1192,9 @@ class DownloadController(QObject):
         self.optionsChanged.emit()
         self._ensure_preset_for_mode("Video+Audio" if self._video_choices else "Solo Audio")
         self._refresh_trim_preview_source()
+        # Para archivos locales ambas vistas se generan sin competir por red
+        # con el monitor. En enlaces se preparan al abrir el recortador.
+        self.prepareTrimFilmstrip()
         self.prepareWaveform()
 
     @Slot()
@@ -740,10 +1203,15 @@ class DownloadController(QObject):
         if not self._state.get("analyzed") or self._state.get("imagePost") or not self._state.get("hasAudio"):
             self._set_state(waveformSource="", waveformBusy=False, waveformError="")
             return
+        if self._state.get("waveformBusy"):
+            return
         source = str(self._state.get("localFile") or "")
+        preview_path = self._local_trim_preview_path()
+        render_locally = bool(source or preview_path)
         headers: dict[str, str] = {}
         cache_key = source
-        if source:
+        if render_locally:
+            source = source or preview_path
             local = Path(source)
             if not local.is_file():
                 self._set_state(waveformSource="", waveformBusy=False, waveformError="El archivo ya no está disponible.")
@@ -773,7 +1241,7 @@ class DownloadController(QObject):
             return
         request_key = cache_key
         self._set_state(waveformSource="", waveformBusy=True, waveformError="")
-        if self._state.get("localFile"):
+        if render_locally:
             self.pool.submit(
                 render_waveform,
                 self.ffmpeg.ffmpeg_path,
@@ -862,6 +1330,10 @@ class DownloadController(QObject):
         if local_path and Path(local_path).is_file():
             stat = Path(local_path).stat()
             return f"{Path(local_path).resolve()}|{stat.st_mtime_ns}|{stat.st_size}"
+        preview_path = self._local_trim_preview_path()
+        if preview_path and Path(preview_path).is_file():
+            stat = Path(preview_path).stat()
+            return f"{Path(preview_path).resolve()}|{stat.st_mtime_ns}|{stat.st_size}"
         return f"{self._state.get('url')}|{self._state.get('selectedAudio')}"
 
     def _download_waveform_ready(self, request_key: str, path: str):
@@ -1586,3 +2058,4 @@ class DownloadController(QObject):
     def shutdown(self):
         self.cancellation.set()
         self.ffmpeg.cancel_current_process()
+        self.preview_proxy.shutdown()

@@ -12,7 +12,7 @@ from unittest.mock import patch
 from PIL import Image
 
 from src.core.daily_icon import daily_cat_assets
-from src.ui.download_controller import editor_mp4_fallback_options, reveal_in_file_manager
+from src.ui.download_controller import DownloadController, editor_mp4_fallback_options, reveal_in_file_manager
 from src.ui.media_logic import build_media_choices, is_editor_mp4_selection, normalize_info, preferred_merge_container
 from src.ui.application import normalize_clipboard_url
 from src.ui.presets import ALPHA_PRESET, BUILT_IN_PRESETS, resolve_recode_parameters
@@ -905,6 +905,44 @@ controller.shutdown()
             self.assertIn(label, download)
         self.assertIn('text: options.fragmentEnabled ? "Recorte ✓" : "Recortar"', download)
         self.assertIn("WaveformTrimmer", download)
+        self.assertIn("PremiereTimeline", download)
+        self.assertIn('objectName: "trimPremiereTimeline"', download)
+        self.assertIn("trimFilmstripSource", download)
+        self.assertIn("trimPreviewVideo", download)
+        self.assertIn("prepareTrimFilmstrip()", download)
+        self.assertIn('page.setTrimBoundary("startTime", value)', download)
+        self.assertIn('page.setTrimBoundary("endTime", value)', download)
+        self.assertIn("trimPopup.previewActivated = true", download)
+        self.assertIn("onSeekRequested: function(value) { page.seekTrimPreview(value) }", download)
+        self.assertIn("preciseClockText", download)
+        self.assertIn('playbackError = "Preparando una vista previa estable…"', download)
+        self.assertIn("id: trimPlaybackStartDelay", download)
+        self.assertIn("trimPlaybackStartDelay.restart()", download)
+        self.assertIn("trimPlayer.position = startMs", download)
+        self.assertIn("property bool mediaLoadSeekPending: false", download)
+        self.assertIn("if (trimPopup.mediaLoadSeekPending)", download)
+        self.assertIn("Boolean(viewState.localFile) || Boolean(viewState.trimPreviewFallback)", download)
+        self.assertNotIn("trimPopup.fallbackRequested && trimPopup.previewActivated", download)
+        self.assertIn("muted: page.trimUserMuted", download)
+        premiere = (ROOT / "src" / "ui" / "qml" / "components" / "PremiereTimeline.qml").read_text(encoding="utf-8")
+        self.assertIn('objectName: "premierePlayhead"', premiere)
+        self.assertIn("signal seekRequested(real value)", premiere)
+        self.assertIn("id: zoomRail", premiere)
+        self.assertIn("id: scrubRail", premiere)
+        self.assertIn("anchors.top: zoomRail.bottom", premiere)
+        self.assertIn("parent: zoomRail", premiere)
+        self.assertIn("y: zoomRail.height", premiere)
+        self.assertIn("property real zoomFactor: 1", premiere)
+        self.assertIn("from: 1; to: 16; stepSize: 1", premiere)
+        self.assertIn("sourceClipRect: root.clipRect(frameImage)", premiere)
+        self.assertIn("width: 8; height: parent.height; radius: 4", premiere)
+        self.assertIn("root.outPoint - 0.20", premiere)
+        video_range = (ROOT / "src" / "ui" / "qml" / "components" / "VideoRangeSelector.qml").read_text(encoding="utf-8")
+        self.assertIn('root.clock(root.inPoint) + "  —  " + root.clock(root.outPoint)', video_range)
+        self.assertIn('property url fallbackSource: ""', video_range)
+        self.assertIn("width: 30", video_range)
+        self.assertIn("filmstripSource", video_range)
+        self.assertIn("Generando fotogramas", video_range)
         waveform = (ROOT / "src" / "ui" / "qml" / "components" / "WaveformTrimmer.qml").read_text(encoding="utf-8")
         self.assertIn("acceptedModifiers: Qt.NoModifier", waveform)
         self.assertIn("Usa la rueda para acercar", waveform)
@@ -995,6 +1033,42 @@ controller.shutdown()
         self.assertIn('Path(input_file).suffix.lower() != ".mp4"', process_worker)
         self.assertIn("not is_editor_mp4_selection", process_worker)
         self.assertIn("editor_mp4_fallback_options(options)", process_worker)
+
+    def test_trim_preview_reuses_a_complete_native_proxy_for_every_selection(self):
+        controller = DownloadController.__new__(DownloadController)
+        attempts = []
+
+        def fake_transcode(_ffmpeg, source, target, start, duration, _headers):
+            attempts.append((source, start, duration))
+            if source == "https://expired.example/video.mp4":
+                raise RuntimeError("HTTP 403")
+            Path(target).write_bytes(b"preview")
+            return str(target)
+
+        controller._fallback_trim_preview_worker = fake_transcode
+
+        def fake_extract(_url, options, download):
+            self.assertTrue(download)
+            self.assertNotIn("download_ranges", options)
+            self.assertIn("height<=480", options["format"])
+            self.assertEqual(options["extractor_args"]["youtube"]["player_client"], ["web_embedded"])
+            output = Path(options["outtmpl"].replace("%(ext)s", "mp4"))
+            output.write_bytes(b"renewed video" * 512)
+            return {"id": "renewed"}
+
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "src.ui.download_controller.extract_info_resilient", side_effect=fake_extract,
+        ):
+            target = Path(directory) / "final.mp4"
+            result = controller._remote_fallback_trim_preview_worker(
+                "ffmpeg", "https://www.youtube.com/watch?v=1",
+                "", target,
+                32.0, 75.0, {}, "18", {},
+            )
+            self.assertTrue(Path(result).is_file())
+            self.assertNotEqual(result, str(target))
+
+        self.assertEqual(attempts, [])
 
     def test_result_button_reveals_the_file_without_an_image_studio_menu(self):
         download_page = (ROOT / "src" / "ui" / "qml" / "pages" / "DownloadPage.qml").read_text(encoding="utf-8")

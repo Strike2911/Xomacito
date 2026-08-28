@@ -9,7 +9,9 @@ from __future__ import annotations
 import json
 import math
 import os
+import shutil
 import struct
+import subprocess
 import sys
 import tempfile
 import time
@@ -39,6 +41,23 @@ def _write_demo_audio(path: Path, seconds: float = 24.0) -> None:
             )
             frames.extend(struct.pack("<h", int(max(-1, min(1, sample)) * 24_000)))
         output.writeframes(frames)
+
+
+def _write_demo_video(path: Path, audio_path: Path, seconds: float = 24.0) -> bool:
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return False
+    result = subprocess.run(
+        [
+            ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+            "-f", "lavfi", "-i", f"testsrc2=size=960x540:rate=24:duration={seconds}",
+            "-i", str(audio_path), "-shortest", "-c:v", "libx264", "-preset", "ultrafast",
+            "-pix_fmt", "yuv420p", "-c:a", "aac", str(path),
+        ],
+        capture_output=True,
+        check=False,
+    )
+    return result.returncode == 0 and path.is_file()
 
 
 def _pump(app, milliseconds: int = 250) -> None:
@@ -86,12 +105,16 @@ def main() -> int:
         library = temp_root / "Biblioteca Xomacito"
         sfx = library / "SFX"
         music = library / "Música"
+        video = library / "Video"
         sfx.mkdir(parents=True)
         music.mkdir(parents=True)
+        video.mkdir(parents=True)
         demo_audio = sfx / "Impacto cinematográfico.wav"
         ambient_audio = music / "Ambiente editorial.wav"
         _write_demo_audio(demo_audio)
         _write_demo_audio(ambient_audio, 18.0)
+        demo_video = video / "Entrevista editorial.mp4"
+        has_demo_video = _write_demo_video(demo_video, demo_audio)
 
         catalog = json.loads((ROOT / "assets" / "cat-collection" / "catalog.json").read_text(encoding="utf-8"))
         catalog_items = catalog if isinstance(catalog, list) else catalog.get("cats", [])
@@ -103,8 +126,8 @@ def main() -> int:
             "appearance_mode": "Dark",
             "selected_theme_accent": "Strike",
             "theme_selection_explicit": True,
-            "release_notice_seen_version": "4.0.12",
-            "guided_tour_seen_version": "4.0.12",
+            "release_notice_seen_version": "4.0.13",
+            "guided_tour_seen_version": "4.0.13",
             "social_onboarding_dismissed": True,
             "premiere_library_enabled": True,
             "premiere_library_path": str(library),
@@ -133,7 +156,7 @@ def main() -> int:
 
         app = QApplication.instance() or QApplication(["xomacito-gallery"])
         QGuiApplication.setApplicationDisplayName("Xomacito 1.0")
-        controller = AppController(app, ROOT, "1.0", "4.0.12")
+        controller = AppController(app, ROOT, "1.0", "4.0.13")
         public_library_path = r"C:\Xomacito\Biblioteca"
         engine = QQmlApplicationEngine()
         context = engine.rootContext()
@@ -164,13 +187,13 @@ def main() -> int:
         controller.download._set_state(
             url="Archivo local · material de entrevista",
             title="Entrevista · corte editorial",
-            mode="Solo Audio",
-            localFile=str(demo_audio),
+            mode="Video+Audio" if has_demo_video else "Solo Audio",
+            localFile=str(demo_video if has_demo_video else demo_audio),
             thumbnailSource=QUrl.fromLocalFile(str(strike_avatar)).toString(),
             status="Enlace analizado · salida WAV",
             analyzed=True,
             hasAudio=True,
-            hasVideo=False,
+            hasVideo=has_demo_video,
             duration=24.0,
             selectedAudio="WAV · PCM 44.1 kHz · Estéreo",
             outputPath=public_library_path,
@@ -179,8 +202,10 @@ def main() -> int:
         controller.download.setOption("startTime", "00:00:06")
         controller.download.setOption("endTime", "00:00:14")
         controller.download._refresh_trim_preview_source()
+        controller.download.prepareTrimFilmstrip()
         controller.download.prepareWaveform()
         _wait(app, lambda: not controller.download.state["waveformBusy"], 15)
+        _wait(app, lambda: not controller.download.state["trimFilmstripBusy"], 15)
         controller.setPage(0)
         _capture(app, window, destination / "descarga.png")
 
@@ -192,7 +217,10 @@ def main() -> int:
         if trimmer is None:
             raise RuntimeError("No se encontró el recortador")
         QMetaObject.invokeMethod(trimmer, "focusSelection")
-        _pump(app, 500)
+        play_button = window.findChild(QObject, "trimPreviewPlayButton")
+        if play_button is None or not QMetaObject.invokeMethod(play_button, "click"):
+            raise RuntimeError("No se pudo iniciar el monitor del recortador")
+        _pump(app, 1200)
         _capture(app, window, destination / "recortador.png")
         QMetaObject.invokeMethod(popup, "close")
 
@@ -236,10 +264,18 @@ def main() -> int:
 
         controller.setPage(2)
         _wait(app, lambda: not controller.media_library.state["busy"], 18)
-        _wait(app, lambda: not controller.media_library.state["waveformBusy"], 15)
+        if has_demo_video:
+            controller.media_library.selectPath(str(demo_video))
+            _wait(app, lambda: not controller.media_library.state["filmstripBusy"], 15)
+        else:
+            _wait(app, lambda: not controller.media_library.state["waveformBusy"], 15)
         selected_media = dict(controller.media_library.state.get("selected") or {})
         if selected_media:
-            selected_media["path"] = public_library_path + r"\Música\Ambiente editorial.wav"
+            selected_media["path"] = (
+                public_library_path + r"\Video\Entrevista editorial.mp4"
+                if has_demo_video
+                else public_library_path + r"\Música\Ambiente editorial.wav"
+            )
         controller.media_library._set_state(
             rootPath=public_library_path,
             clipOutputDir=public_library_path + r"\Recortes",

@@ -414,7 +414,7 @@ class AppController(QObject):
         if info.get("update_available") and installer_url:
             self._pending_update = info
             self._set_update(
-                checking=False, progress=0.0, status=f"Xomacito {info.get('latest_version')} disponible",
+                checking=False, progress=0.0, status="Actualización pendiente",
                 latestVersion=str(info.get("latest_version") or ""),
                 releaseNotes=str(info.get("release_notes") or ""),
             )

@@ -8,8 +8,8 @@ Item {
     id: page
     property var viewState: mediaLibraryController.state
     property var selected: viewState.selected || ({})
-    // El ancho útil de una ventana 960×720 ronda los 920 px. Mantener las
-    // tres zonas en ese tamaño evita el salto brusco a una columna gigante.
+    // El ancho útil de una ventana 960×720 ronda los 920 px. Mantener una
+    // lista cómoda junto al editor evita columnas estrechas y texto ilegible.
     property bool wide: width >= 890
     property bool compactWidth: width < 1120
     property bool dense: height < 760
@@ -24,11 +24,35 @@ Item {
         return String(minutes).padStart(2, "0") + ":" + String(secs).padStart(2, "0")
     }
 
+    function toggleLibraryPreview() {
+        var startMs = Math.max(0, Number(viewState.clipIn || 0)) * 1000
+        var endMs = Math.max(startMs, Number(viewState.clipOut || 0) * 1000)
+        if (player.playbackState === MediaPlayer.PlayingState) {
+            player.pause()
+            return
+        }
+        if (player.position < startMs || player.position >= endMs)
+            player.position = startMs
+        player.play()
+    }
+
     MediaPlayer {
         id: player
         source: selected.kind === "Imagen" ? "" : selected.previewSource || ""
-        audioOutput: AudioOutput { volume: 0.75 }
+        audioOutput: AudioOutput { id: libraryAudio; volume: 0.75 }
         videoOutput: previewVideo
+        onPositionChanged: {
+            if (selected.kind !== "Video" || playbackState !== MediaPlayer.PlayingState)
+                return
+            var startMs = Math.max(0, Number(viewState.clipIn || 0)) * 1000
+            var endMs = Math.max(startMs, Number(viewState.clipOut || 0) * 1000)
+            if (position < startMs)
+                position = startMs
+            else if (endMs > startMs && position >= endMs) {
+                pause()
+                position = startMs
+            }
+        }
     }
 
     ColumnLayout {
@@ -120,7 +144,7 @@ Item {
                 id: libraryCard
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.columnSpan: page.wide ? 3 : 1
+                Layout.columnSpan: page.wide ? 4 : 1
                 Layout.minimumHeight: 280
                 clip: true
                 cardColor: libraryDropArea.containsDrag ? theme.colors.surfaceRaised : theme.colors.surface
@@ -131,7 +155,7 @@ Item {
                     spacing: 9
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { text: "RECURSOS"; color: theme.colors.text; font.pixelSize: 12; font.weight: Font.Bold }
+                        Text { text: "RECURSOS"; color: theme.colors.text; font.pixelSize: 14; font.weight: Font.Bold }
                         Rectangle {
                             implicitWidth: countText.implicitWidth + 14; implicitHeight: 24; radius: 12
                             color: theme.colors.surfaceSoft; border.color: theme.colors.border
@@ -142,7 +166,7 @@ Item {
                     }
                     XTextField {
                         Layout.fillWidth: true
-                        compact: true
+                        compact: false
                         placeholderText: "Buscar nombre, carpeta o metadata…"
                         onTextEdited: mediaLibraryController.setSearchText(text)
                     }
@@ -156,7 +180,7 @@ Item {
                                 required property string modelData
                                 readonly property bool active: viewState.categoryFilter === modelData
                                 width: filterLabel.implicitWidth + 16
-                                height: 27
+                                height: 32
                                 radius: 8
                                 color: active ? Qt.rgba(
                                     page.libraryAccent.r,
@@ -169,7 +193,7 @@ Item {
                                     anchors.centerIn: parent
                                     text: modelData
                                     color: active ? theme.colors.text : theme.colors.textMuted
-                                    font.pixelSize: 8
+                                    font.pixelSize: 10
                                     font.weight: active ? Font.Bold : Font.Medium
                                 }
                                 TapHandler { onTapped: mediaLibraryController.setCategoryFilter(modelData) }
@@ -204,7 +228,7 @@ Item {
                             required property bool isFavorite
                             readonly property color accentColor: folderColor || theme.colors.primary
                             width: mediaList.width
-                            height: rowType === "folder" ? 40 : 52
+                            height: rowType === "folder" ? 46 : 64
                             radius: 9
                             color: rowType === "folder"
                                    ? Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.11)
@@ -259,14 +283,14 @@ Item {
                                     Text {
                                         Layout.fillWidth: true
                                         text: rowType === "folder" ? folderName : name
-                                        color: theme.colors.text; font.pixelSize: rowType === "folder" ? 10 : 9; font.weight: Font.DemiBold
+                                        color: theme.colors.text; font.pixelSize: rowType === "folder" ? 12 : 11; font.weight: Font.DemiBold
                                         elide: Text.ElideRight
                                     }
                                     Text {
                                         Layout.fillWidth: true
                                         visible: rowType === "file"
                                         text: category + " · " + (kind === "Imagen" ? sizeLabel : durationLabel + " · " + sizeLabel)
-                                        color: theme.colors.textMuted; font.pixelSize: 8; elide: Text.ElideRight
+                                        color: theme.colors.textMuted; font.pixelSize: 10; elide: Text.ElideRight
                                     }
                                 }
                                 Text { visible: rowType === "folder"; text: folderCount; color: theme.colors.textMuted; font.pixelSize: 9; font.weight: Font.Bold }
@@ -342,7 +366,7 @@ Item {
             XCard {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.columnSpan: page.wide ? 5 : 1
+                Layout.columnSpan: page.wide ? 8 : 1
                 Layout.minimumHeight: 280
                 clip: true
                 cardColor: theme.colors.surfaceRaised
@@ -355,8 +379,8 @@ Item {
                         Layout.fillWidth: true
                         ColumnLayout {
                             Layout.fillWidth: true; spacing: 2
-                            Text { Layout.fillWidth: true; text: selected.name || "Selecciona un archivo"; color: theme.colors.text; font.pixelSize: 13; font.weight: Font.DemiBold; elide: Text.ElideRight }
-                            Text { text: selected.kind ? selected.kind + " · " + selected.dimensions + " · V: " + selected.videoCodec + " · A: " + selected.audioCodec : "Vista previa y puntos de corte"; color: theme.colors.textMuted; font.pixelSize: 9 }
+                            Text { Layout.fillWidth: true; text: selected.name || "Selecciona un archivo"; color: theme.colors.text; font.pixelSize: 17; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                            Text { text: selected.kind ? selected.kind + " · " + selected.dimensions + " · " + selected.durationLabel + " · " + selected.sizeLabel : "Vista previa y puntos de corte"; color: theme.colors.textMuted; font.pixelSize: 11 }
                         }
                         Rectangle {
                             visible: Boolean(selected.kind)
@@ -373,12 +397,104 @@ Item {
                             onClicked: mediaLibraryController.toggleFavorite(selected.path)
                         }
                     }
-                    Rectangle {
+                    Item {
                         Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        Layout.minimumHeight: 135
-                        radius: 12; color: "#090B0F"; border.color: theme.colors.border; clip: true
-                        VideoOutput { id: previewVideo; anchors.fill: parent; visible: selected.kind !== "Imagen"; fillMode: VideoOutput.PreserveAspectFit }
+                        Layout.preferredHeight: selected.kind === "Video" ? (page.dense ? 190 : 240) : selected.kind === "Audio" ? 92 : 230
+                        visible: Boolean(selected.kind)
+                        RowLayout {
+                            anchors.fill: parent
+                            spacing: 10
+                            visible: selected.kind === "Video"
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                radius: 12; color: "#090B0F"; border.color: theme.colors.border; clip: true
+                                VideoOutput { id: previewVideo; anchors.fill: parent; fillMode: VideoOutput.PreserveAspectFit }
+                                Image {
+                                    anchors.fill: parent; anchors.margins: 4
+                                    visible: player.playbackState === MediaPlayer.StoppedState && Boolean(selected.thumbnailSource)
+                                    source: selected.thumbnailSource || ""
+                                    fillMode: Image.PreserveAspectFit
+                                    asynchronous: true
+                                }
+                                RoundButton {
+                                    anchors.centerIn: parent
+                                    width: 54; height: 54
+                                    text: player.playbackState === MediaPlayer.PlayingState ? "Ⅱ" : "▶"
+                                    onClicked: page.toggleLibraryPreview()
+                                    contentItem: Text { text: parent.text; color: "white"; font.pixelSize: 19; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                                    background: Rectangle { radius: 27; color: "#C0151820"; border.color: theme.colors.primary; border.width: 2 }
+                                }
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    height: 40
+                                    color: "#D90B0D12"
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 10
+                                        anchors.rightMargin: 10
+                                        spacing: 8
+                                        Text {
+                                            text: page.clock(player.position / 1000) + " / " + (selected.durationLabel || "00:00")
+                                            color: "white"
+                                            font.pixelSize: 11
+                                            font.family: "Consolas"
+                                            font.weight: Font.DemiBold
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        XButton {
+                                            compact: true; implicitWidth: 34
+                                            text: libraryAudio.volume <= 0 ? "M" : "♪"
+                                            kind: "ghost"
+                                            onClicked: libraryAudio.volume = libraryAudio.volume > 0 ? 0 : 0.75
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: libraryAudio.volume <= 0 ? "Activar audio" : "Silenciar"
+                                        }
+                                        Slider {
+                                            Layout.preferredWidth: 74
+                                            from: 0; to: 1; stepSize: 0.05
+                                            value: libraryAudio.volume
+                                            onMoved: libraryAudio.volume = value
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: "Volumen " + Math.round(value * 100) + "%"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Rectangle {
+                            anchors.fill: parent
+                            visible: selected.kind === "Audio"
+                            radius: 12; color: "#090B0F"; border.color: theme.colors.border
+                            RowLayout {
+                                anchors.fill: parent; anchors.margins: 16; spacing: 14
+                                RoundButton {
+                                    width: 52; height: 52
+                                    text: player.playbackState === MediaPlayer.PlayingState ? "Ⅱ" : "▶"
+                                    onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play()
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    Text { text: selected.name || "Audio"; color: theme.colors.text; font.pixelSize: 14; font.weight: Font.DemiBold }
+                                    Text { text: "Escucha y selecciona el fragmento en la onda inferior"; color: theme.colors.textMuted; font.pixelSize: 11 }
+                                }
+                                Text { text: page.clock(player.position / 1000) + " / " + (selected.durationLabel || "00:00"); color: theme.colors.text; font.pixelSize: 12; font.family: "Consolas" }
+                                XButton {
+                                    compact: true; implicitWidth: 34
+                                    text: libraryAudio.volume <= 0 ? "M" : "♪"
+                                    kind: "ghost"
+                                    onClicked: libraryAudio.volume = libraryAudio.volume > 0 ? 0 : 0.75
+                                }
+                                Slider {
+                                    Layout.preferredWidth: 90
+                                    from: 0; to: 1; stepSize: 0.05
+                                    value: libraryAudio.volume
+                                    onMoved: libraryAudio.volume = value
+                                }
+                            }
+                        }
                         Image {
                             anchors.fill: parent; anchors.margins: 8
                             visible: selected.kind === "Imagen" && Boolean(selected.previewSource)
@@ -386,21 +502,30 @@ Item {
                             fillMode: Image.PreserveAspectFit
                             asynchronous: true
                         }
-                        Column {
-                            anchors.centerIn: parent
-                            visible: !selected.previewSource || selected.kind === "Audio"
-                            spacing: 8
-                            Text { anchors.horizontalCenter: parent.horizontalCenter; text: selected.kind === "Audio" ? "♫" : "▶"; color: theme.colors.primary; font.pixelSize: 34 }
-                            Text { anchors.horizontalCenter: parent.horizontalCenter; text: selected.kind === "Audio" ? "Vista previa de audio" : "Selecciona un archivo"; color: theme.colors.textMuted; font.pixelSize: 11 }
+                    }
+                    PremiereTimeline {
+                        objectName: "libraryPremiereTimeline"
+                        visible: selected.kind === "Video"
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: page.dense ? 118 : 146
+                        duration: Number(selected.duration || 0)
+                        inPoint: Number(viewState.clipIn || 0)
+                        outPoint: Number(viewState.clipOut || 0)
+                        playhead: Math.max(Number(viewState.clipIn || 0), Math.min(Number(viewState.clipOut || 0), player.position / 1000))
+                        filmstripSource: viewState.filmstripSource || ""
+                        fallbackSource: selected.thumbnailSource || ""
+                        waveformSource: viewState.waveformSource || ""
+                        filmstripBusy: Boolean(viewState.filmstripBusy)
+                        waveformBusy: Boolean(viewState.waveformBusy)
+                        onInPointMoved: function(value) {
+                            mediaLibraryController.setValue("clipIn", value)
+                            player.pause()
+                            player.position = value * 1000
                         }
-                        RoundButton {
-                            anchors.centerIn: parent
-                            visible: Boolean(selected.previewSource) && selected.kind !== "Imagen"
-                            width: 48; height: 48
-                            text: player.playbackState === MediaPlayer.PlayingState ? "Ⅱ" : "▶"
-                            onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play()
-                            contentItem: Text { text: parent.text; color: "white"; font.pixelSize: 17; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                            background: Rectangle { radius: 24; color: "#B8151820"; border.color: theme.colors.primary; border.width: 1 }
+                        onOutPointMoved: function(value) {
+                            mediaLibraryController.setValue("clipOut", value)
+                            player.pause()
+                            player.position = value * 1000
                         }
                     }
                     Rectangle {
@@ -452,7 +577,7 @@ Item {
                     WaveformTrimmer {
                         id: libraryTrimmer
                         objectName: "mediaClipRange"
-                        visible: selected.kind !== "Imagen"
+                        visible: selected.kind === "Audio"
                         Layout.fillWidth: true
                         Layout.preferredHeight: page.dense ? 174 : 208
                         compact: page.dense
@@ -465,6 +590,19 @@ Item {
                         onInPointMoved: function(value) { mediaLibraryController.setValue("clipIn", value) }
                         onOutPointMoved: function(value) { mediaLibraryController.setValue("clipOut", value) }
                         onRetryRequested: mediaLibraryController.retryWaveform()
+                    }
+                    RowLayout {
+                        visible: selected.kind === "Video" && !page.dense
+                        Layout.fillWidth: true
+                        Text { text: "IN  " + page.clock(viewState.clipIn); color: theme.colors.text; font.pixelSize: 12; font.weight: Font.Bold; font.family: "Consolas" }
+                        Item { Layout.fillWidth: true }
+                        Rectangle {
+                            implicitWidth: clipLength.implicitWidth + 20; implicitHeight: 30; radius: 15
+                            color: theme.colors.surfaceSoft; border.color: theme.colors.border
+                            Text { id: clipLength; anchors.centerIn: parent; text: "DURACIÓN  " + page.clock(Math.max(0, viewState.clipOut - viewState.clipIn)); color: theme.colors.text; font.pixelSize: 11; font.weight: Font.DemiBold }
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text { text: "OUT  " + page.clock(viewState.clipOut); color: theme.colors.text; font.pixelSize: 12; font.weight: Font.Bold; font.family: "Consolas" }
                     }
                     RowLayout {
                         visible: selected.kind !== "Imagen"
@@ -502,6 +640,7 @@ Item {
             }
 
             XCard {
+                visible: false
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Layout.columnSpan: page.wide ? 4 : 1
