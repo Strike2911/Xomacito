@@ -1265,6 +1265,14 @@ controller.shutdown()
         with tempfile.TemporaryDirectory() as appdata, patch.dict(os.environ, {"APPDATA": appdata}):
             self.assertTrue(SettingsStore("XomacitoTest").get("open_explorer_after_download"))
 
+    def test_buttons_keep_readable_text_across_hover_and_pressed_states(self):
+        button = (ROOT / "src" / "ui" / "qml" / "components" / "XButton.qml").read_text(encoding="utf-8")
+        self.assertIn('if (kind === "primary") return theme.colors.primaryHover', button)
+        self.assertIn("readonly property color currentBackgroundColor", button)
+        self.assertIn("function contrastText(backgroundColor)", button)
+        self.assertIn("color: root.foregroundColor()", button)
+        self.assertIn("color: root.currentBackgroundColor", button)
+
     def test_mp3_cover_is_embedded_as_an_attached_picture(self):
         script = r'''
 import io
