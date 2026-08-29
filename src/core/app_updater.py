@@ -23,12 +23,28 @@ REQUEST_HEADERS = {
     "X-GitHub-Api-Version": "2022-11-28",
 }
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
-UPDATE_PROMPT_NOTES_LIMIT = 1200
 IDEA_CONTRIBUTORS = [
     "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
     "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan",
 ]
+PUBLIC_VERSION_BY_INTERNAL = {
+    "4.0.14": "1.1",
+}
+PUBLIC_BUGFIX_NOTE = "- Arreglo de bugs de la versión 1.0."
 RELEASE_NOTICES = {
+    "4.0.14": {
+        "eyebrow": "XOMACITO 1.1",
+        "title": "Xomacito 1.1",
+        "subtitle": "ARREGLO DE BUGS DE LA VERSIÓN 1.0",
+        "message": "Una revisión enfocada en estabilidad y comodidad de edición.",
+        "highlights": [
+            "Arreglo de Bugs de la versión 1.0",
+        ],
+        "contributors": IDEA_CONTRIBUTORS,
+        "closing": "Gracias a todos los aportadores de ideas de Xomacito 1.1.",
+        "platinumCelebration": False,
+        "smoothMotionPromotion": False,
+    },
     "4.0.13": {
         "eyebrow": "XOMACITO 1.0",
         "title": "Xomacito 1.0",
@@ -675,17 +691,11 @@ class AppUpdateError(RuntimeError):
 
 
 def build_update_prompt(update_info: dict, current_version: str) -> str:
-    """Construye la alerta de actualización incluyendo las notas publicadas."""
-    latest_version = str(update_info.get("latest_version") or "nueva")
-    release_notes = str(update_info.get("release_notes") or "").strip()
-    if len(release_notes) > UPDATE_PROMPT_NOTES_LIMIT:
-        release_notes = release_notes[:UPDATE_PROMPT_NOTES_LIMIT].rstrip() + "…"
-
-    notes_section = f"\n\nNovedades:\n{release_notes}" if release_notes else ""
+    """Construye una alerta pública sin exponer la revisión interna ni su hash."""
+    public_version = str(update_info.get("public_version") or current_version or "1.1")
     return (
-        f"Hay una nueva versión disponible: {latest_version}\n"
-        f"Tu versión actual: {current_version}"
-        f"{notes_section}\n\n"
+        f"Xomacito {public_version}\n\n"
+        f"{PUBLIC_BUGFIX_NOTE}\n\n"
         "¿Quieres descargarla e instalarla ahora?\n\n"
         "Si eliges Sí, Xomacito verificará el instalador, se cerrará "
         "durante la actualización y volverá a abrirse al terminar."
@@ -743,13 +753,15 @@ def check_for_app_update(current_version: str, session=None, timeout: float = 12
 
         latest_text = str(release.get("tag_name", "")).strip()
         latest = _parsed_version(latest_text)
+        normalized_latest = str(latest)
         update_available = latest > current
         result = {
             "update_available": update_available,
             "current_version": str(current),
-            "latest_version": str(latest),
+            "latest_version": normalized_latest,
+            "public_version": PUBLIC_VERSION_BY_INTERNAL.get(normalized_latest, ""),
             "release_url": release.get("html_url") or RELEASES_URL,
-            "release_notes": str(release.get("body") or "").strip(),
+            "release_notes": PUBLIC_BUGFIX_NOTE,
         }
 
         if not update_available:

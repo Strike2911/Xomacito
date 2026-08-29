@@ -47,6 +47,23 @@ class ImmediatePool:
 
 
 class MediaLibraryTests(unittest.TestCase):
+    def test_download_filmstrip_result_uses_the_same_revision_key(self):
+        captured = {}
+        fake_controller = SimpleNamespace(
+            _current_filmstrip_key=lambda: "video-activo",
+            _set_state=lambda **values: captured.update(values),
+        )
+
+        DownloadController._download_filmstrip_ready(
+            fake_controller,
+            "video-activo|filmstrip-v4-64",
+            r"C:\cache\filmstrip.png",
+        )
+
+        self.assertTrue(captured["trimFilmstripSource"].startswith("file:"))
+        self.assertFalse(captured["trimFilmstripBusy"])
+        self.assertEqual(captured["trimFilmstripError"], "")
+
     def test_remote_waveform_recovers_through_a_temporary_ytdlp_download(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "waveform.png"
@@ -293,7 +310,8 @@ class MediaLibraryTests(unittest.TestCase):
             self.assertGreater(output.stat().st_size, 256)
             from PIL import Image
             with Image.open(output) as image:
-                self.assertGreater(image.width, image.height * 6)
+                self.assertGreater(image.width, 7000)
+                self.assertGreater(image.width, image.height * 50)
 
     def test_accurate_clip_is_created_as_premiere_ready_mp4_and_original_survives(self):
         ffmpeg_path = ROOT / "bin" / "ffmpeg" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")

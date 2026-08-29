@@ -778,7 +778,7 @@ class DownloadController(QObject):
                 )
                 return
 
-        request_key = f"{self._current_filmstrip_key()}|filmstrip-v2"
+        request_key = f"{self._current_filmstrip_key()}|filmstrip-v4-64"
         target = filmstrip_target(self.filmstrip_dir, request_key)
         if target.is_file() and target.stat().st_size > 256:
             self._set_state(
@@ -877,7 +877,8 @@ class DownloadController(QObject):
             )
 
     def _download_filmstrip_ready(self, request_key: str, path: str):
-        if request_key != self._current_filmstrip_key():
+        expected_key = f"{self._current_filmstrip_key()}|filmstrip-v4-64"
+        if request_key != expected_key:
             return
         self._set_state(
             trimFilmstripSource=QUrl.fromLocalFile(str(path)).toString(),
@@ -886,7 +887,8 @@ class DownloadController(QObject):
         )
 
     def _download_filmstrip_failed(self, request_key: str, _message: str):
-        if request_key != self._current_filmstrip_key():
+        expected_key = f"{self._current_filmstrip_key()}|filmstrip-v4-64"
+        if request_key != expected_key:
             return
         self._set_state(
             trimFilmstripSource="",

@@ -527,6 +527,10 @@ Item {
                             player.pause()
                             player.position = value * 1000
                         }
+                        onSeekRequested: function(value) {
+                            player.pause()
+                            player.position = value * 1000
+                        }
                     }
                     Rectangle {
                         Layout.fillWidth: true

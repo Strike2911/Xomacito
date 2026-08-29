@@ -19,7 +19,7 @@ def render_filmstrip(
     target: str | Path,
     duration: float,
     headers: Mapping[str, str] | None = None,
-    frame_count: int = 24,
+    frame_count: int = 64,
 ) -> str:
     """Renderiza una tira cronológica uniforme al estilo de una línea de edición."""
     destination = Path(target)
@@ -29,7 +29,7 @@ def render_filmstrip(
     if float(duration or 0) <= 0:
         raise RuntimeError("No se conoce la duración del video.")
 
-    count = max(12, min(48, int(frame_count or 24)))
+    count = max(24, min(64, int(frame_count or 64)))
     temporary = destination.with_name(destination.stem + ".tmp.png")
     temporary.unlink(missing_ok=True)
     command = [

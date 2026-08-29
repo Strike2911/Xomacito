@@ -491,7 +491,7 @@ class MediaLibraryController(QObject):
                 filmstripError="El archivo ya no está disponible.",
             )
             return
-        cache_key = f"{source.resolve()}|{source.stat().st_mtime_ns}|{source.stat().st_size}|filmstrip-v2"
+        cache_key = f"{source.resolve()}|{source.stat().st_mtime_ns}|{source.stat().st_size}|filmstrip-v4-64"
         target = filmstrip_target(self.thumbnails_dir, cache_key)
         if force:
             target.unlink(missing_ok=True)

@@ -137,19 +137,21 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertEqual(version_20["latest_version"], "2.1")
         self.assertTrue(version_20["installer_url"].endswith("/Xomacito-2.1-Setup.exe"))
 
-    def test_update_prompt_displays_the_release_message(self):
+    def test_update_prompt_hides_internal_version_sha_and_extra_notes(self):
         prompt = build_update_prompt(
             {
-                "latest_version": "1.6.4",
-                "release_notes": (
-                    "Playera encontró un fallo en la recodificación.\n"
-                    "ᗧ • • •  VIVA LA GRASA!!! :V"
-                ),
+                "latest_version": "4.0.14",
+                "public_version": "1.1",
+                "release_notes": "Texto remoto que no debe mostrarse.",
+                "installer_digest": "sha256:" + ("a" * 64),
             },
-            "1.6.3",
+            "1.1",
         )
-        self.assertIn("Playera encontró", prompt)
-        self.assertIn("VIVA LA GRASA!!! :V", prompt)
+        self.assertIn("Xomacito 1.1", prompt)
+        self.assertIn("- Arreglo de bugs de la versión 1.0.", prompt)
+        self.assertNotIn("4.0.14", prompt)
+        self.assertNotIn("sha256", prompt.casefold())
+        self.assertNotIn("Texto remoto", prompt)
         self.assertIn("¿Quieres descargarla e instalarla ahora?", prompt)
 
     def test_release_164_has_a_one_time_alpha_notice(self):
@@ -363,6 +365,12 @@ class XomacitoWrapperTests(unittest.TestCase):
             self.assertIn(contributor, notice["contributors"])
         self.assertNotIn("Strike", notice["contributors"])
         self.assertFalse(notice["smoothMotionPromotion"])
+
+    def test_release_4014_uses_public_version_11_and_one_bugfix_line(self):
+        notice = release_notice_for_version("4.0.14")
+
+        self.assertEqual(notice["title"], "Xomacito 1.1")
+        self.assertEqual(notice["highlights"], ["Arreglo de Bugs de la versión 1.0"])
 
     def test_app_installer_download_checks_size_pe_header_and_sha256(self):
         payload = b"MZ" + (b"xomacito" * 64)
@@ -1276,9 +1284,10 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertNotIn("title_fixer.py", spec)
 
         self.assertIn("PrivilegesRequired=lowest", installer)
-        self.assertIn("OutputBaseFilename=Xomacito-1.0-Setup", installer)
-        self.assertIn('#define MyAppVersion "4.0.13"', installer)
-        self.assertIn('#define MyAppDisplayVersion "1.0"', installer)
+        self.assertIn("OutputBaseFilename=Xomacito-1.1-Setup", installer)
+        self.assertIn('#define MyAppVersion "4.0.14"', installer)
+        self.assertIn('#define MyAppDisplayVersion "1.1"', installer)
+        self.assertIn("AppVersion={#MyAppDisplayVersion}", installer)
         self.assertIn("shellexec postinstall skipifsilent skipifdoesntexist", installer)
         self.assertIn("CloseApplications=force", installer)
         self.assertIn("CloseApplicationsFilter=Xomacito.exe,ffmpeg.exe,ffprobe.exe", installer)
@@ -1391,7 +1400,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
-        self.assertIn("release\\Xomacito-1.0-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-1.1-Setup.exe", build_script)
         self.assertIn("Assert-ReadableApplicationSource", build_script)
         self.assertIn("pyarmor_runtime|__pyarmor__|pytransform", build_script)
         self.assertIn('PROJECT_ROOT / "main\\.py"', build_script)

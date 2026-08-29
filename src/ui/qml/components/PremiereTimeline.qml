@@ -16,6 +16,9 @@ Item {
     property url waveformSource: ""
     property bool filmstripBusy: false
     property bool waveformBusy: false
+    property real interactivePlayhead: playhead
+    property bool scrubbing: false
+    readonly property int timelineTickCount: width >= 900 ? 8 : 6
     signal inPointMoved(real value)
     signal outPointMoved(real value)
     signal seekRequested(real value)
@@ -41,7 +44,7 @@ Item {
     function timeToX(seconds) {
         if (viewportDuration <= 0)
             return 0
-        return clamp((seconds - viewportStart) / viewportDuration, 0, 1) * width
+        return (seconds - viewportStart) / viewportDuration * width
     }
 
     function xToTime(positionX) {
@@ -60,17 +63,30 @@ Item {
         viewportStart = clamp(center - visible / 2, 0, Math.max(0, root.duration - visible))
     }
 
-    function clipRect(imageItem) {
-        if (zoomFactor <= 1 || duration <= 0)
-            return Qt.rect(0, 0, 0, 0)
-        var sourceWidth = Math.max(1, Number(imageItem.sourceSize.width || imageItem.implicitWidth || 1))
-        var sourceHeight = Math.max(1, Number(imageItem.sourceSize.height || imageItem.implicitHeight || 1))
-        return Qt.rect(
-            viewportStart / duration * sourceWidth,
+    function panBy(seconds) {
+        viewportStart = clamp(
+            viewportStart + Number(seconds || 0),
             0,
-            viewportDuration / duration * sourceWidth,
-            sourceHeight
+            Math.max(0, duration - viewportDuration)
         )
+    }
+
+    function sourceCropRect(sourceWidth, sourceHeight) {
+        var pixelWidth = Math.max(0, Number(sourceWidth) || 0)
+        var pixelHeight = Math.max(0, Number(sourceHeight) || 0)
+        if (zoomFactor <= 1 || duration <= 0 || pixelWidth <= 0 || pixelHeight <= 0)
+            return Qt.rect(0, 0, 0, 0)
+        var start = clamp(viewportStart / duration, 0, 1)
+        var end = clamp(viewportEnd / duration, start, 1)
+        var sourceX = Math.floor(start * pixelWidth)
+        var sourceEnd = Math.min(pixelWidth, Math.ceil(end * pixelWidth))
+        return Qt.rect(sourceX, 0, Math.max(1, sourceEnd - sourceX), pixelHeight)
+    }
+
+    function requestScrub(value) {
+        var bounded = clamp(value, inPoint, outPoint)
+        interactivePlayhead = bounded
+        seekRequested(bounded)
     }
 
     onDurationChanged: {
@@ -78,6 +94,8 @@ Item {
         viewportStart = 0
     }
     onPlayheadChanged: {
+        if (!scrubbing)
+            interactivePlayhead = playhead
         if (zoomFactor <= 1 || viewportDuration <= 0)
             return
         if (playhead < viewportStart || playhead > viewportEnd) {
@@ -127,11 +145,21 @@ Item {
 
             MouseArea {
                 anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: function(mouse) {
-                    var value = root.xToTime(mouse.x)
-                    root.seekRequested(root.clamp(value, root.inPoint, root.outPoint))
+                cursorShape: Qt.SizeHorCursor
+                preventStealing: true
+                onPressed: function(mouse) {
+                    root.scrubbing = true
+                    root.requestScrub(root.xToTime(mouse.x))
                 }
+                onPositionChanged: function(mouse) {
+                    if (pressed)
+                        root.requestScrub(root.xToTime(mouse.x))
+                }
+                onReleased: function(mouse) {
+                    root.requestScrub(root.xToTime(mouse.x))
+                    root.scrubbing = false
+                }
+                onCanceled: root.scrubbing = false
             }
 
             Row {
@@ -191,6 +219,39 @@ Item {
                     font.family: "Consolas"
                 }
             }
+
+            Row {
+                id: panTools
+                parent: zoomRail
+                anchors.left: parent.left
+                anchors.leftMargin: 9
+                anchors.right: zoomTools.left
+                anchors.rightMargin: 14
+                anchors.verticalCenter: parent.verticalCenter
+                height: 22
+                spacing: 7
+                visible: root.zoomFactor > 1
+                z: 20
+
+                Text {
+                    width: 66
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "DESPLAZAR"
+                    color: "#AEB5C5"
+                    font.pixelSize: 9
+                    font.weight: Font.Bold
+                }
+                Slider {
+                    id: viewportSlider
+                    width: Math.max(90, panTools.width - 73)
+                    height: 20
+                    from: 0
+                    to: Math.max(0, root.duration - root.viewportDuration)
+                    value: root.viewportStart
+                    stepSize: Math.max(0.02, root.viewportDuration / 200)
+                    onMoved: root.viewportStart = root.clamp(value, from, to)
+                }
+            }
         }
 
         Item {
@@ -201,10 +262,19 @@ Item {
             height: 76
             clip: true
             Image {
+                id: frameProbe
+                objectName: "premiereFrameProbe"
+                source: root.filmstripSource
+                asynchronous: true
+                cache: true
+                visible: false
+            }
+            Image {
                 id: frameImage
+                objectName: "premiereFrameImage"
                 anchors.fill: parent
                 source: root.filmstripSource
-                sourceClipRect: root.clipRect(frameImage)
+                sourceClipRect: root.sourceCropRect(frameProbe.sourceSize.width, frameProbe.sourceSize.height)
                 fillMode: Image.Stretch
                 asynchronous: true
                 cache: true
@@ -242,13 +312,23 @@ Item {
             anchors.top: frames.bottom
             anchors.bottom: parent.bottom
             color: "#0B0D15"
+            clip: true
             Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: 1; color: "#3B4562" }
             Image {
+                id: waveProbe
+                objectName: "premiereWaveProbe"
+                source: root.waveformSource
+                asynchronous: true
+                cache: true
+                visible: false
+            }
+            Image {
                 id: waveImage
+                objectName: "premiereWaveImage"
                 anchors.fill: parent
                 anchors.margins: 4
                 source: root.waveformSource
-                sourceClipRect: root.clipRect(waveImage)
+                sourceClipRect: root.sourceCropRect(waveProbe.sourceSize.width, waveProbe.sourceSize.height)
                 fillMode: Image.Stretch
                 asynchronous: true
                 cache: true
@@ -264,10 +344,57 @@ Item {
             }
         }
 
+        Item {
+            id: timeGrid
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: frames.top
+            anchors.bottom: parent.bottom
+            z: 3
+            Repeater {
+                model: root.timelineTickCount + 1
+                delegate: Item {
+                    required property int index
+                    x: Math.round(index / root.timelineTickCount * timeGrid.width)
+                    width: 1
+                    height: timeGrid.height
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: 1
+                        color: index === 0 || index === root.timelineTickCount ? "#526078" : "#553B4562"
+                    }
+                    Text {
+                        visible: index > 0 && index < root.timelineTickCount
+                        anchors.left: parent.left
+                        anchors.leftMargin: 4
+                        anchors.top: parent.top
+                        anchors.topMargin: 4
+                        text: root.clock(root.viewportStart + index / root.timelineTickCount * root.viewportDuration)
+                        color: "#D1D6E2"
+                        font.pixelSize: 8
+                        font.family: "Consolas"
+                        style: Text.Outline
+                        styleColor: "#B0000000"
+                    }
+                }
+            }
+        }
+
+        WheelHandler {
+            acceptedModifiers: Qt.NoModifier
+            onWheel: function(event) {
+                if (root.zoomFactor <= 1)
+                    return
+                var direction = event.angleDelta.y > 0 ? -1 : 1
+                root.panBy(direction * root.viewportDuration * 0.12)
+            }
+        }
+
         Rectangle {
-            x: root.timeToX(root.inPoint)
+            x: root.clamp(root.timeToX(root.inPoint), 0, parent.width)
             y: frames.y
-            width: Math.max(1, root.timeToX(root.outPoint) - x)
+            width: Math.max(1, root.clamp(root.timeToX(root.outPoint), 0, parent.width) - x)
             height: parent.height - y
             color: "transparent"
             border.color: "#A29DFF"
@@ -275,12 +402,12 @@ Item {
         }
         Rectangle {
             y: frames.y
-            width: root.timeToX(root.inPoint)
+            width: root.clamp(root.timeToX(root.inPoint), 0, parent.width)
             height: parent.height - y
             color: "#A8070910"
         }
         Rectangle {
-            x: root.timeToX(root.outPoint)
+            x: root.clamp(root.timeToX(root.outPoint), 0, parent.width)
             y: frames.y
             width: parent.width - x
             height: parent.height - y
@@ -293,8 +420,6 @@ Item {
             anchors.right: parent.right
             anchors.top: scrubRail.bottom
             anchors.bottom: parent.bottom
-            anchors.leftMargin: 4
-            anchors.rightMargin: 4
             from: root.viewportStart
             to: Math.max(from + 0.05, root.viewportEnd)
             stepSize: root.duration > 120 ? 0.1 : 0.02
@@ -305,24 +430,28 @@ Item {
             second.onMoved: root.outPointMoved(Math.max(second.value, root.inPoint + 0.20))
             background: Item {}
             first.handle: Item {
-                x: timeline.leftPadding + timeline.first.visualPosition * (timeline.availableWidth - width)
+                x: root.timeToX(root.inPoint) - width / 2
                 y: 2
-                width: 18; height: timeline.height - 4
+                width: 14; height: timeline.height - 4
+                enabled: root.inPoint >= root.viewportStart && root.inPoint <= root.viewportEnd
+                opacity: enabled ? 1 : 0
                 Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: 8; height: parent.height; radius: 4
+                    width: 7; height: parent.height; radius: 3.5
                     color: timeline.first.pressed ? "#DAD8FF" : "#FFFFFF"
                     border.color: "#6963D4"; border.width: 1
                     Rectangle { anchors.centerIn: parent; width: 1; height: 24; color: "#56519D" }
                 }
             }
             second.handle: Item {
-                x: timeline.leftPadding + timeline.second.visualPosition * (timeline.availableWidth - width)
+                x: root.timeToX(root.outPoint) - width / 2
                 y: 2
-                width: 18; height: timeline.height - 4
+                width: 14; height: timeline.height - 4
+                enabled: root.outPoint >= root.viewportStart && root.outPoint <= root.viewportEnd
+                opacity: enabled ? 1 : 0
                 Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: 8; height: parent.height; radius: 4
+                    width: 7; height: parent.height; radius: 3.5
                     color: timeline.second.pressed ? "#DAD8FF" : "#FFFFFF"
                     border.color: "#6963D4"; border.width: 1
                     Rectangle { anchors.centerIn: parent; width: 1; height: 24; color: "#56519D" }
@@ -334,7 +463,7 @@ Item {
             id: playheadMarker
             objectName: "premierePlayhead"
             visible: root.duration > 0
-            property real boundedTime: root.clamp(root.playhead, root.inPoint, root.outPoint)
+            property real boundedTime: root.clamp(root.interactivePlayhead, root.inPoint, root.outPoint)
             x: root.timeToX(boundedTime) - width / 2
             y: zoomRail.height
             width: 26
@@ -368,21 +497,6 @@ Item {
                 width: 2
                 color: "#2D9CFF"
             }
-            MouseArea {
-                anchors.top: parent.top
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: parent.width
-                height: scrubRail.height
-                cursorShape: Qt.SizeHorCursor
-                preventStealing: true
-                function seekAt(mouse) {
-                    var point = playheadMarker.mapToItem(root, mouse.x, mouse.y)
-                    var raw = root.xToTime(point.x)
-                    root.seekRequested(root.clamp(raw, root.inPoint, root.outPoint))
-                }
-                onPressed: function(mouse) { seekAt(mouse) }
-                onPositionChanged: function(mouse) { if (pressed) seekAt(mouse) }
-            }
         }
 
         Rectangle {
@@ -395,6 +509,7 @@ Item {
             color: "#E0151820"
             border.color: "#E9EAF2"
             z: 8
+            visible: root.inPoint >= root.viewportStart && root.outPoint <= root.viewportEnd
             Text {
                 id: rangeText
                 anchors.centerIn: parent

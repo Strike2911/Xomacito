@@ -521,8 +521,8 @@ ApplicationWindow {
             id: updatePopupContent
             x: 22; y: 22; width: updatePopup.width - 44; spacing: 14
             Text { text: "ACTUALIZACIÓN"; color: theme.colors.accent; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.2 }
-            Text { Layout.fillWidth: true; text: "Actualización pendiente"; color: theme.colors.text; font.pixelSize: 25; font.weight: Font.DemiBold; wrapMode: Text.WordWrap }
-            Text { Layout.fillWidth: true; text: window.updateInfo.release_notes || "Hay mejoras y correcciones listas para instalar."; color: theme.colors.textMuted; font.pixelSize: 12; wrapMode: Text.WordWrap; maximumLineCount: 14; elide: Text.ElideRight }
+            Text { Layout.fillWidth: true; text: "Xomacito " + (window.updateInfo.public_version || appController.version); color: theme.colors.text; font.pixelSize: 25; font.weight: Font.DemiBold; wrapMode: Text.WordWrap }
+            Text { Layout.fillWidth: true; text: "- Arreglo de bugs de la versión 1.0."; color: theme.colors.textMuted; font.pixelSize: 12; wrapMode: Text.WordWrap; maximumLineCount: 3; elide: Text.ElideRight }
             ProgressBar { Layout.fillWidth: true; visible: appController.updateState.downloading; value: appController.updateState.progress; indeterminate: value < 0 }
             Text { Layout.fillWidth: true; visible: appController.updateState.downloading; text: appController.updateState.status; color: theme.colors.textMuted; font.pixelSize: 11 }
             RowLayout {

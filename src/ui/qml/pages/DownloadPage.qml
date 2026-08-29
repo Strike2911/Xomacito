@@ -10,6 +10,7 @@ Item {
     property var options: downloadController.options
     property bool denseLayout: height < 640
     property bool trimUserMuted: false
+    property real trimPendingScrubSeconds: -1
 
     MediaPlayer {
         id: trimPlayer
@@ -55,6 +56,19 @@ Item {
                 position = Math.max(0, endSeconds - offset) * 1000
                 trimPopup.pendingSeekSeconds = endSeconds
             }
+        }
+    }
+
+    Timer {
+        id: trimScrubSeekTimer
+        interval: 24
+        repeat: false
+        onTriggered: {
+            if (page.trimPendingScrubSeconds < 0)
+                return
+            var target = page.trimPendingScrubSeconds
+            page.trimPendingScrubSeconds = -1
+            trimPlayer.position = Math.max(0, target - Number(viewState.trimPreviewOffset || 0)) * 1000
         }
     }
 
@@ -106,7 +120,9 @@ Item {
         trimPlaybackStartDelay.stop()
         if (trimPlayer.playbackState === MediaPlayer.PlayingState)
             trimPlayer.pause()
-        trimPlayer.position = Math.max(0, bounded - Number(viewState.trimPreviewOffset || 0)) * 1000
+        page.trimPendingScrubSeconds = bounded
+        if (!trimScrubSeekTimer.running)
+            trimScrubSeekTimer.start()
     }
 
     function toggleTrimPreview() {
@@ -414,6 +430,8 @@ Item {
                 }
                 onClosed: {
                     trimPlaybackStartDelay.stop()
+                    trimScrubSeekTimer.stop()
+                    page.trimPendingScrubSeconds = -1
                     trimPlayer.stop()
                     trimWaveformDelay.stop()
                     trimFilmstripDelay.stop()

@@ -23,6 +23,14 @@ Button {
         return theme.colors.primary
     }
 
+    function hoverColor() {
+        if (kind === "primary") return Qt.darker(theme.colors.primary, 1.08)
+        if (kind === "danger") return Qt.darker(theme.colors.error, 1.08)
+        if (kind === "success") return Qt.darker(theme.colors.success, 1.08)
+        if (kind === "ghost") return theme.colors.surfaceSoft
+        return Qt.lighter(theme.colors.surfaceRaised, 1.08)
+    }
+
     contentItem: Text {
         text: (root.leadingText ? root.leadingText + "  " : "") + root.text
         color: !root.enabled ? theme.colors.textDim : root.kind === "primary" || root.kind === "danger" || root.kind === "success" ? "#FFFFFF" : theme.colors.text
@@ -33,7 +41,7 @@ Button {
     }
     background: Rectangle {
         radius: 11
-        color: root.down ? theme.colors.primaryPressed : root.hovered && root.kind === "primary" ? theme.colors.primaryHover : root.baseColor()
+        color: root.down ? theme.colors.primaryPressed : root.hovered ? root.hoverColor() : root.baseColor()
         border.width: root.activeFocus || root.kind === "secondary" || root.kind === "ghost" ? 1 : 0
         border.color: root.activeFocus ? theme.colors.accent : theme.colors.border
         Behavior on color { ColorAnimation { duration: settingsController.state.animationsEnabled ? 120 : 0 } }
