@@ -10,6 +10,7 @@ import shutil
 import tempfile
 import subprocess
 import multiprocessing
+import math
 import time
 import threading
 from pathlib import Path
@@ -107,7 +108,7 @@ class VideoUpscaler:
             self.ffprobe_exe,
             "-v", "quiet",
             "-print_format", "json",
-            "-show_streams",
+            "-show_streams", "-show_format",
             input_path
         ]
         try:
@@ -119,14 +120,19 @@ class VideoUpscaler:
             data = json.loads(result.stdout)
         except Exception as e:
             print(f"ADVERTENCIA: ffprobe fallo ({e}), usando valores por defecto.")
-            return {"fps": "30", "ext": os.path.splitext(input_path)[1].lower(), "has_audio": False}
+            return {"fps": "30", "ext": os.path.splitext(input_path)[1].lower(), "has_audio": False,
+                    "duration": 0.0, "width": 0, "height": 0, "estimated_frames": 0}
 
         fps = "30"
         has_audio = False
+        width = 0
+        height = 0
 
         for stream in data.get("streams", []):
             codec_type = stream.get("codec_type", "")
             if codec_type == "video":
+                width = int(stream.get("width") or 0)
+                height = int(stream.get("height") or 0)
                 r_fps = stream.get("r_frame_rate", "30/1")
                 try:
                     num, den = r_fps.split("/")
@@ -137,20 +143,44 @@ class VideoUpscaler:
                 has_audio = True
 
         ext = os.path.splitext(input_path)[1].lower()
-        return {"fps": fps, "ext": ext, "has_audio": has_audio}
+        try:
+            duration = float((data.get("format") or {}).get("duration") or 0)
+        except (TypeError, ValueError):
+            duration = 0.0
+        try:
+            estimated_frames = max(0, round(duration * float(fps)))
+        except (TypeError, ValueError):
+            estimated_frames = 0
+        return {
+            "fps": fps, "ext": ext, "has_audio": has_audio,
+            "duration": duration, "width": width, "height": height,
+            "estimated_frames": estimated_frames,
+        }
 
     # ─── Paso 2: Extraer frames ──────────────────────────────────────────────
 
-    def _extract_frames(self, input_path: str, frames_dir: str, fps: str):
+    def _extract_frames(self, input_path: str, frames_dir: str, fps: str,
+                        estimated_frames: int = 0, start_time: float = 0.0,
+                        segment_duration: float = 0.0,
+                        progress_start: float = 5.0, progress_end: float = 15.0):
         """Extrae todos los frames como PNG con FFmpeg."""
         self._check_cancel()
-        self._report(5, "Preparando extracción de fotogramas...")
+        self._report(progress_start, "Preparando extracción de fotogramas...")
 
         pattern = os.path.join(frames_dir, "frame_%08d.png")
         cmd = [
             self.ffmpeg_exe,
+        ]
+        if start_time > 0:
+            cmd += ["-ss", f"{start_time:.6f}"]
+        cmd += [
             "-i", input_path,
+        ]
+        if segment_duration > 0:
+            cmd += ["-t", f"{segment_duration:.6f}"]
+        cmd += [
             "-vsync", "0",       # Sin duplicar ni omitir frames
+            "-compression_level", "1",  # Prioriza velocidad; los temporales se eliminan al terminar.
             "-f", "image2",
             pattern,
             "-y"
@@ -187,9 +217,18 @@ class VideoUpscaler:
         while proc.poll() is None:
             self._check_cancel(proc)
             elapsed = time.time() - start_t
-            p = min(14.9, 5 + (elapsed / 2.0)) 
-            self._report(p, f"Extrayendo fotogramas ({int(elapsed)}s)...")
-            time.sleep(0.5)
+            try:
+                extracted = sum(1 for entry in os.scandir(frames_dir) if entry.name.endswith(".png"))
+            except OSError:
+                extracted = 0
+            if estimated_frames:
+                p = progress_start + min(1.0, extracted / estimated_frames) * (progress_end - progress_start)
+                label = f"Extrayendo: {extracted}/{estimated_frames} fotogramas"
+            else:
+                p = min(progress_end, progress_start + (elapsed / 2.0))
+                label = f"Extrayendo fotogramas ({int(elapsed)}s)"
+            self._report(p, label + "…")
+            time.sleep(0.35)
 
         proc.wait() # Asegurar cierre
         reader_thread.join(timeout=1.0)
@@ -202,7 +241,7 @@ class VideoUpscaler:
         frames = [f for f in os.listdir(frames_dir) if f.endswith(".png")]
         total = len(frames)
         print(f"INFO [VideoUpscaler] Extraction completa. Total frames: {total}")
-        self._report(15, f"Extracción lista: {total} fotogramas.")
+        self._report(progress_end, f"Extracción lista: {total} fotogramas.")
         return total
 
     # ─── Paso 3: Reescalar con NCNN ─────────────────────────────────────────
@@ -289,10 +328,13 @@ class VideoUpscaler:
             return cmd
 
     def _run_ncnn(self, engine: str, model_friendly: str, scale: str,
-                  in_dir: str, out_dir: str, total_frames: int, tile_size: str = "0", denoise: str = "-1", tta: bool = False, concurrency: str = "Automático"):
+                  in_dir: str, out_dir: str, total_frames: int, tile_size: str = "0",
+                  denoise: str = "-1", tta: bool = False,
+                  concurrency: str = "Automático", progress_start: float = 15.0,
+                  progress_end: float = 85.0):
         """Ejecuta el proceso NCNN y reporta progreso estimado."""
         self._check_cancel()
-        self._report(15, f"Iniciando motor AI ({engine})...")
+        self._report(progress_start, f"Iniciando motor AI ({engine})...")
 
         cmd = self._build_ncnn_cmd(engine, model_friendly, scale, in_dir, out_dir, tile_size, denoise, tta, concurrency)
         print(f"DEBUG [VideoUpscaler] NCNN cmd: {' '.join(cmd)}")
@@ -342,10 +384,10 @@ class VideoUpscaler:
                 done = last_done
 
             if done != last_done:
-                pct = 15 + (done / max(total_frames, 1)) * 70
+                pct = progress_start + (done / max(total_frames, 1)) * (progress_end - progress_start)
                 elapsed = int(time.time() - start_time)
                 msg = f"Procesando: {done}/{total_frames} fotogramas ({elapsed}s)"
-                self._report(min(pct, 84.9), msg)
+                self._report(min(pct, progress_end - 0.1), msg)
                 print(f"UPSCALER: {msg}")
                 last_done = done
             
@@ -383,18 +425,24 @@ class VideoUpscaler:
         if os.path.getsize(first_frame) < 100: # Un PNG real pesa más de 100 bytes
             raise Exception("Error de procesamiento: Los fotogramas generados están vacíos o corruptos (posible incompatibilidad de driver GPU).")
 
-        self._report(85, "Reescalado completado con éxito.")
+        self._report(progress_end, "Reescalado completado con éxito.")
 
     # ─── Paso 4: Reensamblar con FFmpeg ─────────────────────────────────────
 
     def _reassemble(self, upscaled_dir: str, original_path: str,
-                    output_path: str, fps: str, container: str, has_audio: bool, transparency: bool = False):
+                    output_path: str, fps: str, container: str, has_audio: bool,
+                    transparency: bool = False, options: dict | None = None,
+                    duration: float = 0.0, progress_start: float = 86.0,
+                    progress_end: float = 100.0, final_message: str = "¡Vídeo reescalado con éxito!"):
         """Ensambla los frames reescalados + audio original en el video final."""
         self._check_cancel()
-        self._report(86, "Preparando ensamblado final...")
+        self._report(progress_start, "Preparando ensamblado final...")
 
         ext = container if container.startswith(".") else f".{container}"
         codec_info = CONTAINER_CODECS.get(ext, CONTAINER_CODECS[".mp4"])
+        options = options or {}
+        encoder_preset = str(options.get("encoder_preset") or "fast")
+        encoder_crf = str(options.get("encoder_crf") or 18)
 
         frame_pattern = os.path.join(upscaled_dir, "frame_%08d.png")
 
@@ -425,8 +473,8 @@ class VideoUpscaler:
                 cmd += [
                     "-c:v", codec_info["vcodec"],
                     "-pix_fmt", codec_info["pix_fmt"],
-                    "-crf", "18",           # Calidad alta
-                    "-preset", "fast",
+                    "-crf", encoder_crf,
+                    "-preset", encoder_preset,
                 ]
 
         if has_audio and ext != ".gif":
@@ -436,11 +484,12 @@ class VideoUpscaler:
             # Solo video (o GIF)
             cmd += ["-map", "0:v:0"]
 
-        cmd += ["-y", output_path]
+        cmd += ["-progress", "pipe:1", "-stats_period", "0.35", "-nostats", "-y", output_path]
 
         print(f"DEBUG [VideoUpscaler] Reensamblando: {' '.join(cmd)}")
         
         _logs = []
+        _progress = {"seconds": 0.0}
         def log_reader(pipe):
             try:
                 for line in pipe:
@@ -450,9 +499,23 @@ class VideoUpscaler:
                             print(f"FFMPEG REASSEMBLE LOG: {line.strip()}")
             except: pass
 
+        def progress_reader(pipe):
+            try:
+                for line in pipe:
+                    key, _, value = line.strip().partition("=")
+                    if key in {"out_time_us", "out_time_ms"}:
+                        try:
+                            # Modern FFmpeg reports microseconds in out_time_us.
+                            divisor = 1_000_000.0
+                            _progress["seconds"] = float(value) / divisor
+                        except ValueError:
+                            pass
+            except Exception:
+                pass
+
         proc = subprocess.Popen(
             cmd,
-            stdout=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             creationflags=self._creationflags(),
             text=True,
@@ -462,25 +525,171 @@ class VideoUpscaler:
         
         reader_thread = threading.Thread(target=log_reader, args=(proc.stderr,), daemon=True)
         reader_thread.start()
+        progress_thread = threading.Thread(target=progress_reader, args=(proc.stdout,), daemon=True)
+        progress_thread.start()
         
         start_t = time.time()
         while proc.poll() is None:
             self._check_cancel(proc)
             elapsed = int(time.time() - start_t)
-            # Progreso del 86% al 98%
-            p = min(98, 86 + (elapsed * 2)) 
-            self._report(p, "Guardando video final (unificando audio)...")
-            time.sleep(0.5)
+            if duration > 0:
+                ratio = min(1.0, _progress["seconds"] / duration)
+                p = progress_start + ratio * (progress_end - progress_start)
+                msg = f"Guardando video final… {ratio * 100:.0f}%"
+            else:
+                p = min(progress_end, progress_start + (elapsed * 1.5))
+                msg = "Guardando video final y unificando audio…"
+            self._report(p, msg)
+            time.sleep(0.35)
 
         proc.wait()
         reader_thread.join(timeout=1.0)
+        progress_thread.join(timeout=1.0)
 
         if proc.returncode != 0:
             stderr_out = "".join(_logs)
             print(f"ERROR FFMPEG REASSEMBLE: {stderr_out}")
             raise Exception(f"FFmpeg falló al crear el video final (Codigo {proc.returncode}):\n{stderr_out[-500:]}")
 
+        self._report(progress_end, final_message)
+
+    def _concat_chunks(self, chunks: list[str], original_path: str, output_path: str,
+                       has_audio: bool, progress_start: float = 92.0):
+        """Join equal-codec chunks without re-encoding their video stream."""
+        concat_file = Path(chunks[0]).parent / "chunks.txt"
+        lines = []
+        for chunk in chunks:
+            safe_path = Path(chunk).resolve().as_posix().replace("'", "'\\''")
+            lines.append(f"file '{safe_path}'")
+        concat_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        cmd = [
+            self.ffmpeg_exe, "-f", "concat", "-safe", "0", "-i", str(concat_file),
+        ]
+        if has_audio:
+            cmd += ["-i", original_path, "-map", "0:v:0", "-map", "1:a:0?",
+                    "-c:v", "copy", "-c:a", "aac", "-shortest"]
+        else:
+            cmd += ["-map", "0:v:0", "-c:v", "copy"]
+        cmd += ["-movflags", "+faststart", "-nostats", "-y", output_path]
+        self._report(progress_start, "Uniendo bloques y recuperando el audio…")
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            creationflags=self._creationflags(), text=True, errors="ignore", bufsize=1,
+        )
+        stderr_lines = []
+
+        def read_stderr(pipe):
+            try:
+                stderr_lines.extend(pipe.readlines())
+            except Exception:
+                pass
+
+        reader = threading.Thread(target=read_stderr, args=(proc.stderr,), daemon=True)
+        reader.start()
+        while proc.poll() is None:
+            self._check_cancel(proc)
+            self._report(min(99.0, progress_start + 3.0), "Uniendo bloques y recuperando el audio…")
+            time.sleep(0.35)
+        reader.join(timeout=1.0)
+        if proc.returncode != 0:
+            raise Exception("FFmpeg no pudo unir los bloques:\n" + "".join(stderr_lines)[-700:])
         self._report(100, "¡Vídeo reescalado con éxito!")
+
+    def _chunk_duration(self, info: dict, scale: int) -> float:
+        """Keep temporary PNGs near an 8 GB working set."""
+        width = max(1, int(info.get("width") or 1))
+        height = max(1, int(info.get("height") or 1))
+        try:
+            fps = max(1.0, float(info.get("fps") or 30))
+        except (TypeError, ValueError):
+            fps = 30.0
+        free = shutil.disk_usage(tempfile.gettempdir()).free
+        estimated_png_bytes_per_second = width * height * fps * 2.2 * (1 + scale ** 2)
+        minimum_working_set = estimated_png_bytes_per_second * 1.5
+        if minimum_working_set > free * 0.72:
+            need_gb = minimum_working_set / (1024 ** 3)
+            free_gb = free / (1024 ** 3)
+            raise Exception(
+                f"No hay espacio temporal para un bloque mínimo: se necesitan ~{need_gb:.1f} GB "
+                f"y hay {free_gb:.1f} GB libres. Libera espacio o reduce la escala."
+            )
+        budget = min(8 * 1024 ** 3, max(int(minimum_working_set), int(free * 0.18)))
+        seconds = budget / max(1.0, estimated_png_bytes_per_second)
+        return max(1.5, min(15.0, seconds))
+
+    def _upscale_video_chunked(self, input_path: str, output_path: str, info: dict,
+                               options: dict, engine: str, model: str, scale: str,
+                               ext_out: str) -> str:
+        """Bound disk usage by processing and deleting one short segment at a time."""
+        duration = float(info.get("duration") or 0)
+        scale_number = max(1, int(scale or 1))
+        chunk_seconds = self._chunk_duration(info, scale_number)
+        chunk_count = max(1, int(math.ceil(duration / chunk_seconds)))
+        root = Path(tempfile.mkdtemp(prefix="xomacito_video_chunks_"))
+        chunks: list[str] = []
+        try:
+            for index in range(chunk_count):
+                self._check_cancel()
+                start_time = index * chunk_seconds
+                segment_duration = min(chunk_seconds, duration - start_time)
+                if segment_duration <= 0:
+                    break
+                segment_start = 4.0 + (index / chunk_count) * 86.0
+                segment_end = 4.0 + ((index + 1) / chunk_count) * 86.0
+                span = segment_end - segment_start
+                frames_dir = root / f"in_{index:05d}"
+                upscaled_dir = root / f"out_{index:05d}"
+                frames_dir.mkdir(); upscaled_dir.mkdir()
+                expected = max(1, round(segment_duration * float(info.get("fps") or 30)))
+                total = self._extract_frames(
+                    input_path, str(frames_dir), info["fps"], expected,
+                    start_time=start_time, segment_duration=segment_duration,
+                    progress_start=segment_start, progress_end=segment_start + span * 0.12,
+                )
+                if not total:
+                    raise Exception(f"El bloque {index + 1} no produjo fotogramas.")
+
+                tile = options.get("upscale_tile", "0")
+                concurrency = options.get("upscale_concurrency", "Automático")
+                attempts = [(tile, concurrency), ("128", "Seguro (Estabilidad)"),
+                            ("64", "Seguro (Estabilidad)")]
+                unique_attempts = list(dict.fromkeys(attempts))
+                for attempt_index, (attempt_tile, attempt_concurrency) in enumerate(unique_attempts):
+                    try:
+                        self._run_ncnn(
+                            engine, model, scale, str(frames_dir), str(upscaled_dir), total,
+                            tile_size=attempt_tile,
+                            denoise=options.get("upscale_denoise", "-1"),
+                            tta=options.get("upscale_tta", False),
+                            concurrency=attempt_concurrency,
+                            progress_start=segment_start + span * 0.12,
+                            progress_end=segment_start + span * 0.88,
+                        )
+                        break
+                    except Exception as error:
+                        if "GPU_MEMORY:" not in str(error) or attempt_index == len(unique_attempts) - 1:
+                            raise
+                        for frame in upscaled_dir.glob("*.png"):
+                            frame.unlink(missing_ok=True)
+
+                chunk_path = root / f"chunk_{index:05d}.mp4"
+                self._reassemble(
+                    str(upscaled_dir), input_path, str(chunk_path), info["fps"], ".mp4", False,
+                    options=options, duration=segment_duration,
+                    progress_start=segment_start + span * 0.88, progress_end=segment_end,
+                    final_message=f"Bloque {index + 1}/{chunk_count} listo.",
+                )
+                chunks.append(str(chunk_path))
+                shutil.rmtree(frames_dir, ignore_errors=True)
+                shutil.rmtree(upscaled_dir, ignore_errors=True)
+
+            if not chunks:
+                raise Exception("No se generó ningún bloque de video.")
+            self._concat_chunks(chunks, input_path, output_path, bool(info.get("has_audio")), 91.0)
+            return output_path
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
 
     # ─── Orquestador principal ───────────────────────────────────────────────
 
@@ -515,6 +724,22 @@ class VideoUpscaler:
         fps = info["fps"]
         has_audio = info["has_audio"]
 
+        # Refuse work that would fill the disk halfway through a long video.
+        if (float(info.get("duration") or 0) <= 18 and info.get("estimated_frames")
+                and info.get("width") and info.get("height")):
+            scale_number = max(1, int(scale or 1))
+            input_temp = info["estimated_frames"] * info["width"] * info["height"] * 2.2
+            output_temp = input_temp * (scale_number ** 2)
+            required = int((input_temp + output_temp) * 1.15)
+            free = shutil.disk_usage(tempfile.gettempdir()).free
+            if required > free:
+                need_gb = required / (1024 ** 3)
+                free_gb = free / (1024 ** 3)
+                raise Exception(
+                    f"No hay espacio temporal suficiente para este video: se estiman {need_gb:.1f} GB "
+                    f"y hay {free_gb:.1f} GB libres. Usa 2x, un fragmento más corto o libera espacio."
+                )
+
         # Determinar extension de salida
         if not container_choice or container_choice.lower() == "mismo que el original":
             ext_out = info["ext"] if info["ext"] else ".mp4"
@@ -525,6 +750,11 @@ class VideoUpscaler:
         base, _ = os.path.splitext(output_path)
         output_path = base + ext_out
 
+        if float(info.get("duration") or 0) > 18:
+            return self._upscale_video_chunked(
+                input_path, output_path, info, options, engine, model, scale, ext_out
+            )
+
         frames_dir = None
         upscaled_dir = None
         try:
@@ -533,7 +763,9 @@ class VideoUpscaler:
             upscaled_dir = tempfile.mkdtemp(prefix="xomacito_upscale_out_")
 
             # Paso 1: Extraer frames
-            total = self._extract_frames(input_path, frames_dir, fps)
+            total = self._extract_frames(
+                input_path, frames_dir, fps, int(info.get("estimated_frames") or 0)
+            )
             if total == 0:
                 raise Exception("No se pudieron extraer fotogramas del video.")
 
@@ -574,7 +806,11 @@ class VideoUpscaler:
                         raise
 
             # Paso 3: Reensamblar
-            self._reassemble(upscaled_dir, input_path, output_path, fps, ext_out, has_audio, transparency=transparency)
+            self._reassemble(
+                upscaled_dir, input_path, output_path, fps, ext_out, has_audio,
+                transparency=transparency, options=options,
+                duration=float(info.get("duration") or 0),
+            )
 
         finally:
             # Limpieza garantizada

@@ -542,24 +542,28 @@ REMBG_MODEL_FAMILIES = {
         # --- MODELOS GENERALES ---
         "General (Estándar)": {
             "file": "birefnet-general.onnx",  # ✅ Nombre que rembg espera
-            "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-general-epoch_244.onnx",
+            "url": "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-epoch_244.onnx",
+            "license": "MIT",
             "folder": "rembg"
         },
         "General Lite (Rápido)": {
             "file": "birefnet-general-lite.onnx",  # ✅ Cambiado
-            "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx",
+            "url": "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx",
+            "license": "MIT",
             "folder": "rembg"
         },
         
         # --- ESPECIALIZADOS ---
         "Portrait (Retratos)": {
             "file": "birefnet-portrait.onnx",  # ✅ Cambiado
-            "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-portrait-epoch_150.onnx",
+            "url": "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-portrait-epoch_150.onnx",
+            "license": "MIT",
             "folder": "rembg"
         },
         "DIS (Bordes Finos/Complejo)": {
             "file": "birefnet-dis.onnx",  # ✅ Cambiado
-            "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-DIS-epoch_590.onnx",
+            "url": "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-DIS-epoch_590.onnx",
+            "license": "MIT",
             "folder": "rembg"
         },
         "COD (Objetos Camuflados)": {

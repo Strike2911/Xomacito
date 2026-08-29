@@ -11,6 +11,7 @@ Item {
     // Conserva las tres herramientas alineadas también en la ventana mínima.
     property bool wide: width >= 890
     property bool dense: height < 760
+    property real comparePosition: 0.5
 
     function taskTitle() {
         if (viewState.task === "removeBackground") return "Quitar fondo"
@@ -128,6 +129,47 @@ Item {
             }
         }
 
+        XCard {
+            Layout.fillWidth: true
+            implicitHeight: page.dense ? 54 : 64
+            cardColor: theme.colors.surfaceRaised
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 9
+                spacing: 10
+                Rectangle {
+                    width: 34; height: 34; radius: 10
+                    color: theme.colors.primarySoft
+                    Text { anchors.centerIn: parent; text: "✦"; color: theme.colors.primary; font.pixelSize: 17; font.weight: Font.Bold }
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 1
+                    Text { text: "RECETA INTELIGENTE · " + viewState.analysisTitle; color: theme.colors.text; font.pixelSize: 10; font.weight: Font.Bold; elide: Text.ElideRight; Layout.fillWidth: true }
+                    Text { text: viewState.analysisDetail + " · " + viewState.recommendation; color: theme.colors.textMuted; font.pixelSize: 9; elide: Text.ElideRight; Layout.fillWidth: true }
+                }
+                ColumnLayout {
+                    visible: page.width >= 1120
+                    Layout.preferredWidth: 250
+                    spacing: 1
+                    Text { text: "MOTOR LOCAL"; color: theme.colors.primary; font.pixelSize: 9; font.weight: Font.Bold }
+                    Text { text: viewState.hardwareLabel; color: theme.colors.textMuted; font.pixelSize: 9; elide: Text.ElideRight; Layout.fillWidth: true }
+                }
+                LabeledControl {
+                    Layout.preferredWidth: 180
+                    compact: true
+                    label: "Rendimiento"
+                    XComboBox {
+                        Layout.fillWidth: true
+                        compact: true
+                        model: imageController.performanceProfiles
+                        currentIndex: Math.max(0, find(options.performanceProfile))
+                        onActivated: imageController.setPerformanceProfile(currentText)
+                    }
+                }
+            }
+        }
+
         GridLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -221,7 +263,7 @@ Item {
             XCard {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.columnSpan: page.wide ? 4 : 1
+                Layout.columnSpan: page.wide ? 5 : 1
                 Layout.minimumHeight: page.dense ? 230 : 278
                 clip: true
                 ColumnLayout {
@@ -239,6 +281,7 @@ Item {
                         XButton { compact: true; text: "Quitar"; kind: "ghost"; enabled: viewState.selectedIndex >= 0; onClicked: imageController.removeSelected() }
                     }
                     Rectangle {
+                        id: previewSurface
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         radius: 14
@@ -247,14 +290,79 @@ Item {
                         border.width: 1
                         clip: true
                         Image {
+                            id: originalPreview
                             anchors.fill: parent
                             anchors.margins: 8
-                            source: viewState.resultPreviewSource || viewState.previewSource
+                            source: viewState.previewSource
                             fillMode: Image.PreserveAspectFit
                             asynchronous: true
                             smooth: true
                         }
+                        Item {
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            visible: !!viewState.resultPreviewSource
+                            Item {
+                                width: Math.max(0, page.comparePosition * parent.width)
+                                height: parent.height
+                                clip: true
+                                Image {
+                                    width: parent.parent.width
+                                    height: parent.height
+                                    source: viewState.resultPreviewSource
+                                    fillMode: Image.PreserveAspectFit
+                                    asynchronous: true
+                                    smooth: true
+                                }
+                            }
+                            Rectangle {
+                                x: Math.max(0, Math.min(parent.width - 2, page.comparePosition * parent.width - 1))
+                                width: 2; height: parent.height
+                                color: theme.colors.accent
+                                Rectangle {
+                                    anchors.centerIn: parent
+                                    width: 26; height: 34; radius: 9
+                                    color: theme.colors.primary
+                                    border.color: theme.colors.text
+                                    border.width: 1
+                                    Text { anchors.centerIn: parent; text: "↔"; color: "#FFFFFF"; font.pixelSize: 12; font.weight: Font.Bold }
+                                }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.SizeHorCursor
+                                preventStealing: true
+                                function updateCompare(mouseX) { page.comparePosition = Math.max(0, Math.min(1, mouseX / Math.max(1, width))) }
+                                onPressed: function(mouse) { updateCompare(mouse.x) }
+                                onPositionChanged: function(mouse) { if (pressed) updateCompare(mouse.x) }
+                            }
+                        }
+                        Rectangle {
+                            anchors.left: parent.left; anchors.top: parent.top
+                            anchors.margins: 14
+                            visible: !!viewState.resultPreviewSource
+                            implicitWidth: beforeLabel.implicitWidth + 14; implicitHeight: beforeLabel.implicitHeight + 8
+                            radius: 8; color: theme.colors.surfaceRaised; opacity: 0.92
+                            Text { id: beforeLabel; anchors.centerIn: parent; text: page.comparePosition < 0.08 ? "ORIGINAL" : "RESULTADO  |  ORIGINAL"; color: theme.colors.text; font.pixelSize: 9; font.weight: Font.Bold }
+                        }
                         Text { anchors.centerIn: parent; visible: !viewState.previewSource && !viewState.resultPreviewSource; text: "Tu recurso aparecerá aquí"; color: theme.colors.textMuted }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        visible: viewState.selectedIndex >= 0
+                        spacing: 7
+                        XButton {
+                            Layout.fillWidth: true
+                            text: viewState.previewBusy ? "Preparando muestra…" : viewState.resultPreviewSource ? "Actualizar vista previa" : "Preparar vista previa"
+                            kind: "secondary"
+                            compact: true
+                            enabled: !viewState.busy
+                            onClicked: imageController.preparePreview()
+                        }
+                        XButton { visible: !!viewState.resultPreviewSource; compact: true; text: "Antes"; kind: "ghost"; onClicked: page.comparePosition = 0 }
+                        XButton { visible: !!viewState.resultPreviewSource; compact: true; text: "Comparar"; kind: "ghost"; onClicked: page.comparePosition = 0.5 }
+                        XButton { visible: !!viewState.resultPreviewSource; compact: true; text: "Después"; kind: "ghost"; onClicked: page.comparePosition = 1 }
                     }
                     XTextField {
                         Layout.fillWidth: true
@@ -269,7 +377,7 @@ Item {
             XCard {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.columnSpan: page.wide ? 5 : 1
+                Layout.columnSpan: page.wide ? 4 : 1
                 Layout.minimumHeight: page.dense ? 230 : 278
                 clip: true
                 cardColor: theme.colors.surfaceRaised
@@ -324,7 +432,7 @@ Item {
 
                         ColumnLayout {
                             spacing: page.dense ? 6 : 8
-                            Text { Layout.fillWidth: true; visible: !page.dense; text: "Aumenta resolución con modelos elegidos según el contenido; no necesitas conocer nombres técnicos."; color: theme.colors.textMuted; font.pixelSize: 10; wrapMode: Text.WordWrap }
+                            Text { Layout.fillWidth: true; visible: !page.dense; text: "Xomacito analiza el archivo y elige un modelo local para foto, compresión o ilustración."; color: theme.colors.textMuted; font.pixelSize: 10; wrapMode: Text.WordWrap }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 8
@@ -343,11 +451,12 @@ Item {
                                 label: "Formato final"
                                 XComboBox { Layout.fillWidth: true; compact: page.dense; model: ["PNG", "JPG", "WEBP"]; currentIndex: Math.max(0, find(viewState.format)); onActivated: imageController.setValue("format", currentText) }
                             }
+                            Text { Layout.fillWidth: true; text: viewState.outputEstimate; color: theme.colors.primary; font.pixelSize: 9; elide: Text.ElideRight }
                         }
 
                         ColumnLayout {
                             spacing: page.dense ? 6 : 8
-                            Text { Layout.fillWidth: true; visible: !page.dense; text: "Mejora cada fotograma, conserva el audio y entrega un MP4 listo para editores."; color: theme.colors.textMuted; font.pixelSize: 10; wrapMode: Text.WordWrap }
+                            Text { Layout.fillWidth: true; visible: !page.dense; text: "Mejora cada fotograma con la GPU, conserva el audio y entrega un MP4 listo para editores."; color: theme.colors.textMuted; font.pixelSize: 10; wrapMode: Text.WordWrap }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 8
@@ -367,7 +476,7 @@ Item {
                             Rectangle {
                                 Layout.fillWidth: true; implicitHeight: page.dense ? 38 : 48; radius: 10
                                 color: theme.colors.surfaceSoft; border.color: theme.colors.border
-                                Text { anchors.fill: parent; anchors.margins: 8; text: page.dense ? "MP4 · H.264 · audio conservado" : "MP4 · H.264 · audio conservado\nEl tiempo depende de la duración y la GPU."; color: theme.colors.textMuted; font.pixelSize: 10; verticalAlignment: Text.AlignVCenter }
+                                Text { anchors.fill: parent; anchors.margins: 8; text: page.dense ? "MP4 · audio conservado" : "MP4 · audio conservado\nModo por fotogramas: rápido, pero no inventa movimiento entre cuadros."; color: theme.colors.textMuted; font.pixelSize: 9; verticalAlignment: Text.AlignVCenter; wrapMode: Text.WordWrap }
                             }
                         }
 
@@ -546,9 +655,9 @@ Item {
 
                     ColumnLayout {
                         spacing: 10
-                        Text { text: "Quitar background"; color: theme.colors.text; font.pixelSize: 14; font.weight: Font.DemiBold }
+                        Text { text: "Quitar fondo"; color: theme.colors.text; font.pixelSize: 14; font.weight: Font.DemiBold }
                         XSwitch { text: "Quitar fondo"; checked: options.rembgEnabled; onToggled: imageController.setOption("rembgEnabled", checked) }
-                        XSwitch { text: "Aceleración GPU"; checked: options.rembgGpu; onToggled: imageController.setOption("rembgGpu", checked) }
+                        XSwitch { text: "Preferir GPU (si está disponible)"; checked: options.rembgGpu; onToggled: imageController.setOption("rembgGpu", checked) }
                         LabeledControl { Layout.fillWidth: true; label: "Familia"; XComboBox { Layout.fillWidth: true; model: imageController.rembgFamilies; currentIndex: Math.max(0, find(options.rembgFamily)); onActivated: imageController.setOption("rembgFamily", currentText) } }
                         LabeledControl { Layout.fillWidth: true; label: "Modelo"; XComboBox { Layout.fillWidth: true; model: imageController.rembgModels(options.rembgFamily); currentIndex: Math.max(0, find(options.rembgModel)); onActivated: imageController.setOption("rembgModel", currentText) } }
                         LabeledControl { Layout.fillWidth: true; label: "Suavizado de borde: " + options.rembgSmooth; Slider { Layout.fillWidth: true; from: 0; to: 20; stepSize: 1; value: options.rembgSmooth; onMoved: imageController.setOption("rembgSmooth", value) } }

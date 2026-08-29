@@ -29,6 +29,13 @@ from src.core.downloader import (
     is_x_status_url,
 )
 from src.core.processor import FFmpegProcessor
+from src.core.image_intelligence import (
+    PERFORMANCE_PROFILES,
+    analyze_image,
+    detect_hardware,
+    estimate_output,
+    performance_recipe,
+)
 from main import MODELS_PATH, UPSCALING_DIR
 
 from .list_model import ObjectListModel
@@ -59,6 +66,7 @@ IMAGE_OPTIONS = {
     "rembgSmooth": 0, "rembgExpand": 0, "upscaleEnabled": False,
     "upscaleEngine": "Upscayl", "upscaleModel": "Real-ESRGAN (General / Fotografía)",
     "upscaleScale": "2", "upscaleDenoise": "0", "upscaleTile": "0", "upscaleTta": False,
+    "performanceProfile": "Automático", "upscaleConcurrency": "Automático",
     "videoTitle": "video_xomacito", "videoWidth": "1920", "videoHeight": "1080",
     "videoFps": "30", "videoFrameDuration": "3", "videoFitMode": "Mantener Tamaño Original",
 }
@@ -139,6 +147,8 @@ class ImageController(QObject):
         self._engine_lock = threading.Lock()
         self.cancel_event = threading.Event()
         self.items = ObjectListModel(self.ROLES, self)
+        upscayl_exe = Path(UPSCALING_DIR) / "upscayl" / "upscayl-bin.exe"
+        self._hardware = detect_hardware(upscayl_exe)
         configured_output = Path(str(settings.get("image_output_path") or "")).expanduser()
         if not configured_output.is_absolute():
             configured_output = Path.home() / "Downloads"
@@ -151,6 +161,14 @@ class ImageController(QObject):
             "busy": False, "selectedIndex": -1, "previewSource": "", "resultPreviewSource": "",
             "lastOutput": "", "itemCount": 0, "task": settings.get("image_task", "removeBackground"),
             "upscaleProfile": "Automático (recomendado)",
+            "analysis": {}, "analysisReady": False,
+            "analysisTitle": "Análisis local pendiente",
+            "analysisDetail": "Importa un recurso para crear una receta inteligente.",
+            "recommendation": "Xomacito elegirá el modelo según el contenido.",
+            "outputEstimate": "Importa un archivo para estimar la salida",
+            "hardwareLabel": self._hardware["label"],
+            "hardwareDetail": self._hardware["detail"],
+            "previewBusy": False,
         }
         self._options = dict(IMAGE_OPTIONS)
         saved = settings.get("image_settings", {})
@@ -230,6 +248,9 @@ class ImageController(QObject):
     @Property("QStringList", constant=True)
     def upscaleModels(self): return list(STABLE_UPSCALE_MODELS)
 
+    @Property("QStringList", constant=True)
+    def performanceProfiles(self): return list(PERFORMANCE_PROFILES)
+
     @Slot(str, result="QStringList")
     def rembgModels(self, family):
         return list(STABLE_REMBG_MODELS) if family == STABLE_REMBG_FAMILY else []
@@ -257,6 +278,8 @@ class ImageController(QObject):
         self.optionsChanged.emit()
         saved = dict(self._options); saved["format"] = self._state["format"]
         self.settings.set("image_settings", saved)
+        if key == "upscaleScale":
+            self._refresh_output_estimate()
 
     @Slot(str)
     def setTask(self, task):
@@ -269,6 +292,8 @@ class ImageController(QObject):
         defaults = TASK_DEFAULTS[task]
         self._state["task"] = task
         self._state["format"] = defaults["format"]
+        if task in {"upscaleImage", "upscaleVideo"}:
+            self._state["upscaleProfile"] = "Automático (recomendado)"
         for key, value in defaults.items():
             if key != "format":
                 self._options[key] = value
@@ -276,6 +301,8 @@ class ImageController(QObject):
         self.optionsChanged.emit()
         self.settings.set("image_task", task)
         self.settings.set("image_settings", {**self._options, "format": self._state["format"]})
+        self._apply_smart_recipe(self._state.get("analysis") or {})
+        self._refresh_output_estimate()
 
     @Slot(str)
     def setUpscaleProfile(self, profile):
@@ -284,9 +311,54 @@ class ImageController(QObject):
             return
         self._state["upscaleProfile"] = profile
         self._options["upscaleEngine"] = "Upscayl"
-        self._options["upscaleModel"] = data["model"]
+        if profile == "Automático (recomendado)" and self._state.get("analysis"):
+            self._options["upscaleModel"] = self._state["analysis"].get("upscaleModel", data["model"])
+        else:
+            self._options["upscaleModel"] = data["model"]
         self.stateChanged.emit()
         self.optionsChanged.emit()
+
+    @Slot(str)
+    def setPerformanceProfile(self, profile):
+        if profile not in PERFORMANCE_PROFILES:
+            return
+        self._options["performanceProfile"] = profile
+        recipe = performance_recipe(profile, self._hardware)
+        self._options["upscaleConcurrency"] = recipe["concurrency"]
+        self._options["upscaleTile"] = recipe["tile"]
+        self._options["upscaleTta"] = recipe["tta"]
+        self.optionsChanged.emit()
+        saved = dict(self._options); saved["format"] = self._state["format"]
+        self.settings.set("image_settings", saved)
+
+    def _refresh_output_estimate(self):
+        analysis = self._state.get("analysis") or {}
+        self._set_state(outputEstimate=estimate_output(
+            analysis, self._options.get("upscaleScale", "1"), self._state.get("task", "convert")
+        ))
+
+    def _apply_smart_recipe(self, analysis):
+        if not analysis:
+            return
+        task = self._state.get("task")
+        recommendation = "Conversión sin IA; se conservarán proporciones y metadatos compatibles."
+        changed = False
+        if task == "removeBackground":
+            model = analysis.get("rembgModel", STABLE_REMBG_MODELS[0])
+            if self._options.get("rembgModel") != model:
+                self._options["rembgModel"] = model; changed = True
+            recommendation = f"{model}: {analysis.get('rembgReason', 'recorte general')}."
+        elif task in {"upscaleImage", "upscaleVideo"}:
+            if self._state.get("upscaleProfile") == "Automático (recomendado)":
+                model = analysis.get("upscaleModel", UPSCALE_PROFILES["Automático (recomendado)"]["model"])
+                if task == "upscaleVideo" and analysis.get("kind") == "illustration":
+                    model = UPSCALE_PROFILES["Video animado"]["model"]
+                if self._options.get("upscaleModel") != model:
+                    self._options["upscaleModel"] = model; changed = True
+            recommendation = f"{self._options['upscaleModel']}: {analysis.get('upscaleReason', 'mejora equilibrada')}."
+        if changed:
+            self.optionsChanged.emit()
+        self._set_state(recommendation=recommendation)
 
     @Slot(str, result=str)
     def chooseColor(self, current):
@@ -466,7 +538,12 @@ class ImageController(QObject):
     @Slot(int)
     def select(self, index):
         if not 0 <= index < self.items.rowCount(): return
-        self._set_state(selectedIndex=index, previewSource="", resultPreviewSource="")
+        self._set_state(
+            selectedIndex=index, previewSource="", resultPreviewSource="",
+            analysis={}, analysisReady=False, analysisTitle="Analizando en tu equipo…",
+            analysisDetail="Leyendo detalle, color, compresión y dimensiones.",
+            recommendation="Preparando una receta inteligente.",
+        )
         self.selectedChanged.emit()
         item = self.items.item(index)
         self.pool.submit(
@@ -481,7 +558,10 @@ class ImageController(QObject):
             frame = self.ffmpeg.get_frame_from_video(item["path"])
             if not frame:
                 raise RuntimeError("No se pudo leer un fotograma del video.")
-            return str(frame)
+            with Image.open(frame) as sample:
+                analysis = analyze_image(sample, source_path=item["path"])
+            analysis["mediaType"] = "video"
+            return {"path": str(frame), "analysis": analysis}
         thumb = self.processor.generate_thumbnail(
             item["path"], size=(900, 700), page_number=item["page"],
             dpi=int(self.settings.get("preview_vector_dpi", 96)),
@@ -489,12 +569,28 @@ class ImageController(QObject):
         if thumb is None: raise RuntimeError("No se pudo generar la previsualización.")
         target = Path(tempfile.gettempdir()) / f"xomacito_preview_{item['itemId']}.png"
         thumb.save(target, "PNG")
-        return str(target)
+        return {"path": str(target), "analysis": analyze_image(thumb, source_path=item["path"])}
 
-    def _thumbnail_done(self, row, path):
+    def _thumbnail_done(self, row, payload):
+        if isinstance(payload, dict):
+            path = payload.get("path", "")
+            analysis = payload.get("analysis") or {}
+        else:
+            path = payload
+            analysis = {}
         if row < self.items.rowCount(): self.items.update_item(row, {"preview": QUrl.fromLocalFile(path).toString()})
         if self._state["selectedIndex"] == row:
-            self._set_state(previewSource=QUrl.fromLocalFile(path).toString())
+            self._set_state(
+                previewSource=QUrl.fromLocalFile(path).toString(), analysis=analysis,
+                analysisReady=bool(analysis),
+                analysisTitle=analysis.get("content", "Recurso listo"),
+                analysisDetail=(
+                    f"{analysis.get('technical', '')} · {analysis.get('issue', 'análisis completado')}"
+                    if analysis else "Vista previa preparada."
+                ),
+            )
+            self._apply_smart_recipe(analysis)
+            self._refresh_output_estimate()
             self.selectedChanged.emit()
 
     @Slot(str)
@@ -522,6 +618,7 @@ class ImageController(QObject):
         self.selectedChanged.emit()
 
     def _conversion_options(self):
+        performance = performance_recipe(self._options.get("performanceProfile", "Automático"), self._hardware)
         options = {
             "format": self._state["format"], "resize_enabled": self._options["resizeEnabled"],
             "resize_width": self._options["resizeWidth"] or None, "resize_height": self._options["resizeHeight"] or None,
@@ -550,11 +647,101 @@ class ImageController(QObject):
             "upscale_engine": self._options["upscaleEngine"], "upscale_model_friendly": self._options["upscaleModel"],
             "upscale_scale": self._options["upscaleScale"], "upscale_denoise": self._options["upscaleDenoise"],
             "upscale_tile": self._options["upscaleTile"], "upscale_tta": self._options["upscaleTta"],
+            "upscale_concurrency": (
+                performance["concurrency"]
+                if self._options.get("upscaleConcurrency") == "Automático"
+                else self._options["upscaleConcurrency"]
+            ),
+            "performance_profile": self._options["performanceProfile"],
+            "encoder_preset": performance["encoderPreset"],
+            "encoder_crf": performance["encoderCrf"],
             "video_custom_title": self._options["videoTitle"], "video_custom_width": self._options["videoWidth"],
             "video_custom_height": self._options["videoHeight"], "video_fps": self._options["videoFps"],
             "video_frame_duration": self._options["videoFrameDuration"], "video_fit_mode": self._options["videoFitMode"],
         }
         return options
+
+    def _ensure_upscaler(self):
+        from src.core.setup import check_and_download_upscaling_tools
+
+        def setup_progress(message, percent):
+            value = max(0.01, min(0.14, float(percent or 0) / 100.0 * 0.14))
+            self.progressReported.emit(value, message or "Preparando mejora local…")
+
+        if not check_and_download_upscaling_tools(setup_progress, target_tool="Upscayl"):
+            raise RuntimeError("No se pudo preparar el motor local Upscayl. Revisa tu conexión.")
+
+    @Slot()
+    def preparePreview(self):
+        row = self._state.get("selectedIndex", -1)
+        if self._state.get("busy") or not 0 <= row < self.items.rowCount():
+            return
+        item = dict(self.items.item(row))
+        options = self._conversion_options()
+        task = self._state["task"]
+        self.cancel_event.clear()
+        self._set_state(
+            busy=True, previewBusy=True, progress=0.0,
+            status="Preparando una muestra local; el original no se modifica…",
+        )
+        self.pool.submit(
+            self._preview_worker, item, options, task,
+            on_result=self._preview_done,
+            on_error=lambda m, d: self._failed(m, d),
+        )
+
+    def _preview_worker(self, item, options, task):
+        self._ensure_engines()
+        source = item["path"]
+        if item.get("mediaType") == "video":
+            source = self.ffmpeg.get_frame_from_video(source)
+            if not source:
+                raise RuntimeError("No se pudo extraer el fotograma de prueba.")
+        with Image.open(source) as image:
+            image.load()
+            sample = image.convert("RGBA" if "A" in image.getbands() else "RGB")
+            max_side = 640 if str(options.get("upscale_scale")) == "4" else 960
+            sample.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+            preview_input = Path(tempfile.gettempdir()) / f"xomacito_ai_preview_in_{uuid.uuid4().hex}.png"
+            sample.save(preview_input, "PNG", compress_level=1)
+        preview_output = Path(tempfile.gettempdir()) / f"xomacito_ai_preview_out_{uuid.uuid4().hex}.png"
+        try:
+            options = dict(options)
+            options.update({
+                "format": "PNG", "resize_enabled": False, "canvas_enabled": False,
+                "background_enabled": False, "png_compression": 2,
+            })
+            if options.get("rembg_enabled"):
+                self._ensure_rembg_model(options)
+            if options.get("upscale_enabled"):
+                self._ensure_upscaler()
+            self.converter.prepare_ai_sessions(
+                options,
+                progress_callback=lambda p, m: self.progressReported.emit(
+                    max(0.05, min(0.25, float(p or 0) / 100.0)), m or "Cargando modelo…"
+                ),
+            )
+            ok = self.converter.convert_file(
+                str(preview_input), str(preview_output), options,
+                progress_callback=lambda p, m=None: self.progressReported.emit(
+                    max(0.25, min(0.95, float(p or 0) / 100.0)), m or "Generando muestra…"
+                ),
+                cancellation_event=self.cancel_event,
+            )
+            if not ok or not preview_output.is_file():
+                raise RuntimeError("No se pudo generar la muestra.")
+            return str(preview_output)
+        finally:
+            preview_input.unlink(missing_ok=True)
+            if not self.settings.get("keep_ai_models_in_memory", False):
+                self.converter.clear_ai_sessions()
+
+    def _preview_done(self, path):
+        self._set_state(
+            busy=False, previewBusy=False, progress=1.0,
+            resultPreviewSource=QUrl.fromLocalFile(path).toString(),
+            status="Vista previa lista. Compara el antes y el después.",
+        )
 
     def _real_rembg_model(self):
         family = self._options["rembgFamily"]; label = self._options["rembgModel"]
@@ -626,6 +813,8 @@ class ImageController(QObject):
         if str(options["format"]).startswith("."):
             return self._video_worker(items, output_dir, options)
         self._ensure_rembg_model(options)
+        if options.get("upscale_enabled"):
+            self._ensure_upscaler()
         self.converter.prepare_ai_sessions(options, progress_callback=lambda p, m: self.progressReported.emit((p or 0) / 100.0, m or "Preparando IA…"))
         if self.settings.get("inkscape_enabled", True): self.inkscape.start_session()
         outputs = []; errors = []
@@ -660,20 +849,12 @@ class ImageController(QObject):
         return outputs
 
     def _upscale_videos_worker(self, items, output_dir, options):
-        from src.core.setup import check_and_download_upscaling_tools
         from src.core.video_upscaler import VideoUpscaler
 
         if any(item.get("mediaType") != "video" for item in items):
             raise RuntimeError("Para mejorar video, importa únicamente archivos de video.")
 
-        def setup_progress(message, percent):
-            value = max(0.01, min(0.12, float(percent or 0) / 100.0 * 0.12))
-            self.progressReported.emit(value, message or "Preparando el motor de reescalado…")
-
-        if not check_and_download_upscaling_tools(setup_progress, target_tool="Upscayl"):
-            raise RuntimeError(
-                "No se pudo preparar Upscayl automáticamente. Revisa tu conexión e inténtalo otra vez."
-            )
+        self._ensure_upscaler()
         outputs = []
         for index, item in enumerate(items):
             if self.cancel_event.is_set():
@@ -745,7 +926,15 @@ class ImageController(QObject):
         first = outputs[0]
         self._set_state(busy=False, progress=1.0, status=f"Completado: {len(outputs)} archivos.", lastOutput=first)
         if Path(first).is_file():
-            self.pool.submit(self._thumbnail_worker, {"path": first, "page": 1, "itemId": "result"}, on_result=lambda path: self._set_state(resultPreviewSource=QUrl.fromLocalFile(path).toString()))
+            self.pool.submit(
+                self._thumbnail_worker,
+                {"path": first, "page": 1, "itemId": "result", "mediaType": "image"},
+                on_result=lambda payload: self._set_state(
+                    resultPreviewSource=QUrl.fromLocalFile(
+                        payload.get("path", "") if isinstance(payload, dict) else payload
+                    ).toString()
+                ),
+            )
         self.notificationRequested.emit("success", "Conversión completada", str(Path(first).parent))
 
     @Slot()
@@ -779,7 +968,7 @@ class ImageController(QObject):
 
     def _failed(self, message, detail=""):
         cancelled = self.cancel_event.is_set() or "cancel" in message.lower()
-        self._set_state(busy=False, progress=0.0, status="Proceso cancelado." if cancelled else message)
+        self._set_state(busy=False, previewBusy=False, progress=0.0, status="Proceso cancelado." if cancelled else message)
         if not cancelled:
             print(detail); self.notificationRequested.emit("error", "Error de procesamiento", message)
 

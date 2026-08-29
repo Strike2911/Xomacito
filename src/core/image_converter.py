@@ -20,6 +20,7 @@ except ImportError:
 
 from PIL import Image, ImageDraw, ImageChops
 from src.core.exceptions import UserCancelledError
+from src.core.image_intelligence import resolve_ort_providers
 
 # Importar las librerías de conversión
 try:
@@ -148,6 +149,70 @@ class ImageConverter:
         import gc
         gc.collect()
 
+    def _create_ort_session(self, model_path, use_gpu=True):
+        """Create an ONNX session for providers that really exist on this PC.
+
+        DirectML requires sequential execution and disabled memory patterns.  The
+        previous implementation requested it unconditionally even though the
+        packaged dependency is often CPU-only.
+        """
+        import onnxruntime as ort
+
+        available = list(ort.get_available_providers())
+        providers = resolve_ort_providers(available, prefer_gpu=bool(use_gpu))
+        session_key = f"{model_path}_{providers[0]}"
+        if session_key in self.rembg_sessions:
+            return self.rembg_sessions[session_key]
+
+        opts = ort.SessionOptions()
+        opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        accelerator = providers[0]
+        if accelerator == "DmlExecutionProvider":
+            opts.enable_mem_pattern = False
+            opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            opts.inter_op_num_threads = 1
+            opts.intra_op_num_threads = 1
+        elif accelerator == "CPUExecutionProvider":
+            opts.enable_cpu_mem_arena = True
+            opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            opts.intra_op_num_threads = max(1, min(os.cpu_count() or 1, 12))
+
+        try:
+            session = ort.InferenceSession(
+                str(model_path), providers=providers, sess_options=opts
+            )
+        except Exception:
+            if providers[0] == "CPUExecutionProvider" or "CPUExecutionProvider" not in available:
+                raise
+            # Some old iGPUs expose DirectML but cannot compile a large
+            # transformer graph.  Falling back here is faster than failing the
+            # whole batch after the model has already been downloaded.
+            cpu_opts = ort.SessionOptions()
+            cpu_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            cpu_opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            cpu_opts.intra_op_num_threads = max(1, min(os.cpu_count() or 1, 12))
+            providers = ["CPUExecutionProvider"]
+            session_key = f"{model_path}_CPUExecutionProvider"
+            if session_key in self.rembg_sessions:
+                return self.rembg_sessions[session_key]
+            session = ort.InferenceSession(
+                str(model_path), providers=providers, sess_options=cpu_opts
+            )
+        self.rembg_sessions[session_key] = session
+        return session
+
+    @staticmethod
+    def _session_input_size(session, fallback=(1024, 1024)):
+        """Read a fixed ONNX input shape, while supporting dynamic models."""
+        try:
+            shape = session.get_inputs()[0].shape
+            height, width = shape[-2], shape[-1]
+            if isinstance(width, int) and isinstance(height, int) and width > 0 and height > 0:
+                return width, height
+        except Exception:
+            pass
+        return fallback
+
     def prepare_ai_sessions(self, options, progress_callback=None):
         """
         Pre-carga los modelos de IA necesarios según las opciones para evitar 
@@ -155,10 +220,8 @@ class ImageConverter:
         """
         # 1. ¿Se requiere rembg (eliminación de fondo)?
         if options.get("rembg_enabled", False):
-            if not self._load_rembg_lazy(progress_callback):
-                return False
-            
-            # 2. Inicializar la sesión de ONNX si no existe
+            # The curated models are run directly with ONNX Runtime.  Importing
+            # the whole rembg stack here only delayed the first preview.
             model_name = options.get("rembg_model", "u2net")
             use_gpu = options.get("rembg_gpu", True)
             
@@ -171,28 +234,13 @@ class ImageConverter:
                 # Si no existe, no podemos pre-cargar (se descargará luego en remove_background)
                 return True
             
-            session_key = f"{model_path}_{'gpu' if use_gpu else 'cpu'}"
-            if session_key not in self.rembg_sessions:
-                if progress_callback:
-                    hw = "GPU/DirectML" if use_gpu else "CPU"
-                    progress_callback(None, f"Inicializando modelo {model_name} en {hw}...")
-                
-                try:
-                    import onnxruntime as ort
-                    sess_opts = ort.SessionOptions()
-                    if use_gpu:
-                        providers = ['DmlExecutionProvider', 'CPUExecutionProvider']
-                        sess_opts.enable_mem_pattern = False
-                    else:
-                        providers = ['CPUExecutionProvider']
-                    
-                    # Carga real (Bloqueante por 2-3s)
-                    self.rembg_sessions[session_key] = ort.InferenceSession(
-                        model_path, providers=providers, sess_options=sess_opts
-                    )
-                    print(f"DEBUG: Sesión {model_name} pre-cargada con éxito.")
-                except Exception as e:
-                    print(f"WARNING: No se pudo pre-cargar el modelo: {e}")
+            if progress_callback:
+                progress_callback(None, f"Inicializando {model_name} en el mejor motor disponible…")
+            try:
+                session = self._create_ort_session(model_path, use_gpu=use_gpu)
+                print(f"INFO: {model_name} listo con {session.get_providers()[0]}.")
+            except Exception as e:
+                print(f"WARNING: No se pudo pre-cargar el modelo: {e}")
         
         return True
         
@@ -203,67 +251,10 @@ class ImageConverter:
         """
         try:
             import numpy as np
-            import onnxruntime as ort
-            
-            # 1. Gestión de Sesión (Clave única por hardware)
-            session_key = f"{model_path}_{'gpu' if use_gpu else 'cpu'}"
-            
-            if session_key not in self.rembg_sessions:
-                hw_label = 'GPU' if use_gpu else 'CPU'
-                print(f"DEBUG: Cargando Modelo de Alta Res. en [{hw_label}]: {os.path.basename(model_path)}")
-                
-                sess_opts = ort.SessionOptions()
-                
-                if use_gpu:
-                    # --- MODO GPU (Seguro) ---
-                    providers = ['DmlExecutionProvider', 'CPUExecutionProvider']
-                    sess_opts.enable_mem_pattern = False
-                else:
-                    # --- MODO CPU (Rápido) ---
-                    providers = ['CPUExecutionProvider']
-                    sess_opts.enable_cpu_mem_arena = True
-                    sess_opts.execution_mode = ort.ExecutionMode.ORT_PARALLEL
-                
-                self.rembg_sessions[session_key] = ort.InferenceSession(model_path, providers=providers, sess_options=sess_opts)
-            
-            session = self.rembg_sessions[session_key]
-
-            # 2. Preprocesamiento
-            original_image = pil_image.convert("RGB")
-            orig_w, orig_h = original_image.size
-            
-            # Redimensionar a 1024x1024
-            img_resized = original_image.resize((1024, 1024), Image.Resampling.BILINEAR)
-            
-            # Convertir a Numpy y Normalizar (0-1)
-            img_np = np.array(img_resized).astype(np.float32) / 255.0
-            
-            # Estandarización (ImageNet mean/std)
-            mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
-            std  = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-            
-            img_np = (img_np - mean) / std
-            img_np = img_np.astype(np.float32)
-            
-            # Transponer a (Batch, Channel, Height, Width) -> (1, 3, 1024, 1024)
-            img_np = img_np.transpose(2, 0, 1)
-            img_np = np.expand_dims(img_np, 0)
-
-            # 3. Inferencia
-            input_name = session.get_inputs()[0].name
-            result = session.run(None, {input_name: img_np})
-            mask = result[0][0, 0]
-
-            # 4. Postprocesamiento
-            mask = (mask * 255).clip(0, 255).astype(np.uint8)
-            mask_img = Image.fromarray(mask, mode='L')
-            mask_img = mask_img.resize((orig_w, orig_h), Image.Resampling.LANCZOS)
-
-            # 5. Aplicar al canal Alfa
-            final_image = pil_image.convert("RGBA")
-            final_image.putalpha(mask_img)
-            
-            return final_image
+            session = self._create_ort_session(model_path, use_gpu=use_gpu)
+            return self._process_onnx_manual(
+                pil_image, session, target_size=self._session_input_size(session)
+            )
 
         except Exception as e:
             print(f"ERROR en inferencia de alta resolución: {e}")
@@ -303,19 +294,16 @@ class ImageConverter:
         
         # Detectar si necesitamos Sigmoide:
         # Si los valores salen del rango [0, 1] (ej: -5 a +5), son Logits.
-        min_val, max_val = raw_mask.min(), raw_mask.max()
-        
-        if min_val < -1.0 or max_val > 1.5:
-            # Aplicar Sigmoide: 1 / (1 + e^-x)
-            # Esto convierte los "fantasmas" en negro/blanco puro
-            mask = 1 / (1 + np.exp(-raw_mask))
-        else:
-            # Ya son probabilidades, usar tal cual
-            mask = raw_mask
+        min_val, max_val = float(raw_mask.min()), float(raw_mask.max())
 
-        # Normalización final para asegurar rango 0-255 sólido
-        mask = (mask - mask.min()) / (mask.max() - mask.min() + 1e-8)
-        mask = (mask * 255).astype(np.uint8)
+        if min_val < 0.0 or max_val > 1.0:
+            # Preserve the network's confidence.  Per-image min/max
+            # normalisation (used before) inflated uncertain backgrounds.
+            mask = 1.0 / (1.0 + np.exp(-np.clip(raw_mask, -30.0, 30.0)))
+        else:
+            mask = np.clip(raw_mask, 0.0, 1.0)
+
+        mask = np.rint(mask * 255.0).astype(np.uint8)
         
         # 4. Redimensionar y Aplicar
         mask_img = Image.fromarray(mask, mode='L')
@@ -361,10 +349,6 @@ class ImageConverter:
                 raise RuntimeError(f"El modelo de fondo no está instalado: {model_filename}")
             return self._process_high_res_onnx(pil_image, target_model_path, use_gpu=use_gpu)
 
-        # --- CARGA LAZY DE REMBG ---
-        if not self._load_rembg_lazy(progress_callback):
-            raise RuntimeError("No se pudo cargar el motor de eliminación de fondo.")
-
         try:
             # 1. Definir clave de caché única (Nombre + GPU/CPU)
             session_key = f"{model_filename}_{'gpu' if use_gpu else 'cpu'}"
@@ -381,31 +365,8 @@ class ImageConverter:
                 if not os.path.exists(full_model_path):
                     raise RuntimeError(f"No se encontró el modelo de fondo {model_filename}.")
 
-                hw_label = 'GPU' if use_gpu else 'CPU'
-                print(f"DEBUG: Cargando Manualmente {model_filename} en [{hw_label}]")
-                
-                sess_opts = ort.SessionOptions()
-
-                if use_gpu:
-                    # CONFIG GPU (DirectML Anti-Freeze)
-                    providers = ['DmlExecutionProvider', 'CPUExecutionProvider']
-                    sess_opts.enable_mem_pattern = False 
-                    sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
-                    sess_opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-                    sess_opts.inter_op_num_threads = 1 
-                    sess_opts.intra_op_num_threads = 1
-                else:
-                    # CONFIG CPU (Máxima Velocidad)
-                    providers = ['CPUExecutionProvider']
-                    sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-                    sess_opts.execution_mode = ort.ExecutionMode.ORT_PARALLEL
-                
-                # Cargamos la sesión "cruda" de ONNX Runtime
-                self.rembg_sessions[session_key] = ort.InferenceSession(
-                    full_model_path, 
-                    providers=providers, 
-                    sess_options=sess_opts
-                )
+                session = self._create_ort_session(full_model_path, use_gpu=use_gpu)
+                self.rembg_sessions[session_key] = session
             
             # 3. Obtener sesión
             session = self.rembg_sessions[session_key]
@@ -418,15 +379,8 @@ class ImageConverter:
             # - IsNet (General/Anime): SIEMPRE 1024 (El log dice Expected: 1024)
             # - U2Net (Standard/Human/P): 320
             
-            if "birefnet" in model_lower:
-                size = (1024, 1024)
-            elif "isnet" in model_lower: # <-- CAMBIO CLAVE: IsNet a 1024
-                size = (1024, 1024)
-            elif "u2net" in model_lower:
-                size = (320, 320)
-            else:
-                # Ante la duda, hoy en día los modelos modernos usan 1024
-                size = (1024, 1024) 
+            fallback = (320, 320) if "u2net" in model_lower else (1024, 1024)
+            size = self._session_input_size(session, fallback=fallback)
             
             # 5. Ejecutar inferencia MANUAL
             try:
@@ -438,7 +392,9 @@ class ImageConverter:
                 error_msg = repr(run_error)
 
                 # Detectar si fue un fallo de GPU (DirectML)
-                if use_gpu and ("DmlFusedNode" in error_msg or "887A0007" in error_msg or "Non-zero status" in error_msg):
+                provider = session.get_providers()[0] if session.get_providers() else ""
+                shape_error = "invalid dimensions" in error_msg.lower() or "expected" in error_msg.lower()
+                if use_gpu and provider != "CPUExecutionProvider" and not shape_error:
                     print(f"⚠️ ADVERTENCIA: La GPU falló o se agotó el tiempo. Reintentando con CPU...")
                     
                     # 🔥 FALLBACK: Llamada recursiva forzando CPU

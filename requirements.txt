@@ -1,7 +1,8 @@
 CairoSVG==2.9.0
 curl_cffi==0.13.0
 img2pdf==0.6.3
-onnxruntime==1.27.0
+onnxruntime-directml==1.24.4; platform_system == "Windows"
+onnxruntime==1.27.0; platform_system != "Windows"
 opencv-python-headless==5.0.0.93
 packaging==26.2
 pdf2image==1.17.0
