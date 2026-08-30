@@ -8,10 +8,15 @@ Item {
     property var viewState: imageController.state
     property var options: imageController.options
     property var selected: imageController.selected
-    // Conserva las tres herramientas alineadas también en la ventana mínima.
-    property bool wide: width >= 890
     property bool dense: height < 760
     property real comparePosition: 0.5
+
+    function taskDescription() {
+        if (viewState.task === "removeBackground") return "Crea un PNG o WEBP transparente con bordes limpios."
+        if (viewState.task === "upscaleImage") return "Amplía fotografías e ilustraciones con un modelo elegido para su contenido."
+        if (viewState.task === "upscaleVideo") return "Aumenta la resolución del video y conserva su pista de audio."
+        return "Cambia formato, dimensiones o lienzo sin alterar innecesariamente la imagen."
+    }
 
     function taskTitle() {
         if (viewState.task === "removeBackground") return "Quitar fondo"
@@ -35,54 +40,80 @@ Item {
             Layout.fillWidth: true
             compact: page.dense
             eyebrow: "ESTUDIO DE IMAGEN"
-            title: "¿Qué quieres hacer?"
-            description: "Elige una tarea y Xomacito prepara los ajustes recomendados. Los controles técnicos siguen disponibles."
+            title: "Prepara tus imágenes"
+            description: "Elige una tarea, añade tus archivos y revisa una muestra antes de procesarlos."
             number: "03"
         }
 
         XCard {
             Layout.fillWidth: true
-            implicitHeight: page.dense ? 58 : 70
+            implicitHeight: page.dense ? 54 : 62
             cardColor: theme.colors.surfaceRaised
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 8
-                spacing: 8
+                anchors.margins: 6
+                spacing: 4
                 Repeater {
                     model: [
-                        { key: "removeBackground", label: "Quitar fondo", hint: "PNG transparente" },
-                        { key: "upscaleImage", label: "Mejorar imagen", hint: "Más detalle" },
-                        { key: "upscaleVideo", label: "Mejorar video", hint: "2× o 4×" },
-                        { key: "convert", label: "Convertir", hint: "Tamaño y formato" }
+                        { key: "removeBackground", icon: "◇", label: "Quitar fondo", hint: "Transparencia" },
+                        { key: "upscaleImage", icon: "↗", label: "Mejorar imagen", hint: "Más detalle" },
+                        { key: "upscaleVideo", icon: "▶", label: "Mejorar video", hint: "2× o 4×" },
+                        { key: "convert", icon: "⇄", label: "Convertir", hint: "Formato y tamaño" }
                     ]
                     delegate: Button {
+                        id: taskButton
                         required property var modelData
+                        property bool selectedTask: viewState.task === modelData.key
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         hoverEnabled: true
                         onClicked: imageController.setTask(modelData.key)
-                        contentItem: Column {
-                            anchors.centerIn: parent
-                            spacing: 2
+                        contentItem: RowLayout {
+                            spacing: 7
                             Text {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: modelData.label
-                                color: viewState.task === modelData.key ? "#FFFFFF" : theme.colors.text
-                                font.pixelSize: 12
-                                font.weight: Font.DemiBold
+                                text: modelData.icon
+                                color: taskButton.selectedTask ? "#FFFFFF" : theme.colors.textMuted
+                                font.pixelSize: 14
+                                font.weight: Font.Bold
+                                Layout.leftMargin: 4
                             }
-                            Text {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: modelData.hint
-                                color: viewState.task === modelData.key ? "#DDFBFF" : theme.colors.textMuted
-                                font.pixelSize: 9
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 0
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: modelData.label
+                                    color: taskButton.selectedTask ? "#FFFFFF" : theme.colors.text
+                                    font.pixelSize: 11
+                                    font.weight: Font.DemiBold
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: !page.dense
+                                    text: modelData.hint
+                                    color: taskButton.selectedTask ? "#EAF1FF" : theme.colors.textMuted
+                                    font.pixelSize: 9
+                                    elide: Text.ElideRight
+                                }
                             }
                         }
                         background: Rectangle {
-                            radius: 12
-                            color: viewState.task === modelData.key ? theme.colors.primary : parent.hovered ? theme.colors.surfaceSoft : "transparent"
-                            border.width: viewState.task === modelData.key || parent.activeFocus ? 2 : 1
-                            border.color: viewState.task === modelData.key ? theme.colors.accent : theme.colors.border
+                            radius: 10
+                            color: parent.selectedTask ? theme.colors.primary : parent.hovered ? theme.colors.surfaceSoft : "transparent"
+                            border.width: parent.activeFocus ? 2 : 0
+                            border.color: theme.colors.accent
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                height: 2
+                                radius: 1
+                                visible: taskButton.selectedTask
+                                color: theme.colors.primary
+                            }
                             Behavior on color { ColorAnimation { duration: settingsController.state.animationsEnabled ? 130 : 0 } }
                         }
                     }
@@ -92,36 +123,55 @@ Item {
 
         XCard {
             Layout.fillWidth: true
-            implicitHeight: page.dense ? 54 : 64
+            implicitHeight: page.dense ? 50 : 56
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 10
-                spacing: 8
+                anchors.margins: 7
+                spacing: 7
                 XButton {
-                    text: viewState.task === "upscaleVideo" ? "Importar videos" : "Importar imágenes"
+                    text: viewState.task === "upscaleVideo" ? "Añadir videos" : "Añadir archivos"
+                    leadingText: "+"
+                    compact: true
                     onClicked: imageController.importFiles()
                 }
-                XButton { text: "Carpeta"; compact: true; kind: "secondary"; onClicked: imageController.importFolder() }
-                XButton { text: "Pegar"; compact: true; kind: "secondary"; visible: viewState.task !== "upscaleVideo"; onClicked: imageController.paste() }
-                XTextField {
+                XButton { text: "Carpeta"; leadingText: "▣"; compact: true; kind: "secondary"; onClicked: imageController.importFolder() }
+                XButton { text: "Pegar"; compact: true; kind: "ghost"; visible: viewState.task !== "upscaleVideo"; onClicked: imageController.paste() }
+                Rectangle {
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
                     visible: viewState.task !== "upscaleVideo"
-                    placeholderText: "Pega un enlace para capturar su imagen"
-                    text: viewState.url
-                    onTextEdited: imageController.setValue("url", text)
-                    onAccepted: imageController.analyzeUrl()
-                }
-                XButton {
-                    text: "Analizar"
-                    compact: true
-                    visible: viewState.task !== "upscaleVideo"
-                    enabled: !viewState.busy
-                    onClicked: imageController.analyzeUrl()
+                    radius: 10
+                    color: theme.colors.surfaceSoft
+                    border.width: 1
+                    border.color: theme.colors.border
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 4
+                        spacing: 6
+                        Text { text: "↗"; color: theme.colors.textMuted; font.pixelSize: 12 }
+                        XTextField {
+                            Layout.fillWidth: true
+                            compact: true
+                            placeholderText: "Pega aquí el enlace de una imagen"
+                            text: viewState.url
+                            background: Item {}
+                            onTextEdited: imageController.setValue("url", text)
+                            onAccepted: imageController.analyzeUrl()
+                        }
+                        XButton {
+                            text: "Importar enlace"
+                            compact: true
+                            kind: "secondary"
+                            enabled: !viewState.busy && viewState.url.length > 0
+                            onClicked: imageController.analyzeUrl()
+                        }
+                    }
                 }
                 Text {
                     Layout.fillWidth: true
                     visible: viewState.task === "upscaleVideo"
-                    text: "MP4, MOV, MKV, WEBM o AVI · el resultado se guarda como MP4 compatible"
+                    text: "MP4, MOV, MKV, WEBM o AVI"
                     color: theme.colors.textMuted
                     font.pixelSize: 11
                     elide: Text.ElideRight
@@ -129,60 +179,18 @@ Item {
             }
         }
 
-        XCard {
-            Layout.fillWidth: true
-            implicitHeight: page.dense ? 54 : 64
-            cardColor: theme.colors.surfaceRaised
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: 9
-                spacing: 10
-                Rectangle {
-                    width: 34; height: 34; radius: 10
-                    color: theme.colors.primarySoft
-                    Text { anchors.centerIn: parent; text: "✦"; color: theme.colors.primary; font.pixelSize: 17; font.weight: Font.Bold }
-                }
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 1
-                    Text { text: "RECETA INTELIGENTE · " + viewState.analysisTitle; color: theme.colors.text; font.pixelSize: 10; font.weight: Font.Bold; elide: Text.ElideRight; Layout.fillWidth: true }
-                    Text { text: viewState.analysisDetail + " · " + viewState.recommendation; color: theme.colors.textMuted; font.pixelSize: 9; elide: Text.ElideRight; Layout.fillWidth: true }
-                }
-                ColumnLayout {
-                    visible: page.width >= 1120
-                    Layout.preferredWidth: 250
-                    spacing: 1
-                    Text { text: "MOTOR LOCAL"; color: theme.colors.primary; font.pixelSize: 9; font.weight: Font.Bold }
-                    Text { text: viewState.hardwareLabel; color: theme.colors.textMuted; font.pixelSize: 9; elide: Text.ElideRight; Layout.fillWidth: true }
-                }
-                LabeledControl {
-                    Layout.preferredWidth: 180
-                    compact: true
-                    label: "Rendimiento"
-                    XComboBox {
-                        Layout.fillWidth: true
-                        compact: true
-                        model: imageController.performanceProfiles
-                        currentIndex: Math.max(0, find(options.performanceProfile))
-                        onActivated: imageController.setPerformanceProfile(currentText)
-                    }
-                }
-            }
-        }
-
-        GridLayout {
+        RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            columns: page.wide ? 12 : 1
-            columnSpacing: 10
-            rowSpacing: 10
+            spacing: 10
 
             XCard {
                 id: filesCard
-                Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.columnSpan: page.wide ? 3 : 1
-                Layout.minimumHeight: page.dense ? 230 : 278
+                Layout.minimumWidth: 190
+                Layout.preferredWidth: Math.min(250, page.width * 0.18)
+                Layout.maximumWidth: 260
+                Layout.minimumHeight: page.dense ? 270 : 310
                 clip: true
                 cardColor: fileDropArea.containsDrag ? theme.colors.surfaceRaised : theme.colors.surface
                 ColumnLayout {
@@ -191,9 +199,16 @@ Item {
                     spacing: 8
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { text: "ARCHIVOS  " + viewState.itemCount; color: theme.colors.primary; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1 }
+                        Text { text: "ARCHIVOS"; color: theme.colors.text; font.pixelSize: 11; font.weight: Font.Bold; font.letterSpacing: 0.8 }
+                        Rectangle {
+                            implicitWidth: Math.max(22, fileCount.implicitWidth + 12)
+                            implicitHeight: 22
+                            radius: 11
+                            color: theme.colors.primarySoft
+                            Text { id: fileCount; anchors.centerIn: parent; text: viewState.itemCount; color: theme.colors.primary; font.pixelSize: 9; font.weight: Font.Bold }
+                        }
                         Item { Layout.fillWidth: true }
-                        XButton { text: "Vaciar"; compact: true; kind: "ghost"; onClicked: imageController.clear() }
+                        XButton { text: "Vaciar"; compact: true; kind: "ghost"; visible: viewState.itemCount > 0; onClicked: imageController.clear() }
                     }
                     ListView {
                         id: resources
@@ -236,11 +251,34 @@ Item {
                                 XButton { compact: true; implicitWidth: 30; text: "×"; kind: "ghost"; onClicked: imageController.remove(index) }
                             }
                         }
-                        Text {
+                        Column {
                             anchors.centerIn: parent
                             visible: resources.count === 0
-                            text: viewState.task === "upscaleVideo" ? "Arrastra videos aquí" : "Arrastra imágenes aquí"
-                            color: theme.colors.textMuted
+                            width: Math.max(130, resources.width - 26)
+                            spacing: 7
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 44; height: 44; radius: 22
+                                color: "transparent"
+                                border.width: 1
+                                border.color: theme.colors.primary
+                                Text { anchors.centerIn: parent; text: "+"; color: theme.colors.primary; font.pixelSize: 23; font.weight: Font.Light }
+                            }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: viewState.task === "upscaleVideo" ? "Añade tus videos" : "Añade tus archivos"
+                                color: theme.colors.text
+                                font.pixelSize: 11
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                width: parent.width
+                                horizontalAlignment: Text.AlignHCenter
+                                text: "También puedes arrastrarlos aquí"
+                                color: theme.colors.textMuted
+                                font.pixelSize: 9
+                                wrapMode: Text.WordWrap
+                            }
                         }
                     }
                 }
@@ -263,8 +301,8 @@ Item {
             XCard {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.columnSpan: page.wide ? 5 : 1
-                Layout.minimumHeight: page.dense ? 230 : 278
+                Layout.minimumWidth: 360
+                Layout.minimumHeight: page.dense ? 270 : 310
                 clip: true
                 ColumnLayout {
                     anchors.fill: parent
@@ -275,8 +313,8 @@ Item {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 1
-                            Text { Layout.fillWidth: true; text: selected.name || "Vista previa"; color: theme.colors.text; font.pixelSize: 13; font.weight: Font.DemiBold; elide: Text.ElideRight }
-                            Text { text: viewState.resultPreviewSource ? "RESULTADO" : "ORIGINAL"; color: viewState.resultPreviewSource ? theme.colors.success : theme.colors.textMuted; font.pixelSize: 9; font.weight: Font.Bold }
+                            Text { text: "Vista previa"; color: theme.colors.text; font.pixelSize: 14; font.weight: Font.DemiBold }
+                            Text { Layout.fillWidth: true; text: selected.name || "Selecciona un archivo para comenzar"; color: theme.colors.textMuted; font.pixelSize: 9; elide: Text.ElideMiddle }
                         }
                         XButton { compact: true; text: "Quitar"; kind: "ghost"; enabled: viewState.selectedIndex >= 0; onClicked: imageController.removeSelected() }
                     }
@@ -341,12 +379,34 @@ Item {
                         Rectangle {
                             anchors.left: parent.left; anchors.top: parent.top
                             anchors.margins: 14
-                            visible: !!viewState.resultPreviewSource
-                            implicitWidth: beforeLabel.implicitWidth + 14; implicitHeight: beforeLabel.implicitHeight + 8
-                            radius: 8; color: theme.colors.surfaceRaised; opacity: 0.92
-                            Text { id: beforeLabel; anchors.centerIn: parent; text: page.comparePosition < 0.08 ? "ORIGINAL" : "RESULTADO  |  ORIGINAL"; color: theme.colors.text; font.pixelSize: 9; font.weight: Font.Bold }
+                            visible: !!viewState.resultPreviewSource && page.comparePosition > 0.05
+                            implicitWidth: resultLabel.implicitWidth + 16; implicitHeight: resultLabel.implicitHeight + 8
+                            radius: 8; color: theme.colors.primary; opacity: 0.94
+                            Text { id: resultLabel; anchors.centerIn: parent; text: "RESULTADO"; color: "#FFFFFF"; font.pixelSize: 9; font.weight: Font.Bold }
                         }
-                        Text { anchors.centerIn: parent; visible: !viewState.previewSource && !viewState.resultPreviewSource; text: "Tu recurso aparecerá aquí"; color: theme.colors.textMuted }
+                        Rectangle {
+                            anchors.right: parent.right; anchors.top: parent.top
+                            anchors.margins: 14
+                            visible: !!viewState.resultPreviewSource && page.comparePosition < 0.95
+                            implicitWidth: originalLabel.implicitWidth + 16; implicitHeight: originalLabel.implicitHeight + 8
+                            radius: 8; color: theme.colors.surfaceRaised; opacity: 0.94
+                            Text { id: originalLabel; anchors.centerIn: parent; text: "ORIGINAL"; color: theme.colors.text; font.pixelSize: 9; font.weight: Font.Bold }
+                        }
+                        Column {
+                            anchors.centerIn: parent
+                            visible: !viewState.previewSource && !viewState.resultPreviewSource
+                            spacing: 8
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 50; height: 50; radius: 25
+                                color: theme.colors.surfaceSoft
+                                border.width: 1
+                                border.color: theme.colors.border
+                                Text { anchors.centerIn: parent; text: "▧"; color: theme.colors.primary; font.pixelSize: 22 }
+                            }
+                            Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Aquí verás el resultado"; color: theme.colors.text; font.pixelSize: 12; font.weight: Font.DemiBold }
+                            Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Selecciona un archivo de la lista"; color: theme.colors.textMuted; font.pixelSize: 9 }
+                        }
                     }
                     RowLayout {
                         Layout.fillWidth: true
@@ -360,33 +420,58 @@ Item {
                             enabled: !viewState.busy
                             onClicked: imageController.preparePreview()
                         }
-                        XButton { visible: !!viewState.resultPreviewSource; compact: true; text: "Antes"; kind: "ghost"; onClicked: page.comparePosition = 0 }
-                        XButton { visible: !!viewState.resultPreviewSource; compact: true; text: "Comparar"; kind: "ghost"; onClicked: page.comparePosition = 0.5 }
-                        XButton { visible: !!viewState.resultPreviewSource; compact: true; text: "Después"; kind: "ghost"; onClicked: page.comparePosition = 1 }
-                    }
-                    XTextField {
-                        Layout.fillWidth: true
-                        placeholderText: "Nombre del resultado"
-                        text: selected.title || ""
-                        enabled: viewState.selectedIndex >= 0
-                        onEditingFinished: imageController.setSelectedTitle(text)
+                        XButton { visible: !!viewState.resultPreviewSource; compact: true; text: "Original"; kind: "ghost"; onClicked: page.comparePosition = 0 }
+                        XButton { visible: !!viewState.resultPreviewSource; compact: true; text: "50 / 50"; kind: "ghost"; onClicked: page.comparePosition = 0.5 }
+                        XButton { visible: !!viewState.resultPreviewSource; compact: true; text: "Resultado"; kind: "ghost"; onClicked: page.comparePosition = 1 }
                     }
                 }
             }
 
             XCard {
-                Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.columnSpan: page.wide ? 4 : 1
-                Layout.minimumHeight: page.dense ? 230 : 278
+                Layout.minimumWidth: 310
+                Layout.preferredWidth: Math.min(420, page.width * 0.31)
+                Layout.maximumWidth: 430
+                Layout.minimumHeight: page.dense ? 270 : 310
                 clip: true
                 cardColor: theme.colors.surfaceRaised
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: page.dense ? 11 : 14
                     spacing: page.dense ? 6 : 9
-                    Text { text: "TAREA SELECCIONADA"; color: theme.colors.primary; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1 }
-                    Text { text: page.taskTitle(); color: theme.colors.text; font.pixelSize: page.dense ? 17 : 20; font.weight: Font.DemiBold }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 1
+                            Text { text: "AJUSTES"; color: theme.colors.primary; font.pixelSize: 9; font.weight: Font.Bold; font.letterSpacing: 1 }
+                            Text { Layout.fillWidth: true; text: page.taskTitle(); color: theme.colors.text; font.pixelSize: page.dense ? 17 : 19; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                        }
+                        Rectangle {
+                            implicitWidth: 132
+                            implicitHeight: 32
+                            radius: 9
+                            color: theme.colors.surfaceSoft
+                            border.width: 1
+                            border.color: theme.colors.border
+                            Column {
+                                anchors.centerIn: parent
+                                width: parent.width - 14
+                                spacing: 0
+                                Text { width: parent.width; text: "MOTOR LOCAL"; color: theme.colors.primary; font.pixelSize: 7; font.weight: Font.Bold; horizontalAlignment: Text.AlignHCenter }
+                                Text { width: parent.width; text: viewState.hardwareLabel; color: theme.colors.textMuted; font.pixelSize: 8; elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter }
+                            }
+                        }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: !page.dense
+                        text: page.taskDescription()
+                        color: theme.colors.textMuted
+                        font.pixelSize: 10
+                        wrapMode: Text.WordWrap
+                    }
 
                     StackLayout {
                         Layout.fillWidth: true
@@ -498,12 +583,63 @@ Item {
                         }
                     }
 
-                    XButton {
+                    Rectangle {
                         Layout.fillWidth: true
-                        text: "Opciones de resultado"
-                        compact: page.dense
-                        kind: "secondary"
-                        onClicked: advanced.open()
+                        implicitHeight: page.dense ? 28 : 50
+                        radius: 10
+                        color: theme.colors.primarySoft
+                        visible: viewState.analysisReady
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: page.dense ? 6 : 8
+                            spacing: 7
+                            Text { text: "✦"; color: theme.colors.primary; font.pixelSize: page.dense ? 12 : 15; font.weight: Font.Bold }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 0
+                                Text { Layout.fillWidth: true; text: page.dense ? viewState.recommendation : viewState.analysisTitle; color: theme.colors.text; font.pixelSize: page.dense ? 8 : 9; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                                Text { Layout.fillWidth: true; visible: !page.dense; text: viewState.recommendation; color: theme.colors.textMuted; font.pixelSize: 8; elide: Text.ElideRight }
+                            }
+                        }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: !viewState.analysisReady
+                        text: "✦ Añade un archivo y elegiré el ajuste recomendado."
+                        color: theme.colors.textMuted
+                        font.pixelSize: 8
+                        elide: Text.ElideRight
+                    }
+                    XTextField {
+                        Layout.fillWidth: true
+                        compact: true
+                        visible: viewState.selectedIndex >= 0
+                        placeholderText: "Nombre del resultado (opcional)"
+                        text: selected.title || ""
+                        onEditingFinished: imageController.setSelectedTitle(text)
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 7
+                        LabeledControl {
+                            Layout.fillWidth: true
+                            compact: true
+                            label: "Rendimiento"
+                            XComboBox {
+                                Layout.fillWidth: true
+                                compact: true
+                                model: imageController.performanceProfiles
+                                currentIndex: Math.max(0, find(options.performanceProfile))
+                                onActivated: imageController.setPerformanceProfile(currentText)
+                            }
+                        }
+                        XButton {
+                            text: "Más opciones"
+                            compact: true
+                            kind: "secondary"
+                            Layout.alignment: Qt.AlignBottom
+                            onClicked: advanced.open()
+                        }
                     }
                 }
             }
