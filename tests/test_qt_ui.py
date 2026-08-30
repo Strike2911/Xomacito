@@ -577,7 +577,7 @@ window.setProperty("width", 1280)
 window.setProperty("height", 720)
 QTest.qWait(120)
 assert list(controller.pages) == [
-    "Descargar", "Cola", "Biblioteca", "Estudio de Imagen", "Personalización", "Scoreboard", "Configuración"
+    "Descargar", "Cola", "Biblioteca", "Estudio", "Personalización", "Scoreboard", "Configuración"
 ]
 nav_row = window.findChild(QQuickItem, "navigationBar")
 assert nav_row is not None
@@ -1187,14 +1187,25 @@ from src.ui.application import AppController
 app = QApplication([])
 controller = AppController(app, Path.cwd(), "2.5")
 download = controller.download
-download._tags = [{"name": "SFX", "folder": r"C:\Media\SFX", "color": "#FF5C8A"}]
+tags = [
+    {"name": "SFX", "folder": r"C:\Media\SFX", "color": "#FF5C8A"},
+    {"name": "Música", "folder": r"D:\Edicion\Musica", "color": "#22D3EE"},
+]
+controller.settings.set("download_tags", tags)
+download._tags = download._load_download_tags()
 download.tagsChanged.emit()
-download.setValue("selectedTag", "SFX")
+download.selectDownloadTag("SFX")
+assert download.state["effectiveOutputPath"] == r"C:\Media\SFX"
+download.selectDownloadTag("Música")
 download._set_state(title="impacto")
 options = download._collect_process_options()
-assert download.state["effectiveOutputPath"] == r"C:\Media\SFX"
-assert options["output_path"] == r"C:\Media\SFX"
-assert download.state["selectedTagColor"] == "#FF5C8A"
+assert download.state["effectiveOutputPath"] == r"D:\Edicion\Musica"
+assert options["output_path"] == r"D:\Edicion\Musica"
+assert download.state["selectedTagColor"] == "#22D3EE"
+controller.batch.selectDownloadTag("SFX")
+assert controller.batch.state["effectiveOutputPath"] == r"C:\Media\SFX"
+controller.batch.selectDownloadTag("Música")
+assert controller.batch.state["effectiveOutputPath"] == r"D:\Edicion\Musica"
 controller.shutdown()
 '''
         with tempfile.TemporaryDirectory() as appdata:
@@ -1272,6 +1283,19 @@ controller.shutdown()
         self.assertIn("function contrastText(backgroundColor)", button)
         self.assertIn("color: root.foregroundColor()", button)
         self.assertIn("color: root.currentBackgroundColor", button)
+        self.assertIn("readonly property color currentForegroundColor", button)
+        self.assertIn("hovered || down", button)
+
+        theme = (ROOT / "src" / "ui" / "theme.py").read_text(encoding="utf-8")
+        self.assertIn("hover = _mix(primary, background", theme)
+
+    def test_library_uses_a_dedicated_favorite_control(self):
+        page = (ROOT / "src" / "ui" / "qml" / "pages" / "MediaLibraryPage.qml").read_text(encoding="utf-8")
+        control = (ROOT / "src" / "ui" / "qml" / "components" / "XFavoriteButton.qml").read_text(encoding="utf-8")
+        self.assertGreaterEqual(page.count("XFavoriteButton {"), 2)
+        self.assertIn('Accessible.name: (favorite ? "Quitar de favoritos" : "Añadir a favoritos")', control)
+        self.assertIn("implicitWidth: 34", control)
+        self.assertIn("favorite ? theme.colors.warning", control)
 
     def test_mp3_cover_is_embedded_as_an_attached_picture(self):
         script = r'''

@@ -294,14 +294,12 @@ Item {
                                     }
                                 }
                                 Text { visible: rowType === "folder"; text: folderCount; color: theme.colors.textMuted; font.pixelSize: 9; font.weight: Font.Bold }
-                                XButton {
+                                XFavoriteButton {
                                     visible: rowType === "file"
-                                    compact: true
-                                    implicitWidth: 28
-                                    text: isFavorite ? "★" : "☆"
-                                    kind: "ghost"
-                                    ToolTip.visible: hovered
-                                    ToolTip.text: isFavorite ? "Quitar de favoritos" : "Añadir a favoritos"
+                                    Layout.preferredWidth: 34
+                                    Layout.preferredHeight: 34
+                                    favorite: isFavorite
+                                    itemName: name
                                     onClicked: mediaLibraryController.toggleFavorite(path)
                                 }
                                 XButton {
@@ -388,12 +386,10 @@ Item {
                             color: theme.colors.surfaceSoft; border.color: theme.colors.borderStrong
                             Text { id: formatText; anchors.centerIn: parent; text: selected.kind === "Audio" ? "SALIDA WAV" : selected.kind === "Imagen" ? "LISTA PARA USAR" : "SALIDA MP4"; color: theme.colors.primary; font.pixelSize: 9; font.weight: Font.Bold }
                         }
-                        XButton {
+                        XFavoriteButton {
                             visible: Boolean(selected.path)
-                            compact: true; implicitWidth: 34
-                            text: selected.isFavorite ? "★" : "☆"; kind: "ghost"
-                            ToolTip.visible: hovered
-                            ToolTip.text: selected.isFavorite ? "Quitar de favoritos" : "Añadir a favoritos"
+                            favorite: Boolean(selected.isFavorite)
+                            itemName: selected.name || ""
                             onClicked: mediaLibraryController.toggleFavorite(selected.path)
                         }
                     }

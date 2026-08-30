@@ -511,135 +511,33 @@ GRADIENT_DIRECTIONS = [
 # Los formatos que soportan transparencia ya están definidos arriba.
 
 REMBG_MODEL_FAMILIES = {
-    "Rembg Standard (U2Net)": {
-        "isnet-general-use (Recomendado)": {
-            "file": "isnet-general-use.onnx",
-            "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx",
-            "folder": "rembg" 
-        },
-        "u2netp (Rápido)": {
-            "file": "u2netp.onnx",
-            "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
-            "folder": "rembg"
-        },
-        "u2net (Alta Precisión)": {
-            "file": "u2net.onnx",
-            "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx",
-            "folder": "rembg"
-        },
-        "u2net_human_seg (Humanos)": {
-            "file": "u2net_human_seg.onnx",
-            "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net_human_seg.onnx",
-            "folder": "rembg"
-        },
-        "isnet-anime (Anime)": {
-            "file": "isnet-anime.onnx",
-            "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-anime.onnx",
-            "folder": "rembg"
-        }
-    },
-    "BiRefNet (Next-Gen 2024)": {
-        # --- MODELOS GENERALES ---
-        "General (Estándar)": {
-            "file": "birefnet-general.onnx",  # ✅ Nombre que rembg espera
-            "url": "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-epoch_244.onnx",
-            "license": "MIT",
-            "folder": "rembg"
-        },
-        "General Lite (Rápido)": {
-            "file": "birefnet-general-lite.onnx",  # ✅ Cambiado
+    # Un único catálogo curado evita que una actualización cambie de familia,
+    # vuelva a descargar gigabytes o exponga modelos experimentales sin soporte.
+    "BiRefNet": {
+        "General rápido": {
+            "file": "birefnet-general-lite.onnx",
             "url": "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx",
             "license": "MIT",
-            "folder": "rembg"
+            "folder": "rembg",
         },
-        
-        # --- ESPECIALIZADOS ---
-        "Portrait (Retratos)": {
-            "file": "birefnet-portrait.onnx",  # ✅ Cambiado
+        "Objetos y productos": {
+            "file": "birefnet-general.onnx",
+            "url": "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-epoch_244.onnx",
+            "license": "MIT",
+            "folder": "rembg",
+        },
+        "Personas y retratos": {
+            "file": "birefnet-portrait.onnx",
             "url": "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-portrait-epoch_150.onnx",
             "license": "MIT",
-            "folder": "rembg"
+            "folder": "rembg",
         },
-        "DIS (Bordes Finos/Complejo)": {
-            "file": "birefnet-dis.onnx",  # ✅ Cambiado
+        "Cabello y bordes finos": {
+            "file": "birefnet-dis.onnx",
             "url": "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-DIS-epoch_590.onnx",
             "license": "MIT",
-            "folder": "rembg"
+            "folder": "rembg",
         },
-        "COD (Objetos Camuflados)": {
-            "file": "birefnet-cod.onnx",  # ✅ Cambiado
-            "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-COD-epoch_125.onnx",
-            "folder": "rembg"
-        },
-        "HRSOD (Alta Detección)": {
-            "file": "birefnet-hrsod.onnx",  # ✅ Cambiado
-            "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-HRSOD_DHU-epoch_115.onnx",
-            "folder": "rembg"
-        },
-        
-        # --- ALTA RESOLUCIÓN (HR) & MASIVOS ---
-        "Massive (Entrenamiento Masivo)": {
-            "file": "birefnet-massive.onnx",  # ✅ Cambiado
-            "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-massive-TR_DIS5K_TR_TEs-epoch_420.onnx",
-            "folder": "rembg"
-        },
-        "HR General (4K/8K)": {
-            "file": "birefnet-hr-general.onnx",  # ✅ Cambiado
-            "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet_HR-general-epoch_130.onnx",
-            "folder": "rembg"
-        },
-        "HR Matting (Recorte Ultra Fino)": {
-            "file": "birefnet-hr-matting.onnx",  # ✅ Cambiado
-            "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet_HR-matting-epoch_135.onnx",
-            "folder": "rembg"
-        }
-    },
-
-    # --- NUEVO BLOQUE: RMBG 2.0 (Descarga Manual) ---
-    "RMBG 2.0 (BriaAI)": {
-        "Standard (Automático - 977 MB)": {
-            "file": "rmbg2_gatis.onnx", 
-            "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/bria-rmbg-2.0.onnx",
-            "folder": "rmbg2"
-        },
-        "Standard (1.02 GB)": {
-            "file": "model.onnx", 
-            "url": "https://huggingface.co/briaai/RMBG-2.0/tree/main/onnx",
-            "folder": "rmbg2" 
-        },
-        "BnB4 (Recomendado - 355 MB)": {
-            "file": "model_bnb4.onnx",
-            "url": "https://huggingface.co/briaai/RMBG-2.0/tree/main/onnx",
-            "folder": "rmbg2"
-        },
-        "FP16 (Media - 514 MB)": {
-            "file": "model_fp16.onnx",
-            "url": "https://huggingface.co/briaai/RMBG-2.0/tree/main/onnx",
-            "folder": "rmbg2"
-        },
-        "Int8 (Rápido - 366 MB)": {
-            "file": "model_int8.onnx",
-            "url": "https://huggingface.co/briaai/RMBG-2.0/tree/main/onnx",
-            "folder": "rmbg2"
-        },
-        "Quantized (366 MB)": {
-            "file": "model_quantized.onnx",
-            "url": "https://huggingface.co/briaai/RMBG-2.0/tree/main/onnx",
-            "folder": "rmbg2"
-        }
-    },
-
-    "InSPyReNet (Ultra High Resolution)": {
-        "SwinB Plus Ultra (FP32 - 478 MB)": {
-            "file": "inspyrenet_ultra.onnx",
-            "url": "https://huggingface.co/OS-Software/InSPyReNet-SwinB-Plus-Ultra-ONNX/resolve/main/onnx/model.onnx?download=true",
-            "folder": "inspyrenet"
-        },
-        "SwinB Plus Ultra (FP16 - 240 MB)": {
-            "file": "inspyrenet_ultra_fp16.onnx",
-            "url": "https://huggingface.co/OS-Software/InSPyReNet-SwinB-Plus-Ultra-ONNX/resolve/main/onnx/model_fp16.onnx?download=true",
-            "folder": "inspyrenet"
-        }
     }
 }
 
@@ -660,8 +558,7 @@ UPSCALING_TOOLS = {
         "name": "Upscayl (Global Engine)",
         "folder": "upscayl",
         "exe": "upscayl-bin.exe",
-        "url": "https://github.com/upscayl/upscayl-ncnn/releases/download/20251207-174704/upscayl-bin-20251207-174704-windows.zip",
-        "models_url": "https://github.com/upscayl/custom-models/archive/refs/heads/main.zip"
+        "url": "https://github.com/upscayl/upscayl-ncnn/releases/download/20251207-174704/upscayl-bin-20251207-174704-windows.zip"
     }
 }
 
@@ -670,19 +567,6 @@ UPSCAYL_MODELS_MAP = {
     "realesrgan-x4plus": "Real-ESRGAN (General / Fotografía)",
     "realesrgan-x4plus-anime": "Real-ESRGAN (Anime / Ilustración)",
     "realesr-animevideov3-x4": "Anime Video V3 (x4)",
-    "RealESRGAN_General_x4_v3": "Real-ESRGAN V3 (Ligero y Rápido)",
-    "RealESRGAN_General_WDN_x4_v3": "Real-ESRGAN V3 WDN (Red Profunda)",
-    "4xHFA2k": "HFA2k (Texturas de Alta Frecuencia)",
-    "4xLSDIR": "LSDIR (Fotografía Realista)",
-    "4xLSDIRCompactC3": "LSDIR Compacto (Procesamiento Rápido)",
-    "4xLSDIRplusC": "LSDIR PlusC (Alta Fidelidad)",
-    "4xNomos8kSC": "Nomos8k (Detalles a Escala 8k)",
-    "4x_NMKD-Siax_200k": "NMKD Siax (Universal / Calidad JPEG)",
-    "4x_NMKD-Superscale-SP_178000_G": "NMKD Superscale (Fotos sin Artefactos)",
-    "uniscale_restore": "Uniscale Restore (Restauración de Daños)",
-    "unknown-2.0.1": "The Unknown (Experimental / Nitidez Extrema)",
-    "DF2K_x4": "RealSR (Detalle de Texturas)",
-    "DF2K_JPEG_x4": "RealSR JPEG (Reduce Compresión)"
 }
 
 # --- CONSTANTES DE REESCALADO (IA) ---

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import tempfile
 import uuid
@@ -23,6 +24,7 @@ REQUEST_HEADERS = {
     "X-GitHub-Api-Version": "2022-11-28",
 }
 MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
+INSTALLER_APP_ID = "{8B474FFD-6C60-4B82-889E-7DD12563E7E5}_is1"
 IDEA_CONTRIBUTORS = [
     "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
     "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan",
@@ -721,12 +723,45 @@ def release_notice_for_version(current_version: str) -> dict | None:
     return RELEASE_NOTICES.get(normalized)
 
 
-def _select_installer_asset(assets: list[dict]) -> dict | None:
+def has_existing_installation() -> bool:
+    """Detecta una instalación administrada; una copia portable no cuenta como instalada."""
+    override = str(os.environ.get("XOMACITO_EXISTING_INSTALL") or "").strip().casefold()
+    if override in {"1", "true", "yes"}:
+        return True
+    if override in {"0", "false", "no"}:
+        return False
+    if os.name != "nt":
+        return False
+    try:
+        import winreg
+
+        key_path = rf"Software\Microsoft\Windows\CurrentVersion\Uninstall\{INSTALLER_APP_ID}"
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+            install_location, _kind = winreg.QueryValueEx(key, "InstallLocation")
+        return (Path(str(install_location)) / "Xomacito.exe").is_file()
+    except (ImportError, FileNotFoundError, OSError):
+        pass
+    default_executable = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Xomacito" / "Xomacito.exe"
+    return default_executable.is_file()
+
+
+def _select_installer_asset(assets: list[dict], prefer_light: bool = False) -> dict | None:
     uploaded = [asset for asset in assets if asset.get("state", "uploaded") == "uploaded"]
-    for asset in uploaded:
-        name = str(asset.get("name", "")).casefold()
-        if name.endswith(".exe") and "setup" in name and "xomacito" in name:
-            return asset
+    installers = [
+        asset for asset in uploaded
+        if str(asset.get("name", "")).casefold().endswith(".exe")
+        and "xomacito" in str(asset.get("name", "")).casefold()
+    ]
+    light = [asset for asset in installers if "light" in str(asset.get("name", "")).casefold()]
+    full = [
+        asset for asset in installers
+        if "setup" in str(asset.get("name", "")).casefold()
+        and "light" not in str(asset.get("name", "")).casefold()
+    ]
+    if prefer_light and light:
+        return light[0]
+    if full:
+        return full[0]
     return None
 
 
@@ -742,7 +777,12 @@ def _official_installer_url(url: str) -> bool:
     )
 
 
-def check_for_app_update(current_version: str, session=None, timeout: float = 12.0) -> dict:
+def check_for_app_update(
+    current_version: str,
+    session=None,
+    timeout: float = 12.0,
+    prefer_light: bool | None = None,
+) -> dict:
     """Devuelve información de la última versión estable sin provocar downgrades."""
     try:
         current = _parsed_version(current_version)
@@ -767,7 +807,8 @@ def check_for_app_update(current_version: str, session=None, timeout: float = 12
         if not update_available:
             return result
 
-        asset = _select_installer_asset(list(release.get("assets") or []))
+        use_light = has_existing_installation() if prefer_light is None else bool(prefer_light)
+        asset = _select_installer_asset(list(release.get("assets") or []), prefer_light=use_light)
         if not asset:
             return {
                 **result,
@@ -801,6 +842,7 @@ def check_for_app_update(current_version: str, session=None, timeout: float = 12
             "installer_name": str(asset.get("name") or "Xomacito-Setup.exe"),
             "installer_size": installer_size,
             "installer_digest": f"sha256:{installer_sha256}",
+            "installer_kind": "light" if "light" in str(asset.get("name") or "").casefold() else "full",
         }
     except Exception as error:
         if isinstance(error, AppUpdateError):

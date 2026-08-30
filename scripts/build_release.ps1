@@ -8,6 +8,7 @@ $Python = Join-Path $ProjectRoot '.tools\python311full\python.exe'
 $Spec = Join-Path $ProjectRoot '.build\XomacitoInstaller.spec'
 $LauncherSpec = Join-Path $ProjectRoot '.build\XomacitoLauncher.spec'
 $InstallerScript = Join-Path $ProjectRoot 'installer\Xomacito.iss'
+$LightInstallerScript = Join-Path $ProjectRoot 'installer\Xomacito-Light.iss'
 $UninstallerLauncherSource = Join-Path $ProjectRoot 'installer\Desinstalar Xomacito.cmd'
 $BuildWork = Join-Path $ProjectRoot '.build\work'
 
@@ -112,14 +113,22 @@ New-Item -ItemType Directory -Path (Join-Path $ProjectRoot 'release') -Force | O
 if ($LASTEXITCODE -ne 0) {
     throw 'Inno Setup no pudo crear el instalador.'
 }
+& $Compiler $LightInstallerScript
+if ($LASTEXITCODE -ne 0) {
+    throw 'Inno Setup no pudo crear la actualización ligera.'
+}
 
 $Installer = Join-Path $ProjectRoot 'release\Xomacito-1.1-Setup.exe'
 if (-not (Test-Path -LiteralPath $Installer)) {
     throw "No se generó el instalador esperado: $Installer"
 }
+$LightInstaller = Join-Path $ProjectRoot 'release\Xomacito-1.1-Update-Light.exe'
+if (-not (Test-Path -LiteralPath $LightInstaller)) {
+    throw "No se generó la actualización ligera esperada: $LightInstaller"
+}
 
 $UninstallerLauncher = Join-Path $ProjectRoot 'release\Desinstalar Xomacito.cmd'
 Copy-Item -LiteralPath $UninstallerLauncherSource -Destination $UninstallerLauncher -Force
 
-Get-Item -LiteralPath $Launcher, $Application, $Installer, $UninstallerLauncher |
+Get-Item -LiteralPath $Launcher, $Application, $Installer, $LightInstaller, $UninstallerLauncher |
     Select-Object FullName, Length, LastWriteTime

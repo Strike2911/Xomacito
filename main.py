@@ -77,12 +77,91 @@ def migrate_legacy_models(source: Path, destination: Path) -> int:
     return copied
 
 
+MODEL_CATALOG_REVISION = "curated-2026-08-30"
+OBSOLETE_REMBG_MODELS = {
+    "u2netp.onnx",
+    "u2net.onnx",
+    "u2net_human_seg.onnx",
+    "isnet-general-use.onnx",
+    "isnet-anime.onnx",
+    "birefnet-cod.onnx",
+    "birefnet-hrsod.onnx",
+    "birefnet-massive.onnx",
+    "birefnet-hr-general.onnx",
+    "birefnet-hr-matting.onnx",
+}
+OBSOLETE_UPSCALE_MODELS = {
+    "realesr-animevideov3-x2",
+    "realesr-animevideov3-x3",
+    "RealESRGAN_General_x4_v3",
+    "RealESRGAN_General_WDN_x4_v3",
+    "4xHFA2k",
+    "4xLSDIR",
+    "4xLSDIRCompactC3",
+    "4xLSDIRplusC",
+    "4xNomos8kSC",
+    "4x_NMKD-Siax_200k",
+    "4x_NMKD-Superscale-SP_178000_G",
+    "uniscale_restore",
+    "unknown-2.0.1",
+    "DF2K_x4",
+    "DF2K_JPEG_x4",
+}
+
+
+def prune_obsolete_models(models_root: Path) -> int:
+    """Retira sólo modelos integrados antiguos; nunca borra modelos personalizados."""
+    root = Path(models_root)
+    marker = root / f".{MODEL_CATALOG_REVISION}"
+    if marker.is_file():
+        return 0
+
+    removed = 0
+    rembg = root / "rembg"
+    for filename in OBSOLETE_REMBG_MODELS:
+        path = rembg / filename
+        if path.is_file():
+            try:
+                path.unlink()
+                removed += 1
+            except OSError as error:
+                print(f"ADVERTENCIA: No se pudo retirar el modelo antiguo {path.name}: {error}")
+
+    upscayl = root / "upscaling" / "upscayl" / "models"
+    for basename in OBSOLETE_UPSCALE_MODELS:
+        for suffix in (".bin", ".param"):
+            path = upscayl / f"{basename}{suffix}"
+            if path.is_file():
+                try:
+                    path.unlink()
+                    removed += 1
+                except OSError as error:
+                    print(f"ADVERTENCIA: No se pudo retirar el modelo antiguo {path.name}: {error}")
+
+    # Estas familias experimentales nunca admitieron una descarga mantenible.
+    for obsolete_family in (root / "rmbg2", root / "inspyrenet"):
+        if obsolete_family.is_dir():
+            try:
+                shutil.rmtree(obsolete_family)
+                removed += 1
+            except OSError as error:
+                print(f"ADVERTENCIA: No se pudo retirar {obsolete_family.name}: {error}")
+
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        marker.write_text("Catálogo curado de Xomacito\n", encoding="utf-8")
+    except OSError as error:
+        print(f"ADVERTENCIA: No se pudo registrar la limpieza de modelos: {error}")
+    return removed
+
+
 MODELS_PATH = _persistent_models_path()
 if FROZEN:
     # Versiones anteriores descargaban los modelos dentro de la instalación.
     # Copiarlos antes de usarlos permite actualizar Xomacito sin descargarlos otra vez.
     for legacy_models in (INTERNAL_DIR / "bin" / "models", PROJECT_ROOT / "bin" / "models"):
         migrate_legacy_models(legacy_models, MODELS_PATH)
+    prune_obsolete_models(MODELS_PATH)
 
 MODELS_DIR = str(MODELS_PATH)
 REMBG_MODELS_DIR = str(MODELS_PATH / "rembg")

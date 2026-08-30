@@ -200,7 +200,8 @@ class ThemeController(QObject):
         raised = _pick(visual.get("header_bottom"), dark, fallback["surfaceRaised"])
         border = _pick(visual.get("header_border"), dark, fallback["border"])
         primary = _soften(_pick(custom.get("DOWNLOAD_BTN") or button.get("fg_color"), dark, fallback["primary"]), dark)
-        hover = _soften(_pick(custom.get("DOWNLOAD_BTN_HOVER") or button.get("hover_color"), dark, fallback["primaryHover"]), dark)
+        # Evita el destello casi blanco de algunos temas heredados.
+        hover = _mix(primary, background, 0.14 if dark else 0.10)
         field = _pick(entry.get("fg_color"), dark, _mix(background, surface, 0.55))
 
         self._colors = {

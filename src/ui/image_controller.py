@@ -62,7 +62,7 @@ IMAGE_OPTIONS = {
     "tiffTransparency": True, "ico16": True, "ico32": True, "ico48": True,
     "ico64": True, "ico128": True, "ico256": True, "bmpRle": False,
     "pdfTransparent": False, "rembgEnabled": False, "rembgGpu": True,
-    "rembgFamily": "BiRefNet (Next-Gen 2024)", "rembgModel": "General Lite (Rápido)",
+    "rembgFamily": "BiRefNet", "rembgModel": "General rápido",
     "rembgSmooth": 0, "rembgExpand": 0, "upscaleEnabled": False,
     "upscaleEngine": "Upscayl", "upscaleModel": "Real-ESRGAN (General / Fotografía)",
     "upscaleScale": "2", "upscaleDenoise": "0", "upscaleTile": "0", "upscaleTta": False,
@@ -90,18 +90,14 @@ UPSCALE_PROFILES = {
         "model": "Anime Video V3 (x4)",
         "description": "Modelo oficial optimizado para animación cuadro a cuadro.",
     },
-    "Rápido": {
-        "model": "Real-ESRGAN V3 (Ligero y Rápido)",
-        "description": "Menor espera para lotes grandes y equipos modestos.",
-    },
 }
 
-STABLE_REMBG_FAMILY = "BiRefNet (Next-Gen 2024)"
+STABLE_REMBG_FAMILY = "BiRefNet"
 STABLE_REMBG_MODELS = (
-    "General Lite (Rápido)",
-    "General (Estándar)",
-    "Portrait (Retratos)",
-    "DIS (Bordes Finos/Complejo)",
+    "General rápido",
+    "Objetos y productos",
+    "Personas y retratos",
+    "Cabello y bordes finos",
 )
 STABLE_UPSCALE_MODELS = tuple(dict.fromkeys(
     profile["model"] for profile in UPSCALE_PROFILES.values()
@@ -110,7 +106,7 @@ STABLE_UPSCALE_MODELS = tuple(dict.fromkeys(
 TASK_DEFAULTS = {
     "removeBackground": {
         "format": "PNG", "rembgEnabled": True, "upscaleEnabled": False,
-        "rembgFamily": "BiRefNet (Next-Gen 2024)", "rembgModel": "General Lite (Rápido)",
+        "rembgFamily": "BiRefNet", "rembgModel": "General rápido",
     },
     "upscaleImage": {
         "format": "PNG", "rembgEnabled": False, "upscaleEnabled": True,
@@ -175,6 +171,23 @@ class ImageController(QObject):
         if isinstance(saved, dict):
             self._options.update({key: value for key, value in saved.items() if key in self._options})
             if saved.get("format"): self._state["format"] = saved["format"]
+        rembg_label_migrations = {
+            "General Lite (Rápido)": "General rápido",
+            "General (Estándar)": "Objetos y productos",
+            "Portrait (Retratos)": "Personas y retratos",
+            "DIS (Bordes Finos/Complejo)": "Cabello y bordes finos",
+        }
+        self._options["rembgModel"] = rembg_label_migrations.get(
+            self._options.get("rembgModel"), self._options.get("rembgModel")
+        )
+        performance_migrations = {
+            "Máxima calidad": "Priorizar calidad",
+            "Equilibrado": "Automático",
+            "Rápido": "Priorizar velocidad",
+        }
+        self._options["performanceProfile"] = performance_migrations.get(
+            self._options.get("performanceProfile"), self._options.get("performanceProfile")
+        )
         legacy_engines = {
             "realesrgan-ncnn-vulkan": "Upscayl",
             "waifu2x-ncnn-vulkan": "Waifu2x",
@@ -188,8 +201,7 @@ class ImageController(QObject):
         # Las versiones antiguas permitían guardar familias enormes o modelos
         # experimentales. Se migran a perfiles curados para evitar resultados
         # impredecibles y descargas que no podían completarse.
-        if self._options.get("rembgFamily") != STABLE_REMBG_FAMILY:
-            self._options["rembgFamily"] = STABLE_REMBG_FAMILY
+        self._options["rembgFamily"] = STABLE_REMBG_FAMILY
         if self._options.get("rembgModel") not in STABLE_REMBG_MODELS:
             self._options["rembgModel"] = STABLE_REMBG_MODELS[0]
         if self._options.get("upscaleModel") not in STABLE_UPSCALE_MODELS:
@@ -764,7 +776,7 @@ class ImageController(QObject):
             return
         url = data.get("url")
         if not url or "/tree/" in url:
-            raise RuntimeError("Este modelo requiere instalación manual. Elige BiRefNet General Lite o U2Net.")
+            raise RuntimeError("El modelo seleccionado ya no está disponible. Usa uno de los perfiles recomendados.")
         folder.mkdir(parents=True, exist_ok=True)
         partial = target.with_suffix(target.suffix + ".part")
         self.progressReported.emit(0.01, f"Descargando {label} por primera vez…")

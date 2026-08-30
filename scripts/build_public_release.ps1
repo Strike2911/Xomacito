@@ -33,4 +33,5 @@ if ($SelfTest.ExitCode -ne 0) { throw 'La versión pública protegida no superó
 if ($LASTEXITCODE -ne 0) { throw 'No se pudo crear el instalador público.' }
 
 $Installer = Join-Path $ProjectRoot 'release\Xomacito-1.1-Setup.exe'
-Get-FileHash -Algorithm SHA256 -LiteralPath $Installer
+$LightInstaller = Join-Path $ProjectRoot 'release\Xomacito-1.1-Update-Light.exe'
+Get-FileHash -Algorithm SHA256 -LiteralPath $Installer, $LightInstaller

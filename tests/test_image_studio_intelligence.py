@@ -38,8 +38,8 @@ def test_local_analysis_is_explainable_and_estimates_output():
 
 def test_performance_profiles_change_real_engine_settings():
     hardware = {"cpuThreads": 16, "availableRamGb": 12}
-    quality = performance_recipe("Máxima calidad", hardware)
-    fast = performance_recipe("Rápido", hardware)
+    quality = performance_recipe("Priorizar calidad", hardware)
+    fast = performance_recipe("Priorizar velocidad", hardware)
 
     assert quality["tta"] is True
     assert quality["encoderCrf"] < fast["encoderCrf"]
@@ -74,6 +74,9 @@ def test_image_studio_exposes_compare_preview_and_hardware_recipe():
     assert "comparePosition" in qml
     assert "Preparar vista previa" in qml
     assert "MOTOR LOCAL" in qml
+    assert "Procesamiento" in qml
+    assert "Ajustes de salida" in qml
+    assert "Máxima precisión" not in qml
     assert "def preparePreview" in controller
     assert "detect_hardware" in controller
 

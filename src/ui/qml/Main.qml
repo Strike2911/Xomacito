@@ -52,7 +52,7 @@ ApplicationWindow {
         },
         {
             "page": 3, "target": "page", "icon": "◇",
-            "title": "Estudio de Imagen",
+            "title": "Estudio",
             "message": "Prepara imágenes, vectores y fotogramas con una vista previa antes de exportar.",
             "actions": ["Añade los archivos que quieras procesar.", "Escoge la herramienta y sus ajustes.", "Comprueba la vista previa y abre la salida al terminar."]
         },

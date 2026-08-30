@@ -299,8 +299,7 @@ class DownloadController(QObject):
         elif key == "mode":
             self._ensure_preset_for_mode(str(value))
         elif key == "selectedTag":
-            self.settings.set("selected_download_tag", str(value))
-            self._refresh_tag_state()
+            self.selectDownloadTag(str(value))
         elif key == "selectedSubtitleLanguage":
             self._refresh_subtitle_formats(str(value))
         elif key == "selectedAudio":
@@ -364,6 +363,18 @@ class DownloadController(QObject):
             selectedTagColor=tag["color"] if tag else "#6F7F8F",
             effectiveOutputPath=tag["folder"] if tag else self._state["outputPath"],
         )
+
+    @Slot(str)
+    def selectDownloadTag(self, name: str):
+        """Selecciona etiqueta, color y carpeta en una sola actualización visible."""
+        requested = str(name or "Sin etiqueta")
+        tag = next((item for item in self._tags if item["name"] == requested), None)
+        self._set_state(
+            selectedTag=tag["name"] if tag else "Sin etiqueta",
+            selectedTagColor=tag["color"] if tag else "#6F7F8F",
+            effectiveOutputPath=tag["folder"] if tag else self._state["outputPath"],
+        )
+        self.settings.set("selected_download_tag", self._state["selectedTag"])
 
     def _save_tags(self):
         self.settings.set("download_tags", self._tags)

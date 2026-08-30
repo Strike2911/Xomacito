@@ -137,6 +137,37 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertEqual(version_20["latest_version"], "2.1")
         self.assertTrue(version_20["installer_url"].endswith("/Xomacito-2.1-Setup.exe"))
 
+    def test_updater_prefers_light_for_an_existing_install_and_full_for_a_clean_system(self):
+        payload = self._release_payload("v4.0.15")
+        full = payload["assets"][0]
+        light = {
+            **full,
+            "name": "Xomacito-1.1-Update-Light.exe",
+            "browser_download_url": full["browser_download_url"].replace(
+                "Xomacito-4.0.15-Setup.exe", "Xomacito-1.1-Update-Light.exe"
+            ),
+        }
+        payload["assets"] = [full, light]
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return payload
+
+        class FakeSession:
+            def get(self, *_args, **_kwargs):
+                return FakeResponse()
+
+        existing = check_for_app_update("4.0.14", session=FakeSession(), prefer_light=True)
+        clean = check_for_app_update("4.0.14", session=FakeSession(), prefer_light=False)
+
+        self.assertEqual(existing["installer_kind"], "light")
+        self.assertTrue(existing["installer_name"].endswith("Update-Light.exe"))
+        self.assertEqual(clean["installer_kind"], "full")
+        self.assertTrue(clean["installer_name"].endswith("Setup.exe"))
+
     def test_update_prompt_hides_internal_version_sha_and_extra_notes(self):
         prompt = build_update_prompt(
             {
@@ -1267,6 +1298,7 @@ class XomacitoWrapperTests(unittest.TestCase):
     def test_installer_uses_direct_one_folder_runtime(self):
         spec = (ROOT / ".build" / "XomacitoInstaller.spec").read_text(encoding="utf-8")
         installer = (ROOT / "installer" / "Xomacito.iss").read_text(encoding="utf-8")
+        light_installer = (ROOT / "installer" / "Xomacito-Light.iss").read_text(encoding="utf-8")
 
         self.assertIn("exclude_binaries=True", spec)
         self.assertIn("COLLECT(", spec)
@@ -1321,6 +1353,14 @@ class XomacitoWrapperTests(unittest.TestCase):
         public_spec = (ROOT / ".build" / "XomacitoPublic.spec").read_text(encoding="utf-8")
         self.assertIn("is_conflicting_top_level_icu", public_spec)
         self.assertIn('filename == "icuuc.dll"', public_spec)
+        self.assertIn("OutputBaseFilename=Xomacito-1.1-Update-Light", light_installer)
+        self.assertIn("CreateUninstallRegKey=no", light_installer)
+        self.assertIn("Uninstallable=no", light_installer)
+        self.assertIn("function InitializeSetup", light_installer)
+        self.assertIn("necesita una instalación existente", light_installer)
+        self.assertIn("_internal\\src\\ui\\qml", light_installer)
+        self.assertNotIn('Source: "{#ProjectRoot}\\dist\\Xomacito\\_internal\\PySide6', light_installer)
+        self.assertNotIn('Source: "{#ProjectRoot}\\dist\\Xomacito\\_internal\\bin\\models', light_installer)
 
     def test_startup_uses_bundled_ffmpeg_without_auto_installing(self):
         application = (ROOT / "src" / "ui" / "application.py").read_text(encoding="utf-8")
@@ -1363,6 +1403,29 @@ class XomacitoWrapperTests(unittest.TestCase):
             self.assertEqual((persistent / "rembg" / "new.onnx").read_bytes(), b"downloaded")
             self.assertEqual((persistent / "rembg" / "existing.onnx").read_bytes(), b"user-copy")
 
+    def test_obsolete_model_cleanup_preserves_curated_and_custom_models(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "models"
+            rembg = root / "rembg"
+            upscayl = root / "upscaling" / "upscayl" / "models"
+            rembg.mkdir(parents=True)
+            upscayl.mkdir(parents=True)
+            (rembg / "u2net.onnx").write_bytes(b"obsolete")
+            (rembg / "birefnet-general-lite.onnx").write_bytes(b"curated")
+            (upscayl / "4xLSDIR.bin").write_bytes(b"obsolete")
+            (upscayl / "4xLSDIR.param").write_bytes(b"obsolete")
+            (upscayl / "my-custom-model.bin").write_bytes(b"custom")
+            (upscayl / "my-custom-model.param").write_bytes(b"custom")
+
+            removed = main.prune_obsolete_models(root)
+
+            self.assertEqual(removed, 3)
+            self.assertFalse((rembg / "u2net.onnx").exists())
+            self.assertTrue((rembg / "birefnet-general-lite.onnx").is_file())
+            self.assertTrue((upscayl / "my-custom-model.bin").is_file())
+            self.assertTrue((upscayl / "my-custom-model.param").is_file())
+            self.assertEqual(main.prune_obsolete_models(root), 0)
+
     def test_xomacito_is_standalone_without_editor_plugin_bridge(self):
         source_paths = tuple((ROOT / "src" / "ui").rglob("*.py")) + tuple((ROOT / "src" / "ui" / "qml").rglob("*.qml")) + (ROOT / "src" / "core" / "batch_processor.py",)
         combined_source = "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
@@ -1400,7 +1463,9 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
+        self.assertIn("Xomacito-Light.iss", build_script)
         self.assertIn("release\\Xomacito-1.1-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-1.1-Update-Light.exe", build_script)
         self.assertIn("Assert-ReadableApplicationSource", build_script)
         self.assertIn("pyarmor_runtime|__pyarmor__|pytransform", build_script)
         self.assertIn('PROJECT_ROOT / "main\\.py"', build_script)

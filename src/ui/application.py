@@ -70,7 +70,7 @@ class AppController(QObject):
     trayAvailableChanged = Signal()
     updateProgressReported = Signal(float, str)
 
-    PAGES = ["Descargar", "Cola", "Biblioteca", "Estudio de Imagen", "Personalización", "Scoreboard", "Configuración"]
+    PAGES = ["Descargar", "Cola", "Biblioteca", "Estudio", "Personalización", "Scoreboard", "Configuración"]
 
     def __init__(
         self,
@@ -438,7 +438,12 @@ class AppController(QObject):
     def acceptUpdate(self):
         if not self._pending_update or self._update_state["downloading"]:
             return
-        self._set_update(downloading=True, progress=0.0, status="Descargando instalador verificado…")
+        light = self._pending_update.get("installer_kind") == "light"
+        self._set_update(
+            downloading=True,
+            progress=0.0,
+            status="Descargando actualización ligera…" if light else "Descargando instalación completa…",
+        )
         self.pool.submit(
             download_installer,
             dict(self._pending_update),

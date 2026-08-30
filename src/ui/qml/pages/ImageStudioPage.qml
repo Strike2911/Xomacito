@@ -31,6 +31,17 @@ Item {
         if (viewState.task === "upscaleVideo") return "Mejorar videos · " + viewState.itemCount
         return "Convertir · " + viewState.itemCount
     }
+    function rembgHint() {
+        if (options.rembgModel === "Personas y retratos") return "Optimizado para rostro, cabello y silueta humana."
+        if (options.rembgModel === "Cabello y bordes finos") return "Conserva mechones, transparencias parciales y contornos complejos."
+        if (options.rembgModel === "Objetos y productos") return "Más detalle para productos, fotografía y objetos completos."
+        return "La opción más ágil para imágenes generales y lotes grandes."
+    }
+    function performanceHint() {
+        if (options.performanceProfile === "Priorizar calidad") return "Más detalle; puede tardar más y usar más memoria."
+        if (options.performanceProfile === "Priorizar velocidad") return "Menos espera y consumo para equipos modestos."
+        return "Xomacito adapta CPU, GPU y memoria al archivo."
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -39,7 +50,7 @@ Item {
         SectionTitle {
             Layout.fillWidth: true
             compact: page.dense
-            eyebrow: "ESTUDIO DE IMAGEN"
+            eyebrow: "ESTUDIO"
             title: "Prepara tus imágenes"
             description: "Elige una tarea, añade tus archivos y revisa una muestra antes de procesarlos."
             number: "03"
@@ -483,22 +494,20 @@ Item {
 
                         ColumnLayout {
                             spacing: page.dense ? 6 : 8
-                            Text { Layout.fillWidth: true; visible: !page.dense; text: "Detecta el sujeto y crea una transparencia real. Ideal para miniaturas, productos y recursos de edición."; color: theme.colors.textMuted; font.pixelSize: 10; wrapMode: Text.WordWrap }
+                            Text { Layout.fillWidth: true; visible: !page.dense; text: "Xomacito analiza el contenido y elige el recorte adecuado. Puedes cambiar el enfoque si buscas un borde concreto."; color: theme.colors.textMuted; font.pixelSize: 10; wrapMode: Text.WordWrap }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 8
                                 LabeledControl {
                                     Layout.fillWidth: true
                                     compact: page.dense
-                                    label: "Tipo de imagen"
+                                    label: "Enfoque del recorte"
                                     XComboBox {
                                         Layout.fillWidth: true
                                         compact: page.dense
-                                        model: ["Automático · BiRefNet Lite", "Máxima precisión · BiRefNet", "Retrato", "Bordes difíciles"]
-                                        onActivated: {
-                                            imageController.setOption("rembgFamily", "BiRefNet (Next-Gen 2024)")
-                                            imageController.setOption("rembgModel", currentIndex === 1 ? "General (Estándar)" : currentIndex === 2 ? "Portrait (Retratos)" : currentIndex === 3 ? "DIS (Bordes Finos/Complejo)" : "General Lite (Rápido)")
-                                        }
+                                        model: imageController.rembgModels(options.rembgFamily)
+                                        currentIndex: Math.max(0, find(options.rembgModel))
+                                        onActivated: imageController.setOption("rembgModel", currentText)
                                     }
                                 }
                                 LabeledControl {
@@ -509,9 +518,13 @@ Item {
                                 }
                             }
                             Rectangle {
-                                Layout.fillWidth: true; implicitHeight: page.dense ? 34 : 44; radius: 10
-                                color: theme.colors.surfaceSoft; border.color: theme.colors.border
-                                Text { anchors.fill: parent; anchors.margins: page.dense ? 7 : 10; text: page.dense ? "✓ Transparencia real · ✓ Bordes afinados" : "✓ Fondo transparente\n✓ Bordes afinados automáticamente"; color: theme.colors.success; font.pixelSize: 10; verticalAlignment: Text.AlignVCenter }
+                                Layout.fillWidth: true; implicitHeight: page.dense ? 34 : 46; radius: 10
+                                color: theme.colors.surfaceSoft; border.color: theme.colors.primary
+                                RowLayout {
+                                    anchors.fill: parent; anchors.margins: page.dense ? 7 : 10; spacing: 7
+                                    Text { text: "✦"; color: theme.colors.primary; font.pixelSize: 13; font.weight: Font.Bold }
+                                    Text { Layout.fillWidth: true; text: page.rembgHint(); color: theme.colors.text; font.pixelSize: 9; wrapMode: Text.WordWrap; verticalAlignment: Text.AlignVCenter }
+                                }
                             }
                         }
 
@@ -549,8 +562,8 @@ Item {
                                     Layout.fillWidth: true; compact: page.dense; label: "Tipo de video"
                                     XComboBox {
                                         Layout.fillWidth: true; compact: page.dense
-                                        model: ["Video real", "Animación / anime", "Rápido"]
-                                        onActivated: imageController.setUpscaleProfile(currentIndex === 1 ? "Video animado" : currentIndex === 2 ? "Rápido" : "Foto real")
+                                        model: ["Video real", "Animación / anime"]
+                                        onActivated: imageController.setUpscaleProfile(currentIndex === 1 ? "Video animado" : "Foto real")
                                     }
                                 }
                                 LabeledControl {
@@ -618,27 +631,54 @@ Item {
                         text: selected.title || ""
                         onEditingFinished: imageController.setSelectedTitle(text)
                     }
-                    RowLayout {
+                    Rectangle {
                         Layout.fillWidth: true
-                        spacing: 7
-                        LabeledControl {
-                            Layout.fillWidth: true
-                            compact: true
-                            label: "Rendimiento"
-                            XComboBox {
+                        implicitHeight: page.dense ? 60 : 74
+                        radius: 11
+                        color: theme.colors.surfaceSoft
+                        border.width: 1
+                        border.color: theme.colors.border
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 8
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                compact: true
-                                model: imageController.performanceProfiles
-                                currentIndex: Math.max(0, find(options.performanceProfile))
-                                onActivated: imageController.setPerformanceProfile(currentText)
+                                spacing: 1
+                                Text { text: "Procesamiento"; color: theme.colors.text; font.pixelSize: 10; font.weight: Font.DemiBold }
+                                Text { Layout.fillWidth: true; visible: !page.dense; text: page.performanceHint(); color: theme.colors.textMuted; font.pixelSize: 8; elide: Text.ElideRight }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+                                    Repeater {
+                                        model: imageController.performanceProfiles
+                                        delegate: Button {
+                                            id: performanceButton
+                                            required property string modelData
+                                            property bool selectedProfile: options.performanceProfile === modelData
+                                            Layout.fillWidth: true
+                                            implicitHeight: 27
+                                            text: modelData === "Automático" ? "Auto" : modelData === "Priorizar calidad" ? "Calidad" : "Velocidad"
+                                            hoverEnabled: true
+                                            onClicked: imageController.setPerformanceProfile(modelData)
+                                            contentItem: Text { text: parent.text; color: performanceButton.selectedProfile ? "#FFFFFF" : theme.colors.textMuted; font.pixelSize: 8; font.weight: Font.DemiBold; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                                            background: Rectangle {
+                                                radius: 7
+                                                color: performanceButton.selectedProfile ? theme.colors.primary : performanceButton.hovered ? theme.colors.surfaceRaised : "transparent"
+                                                border.width: 1
+                                                border.color: performanceButton.selectedProfile ? theme.colors.primary : theme.colors.border
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                        }
-                        XButton {
-                            text: "Más opciones"
-                            compact: true
-                            kind: "secondary"
-                            Layout.alignment: Qt.AlignBottom
-                            onClicked: advanced.open()
+                            XButton {
+                                text: "Ajustes de salida"
+                                compact: true
+                                kind: "secondary"
+                                Layout.alignment: Qt.AlignVCenter
+                                onClicked: advanced.open()
+                            }
                         }
                     }
                 }
@@ -677,8 +717,8 @@ Item {
         id: advanced
         parent: Overlay.overlay
         anchors.centerIn: parent
-            width: Math.min(760, Math.max(360, page.width - 32))
-            height: Math.min(560, Math.max(380, page.height - 36))
+        width: Math.min(860, Math.max(420, page.width - 32))
+        height: Math.min(620, Math.max(440, page.height - 30))
         modal: true
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
@@ -687,21 +727,50 @@ Item {
             spacing: 8
             RowLayout {
                 Layout.fillWidth: true
-                Text { Layout.fillWidth: true; text: "Opciones de resultado"; color: theme.colors.text; font.pixelSize: 18; font.weight: Font.DemiBold }
+                spacing: 10
+                Rectangle {
+                    width: 42; height: 42; radius: 12
+                    color: theme.colors.surfaceSoft
+                    border.width: 1; border.color: theme.colors.primary
+                    Text { anchors.centerIn: parent; text: "⚙"; color: theme.colors.primary; font.pixelSize: 18 }
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 1
+                    Text { text: "Configura la salida"; color: theme.colors.text; font.pixelSize: 19; font.weight: Font.DemiBold }
+                    Text { Layout.fillWidth: true; text: "Los ajustes recomendados ya están activos. Cambia sólo lo que necesites."; color: theme.colors.textMuted; font.pixelSize: 10; elide: Text.ElideRight }
+                }
                 XButton { text: "Cerrar"; compact: true; kind: "ghost"; onClicked: advanced.close() }
             }
-            Text { Layout.fillWidth: true; text: "La configuracion recomendada funciona sin tocar nada mas. Abre una seccion solo si buscas un resultado especifico."; color: theme.colors.textMuted; font.pixelSize: 11; wrapMode: Text.WordWrap }
             TabBar {
                 id: advancedTabs
                 Layout.fillWidth: true
-                background: Rectangle { radius: 10; color: theme.colors.surfaceSoft }
+                implicitHeight: 54
+                spacing: 6
+                background: Item {}
                 Repeater {
-                    model: ["Tamano", "Lienzo", "Formato", "Mejora IA", "Video"]
+                    model: [
+                        { icon: "↔", label: "Tamaño" },
+                        { icon: "▣", label: "Lienzo" },
+                        { icon: "◇", label: "Formato" },
+                        { icon: "✦", label: "Mejora IA" },
+                        { icon: "▶", label: "Video" }
+                    ]
                     TabButton {
-                        text: modelData
-                        width: advancedTabs.width / 5
-                        contentItem: Text { text: parent.text; color: parent.checked ? "#FFFFFF" : theme.colors.textMuted; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                        background: Rectangle { radius: 8; color: parent.checked ? theme.colors.primary : "transparent" }
+                        id: advancedTab
+                        width: (advancedTabs.width - 24) / 5
+                        hoverEnabled: true
+                        contentItem: RowLayout {
+                            spacing: 6
+                            Text { text: modelData.icon; color: advancedTab.checked ? "#FFFFFF" : theme.colors.primary; font.pixelSize: 12; font.weight: Font.Bold }
+                            Text { Layout.fillWidth: true; text: modelData.label; color: advancedTab.checked ? "#FFFFFF" : theme.colors.text; font.pixelSize: 10; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                        }
+                        background: Rectangle {
+                            radius: 10
+                            color: advancedTab.checked ? theme.colors.primary : advancedTab.hovered ? theme.colors.surfaceSoft : theme.colors.surface
+                            border.width: 1
+                            border.color: advancedTab.checked ? theme.colors.primary : theme.colors.border
+                        }
                     }
                 }
             }
@@ -711,20 +780,20 @@ Item {
                 radius: 9
                 color: theme.colors.surfaceSoft
                 border.width: 1
-                border.color: theme.colors.border
+                border.color: theme.colors.primary
                 Text {
                     id: advancedGuide
                     anchors.fill: parent
                     anchors.margins: 8
-                    color: theme.colors.textMuted
+                    color: theme.colors.text
                     font.pixelSize: 10
                     wrapMode: Text.WordWrap
                     text: [
-                        "Tamano: ajusta dimensiones y que hacer si ya existe un archivo.",
-                        "Lienzo: prepara proporcion, margen y fondo para una composicion.",
-                        "Formato: controla transparencia, compresion y calidad de salida.",
-                        "Mejora IA: amplia detalles. Empieza con 2x para un resultado estable.",
-                        "Video: crea una secuencia desde imagenes. Para ampliar video usa Mejorar video."
+                        "Tamaño · Define dimensiones y decide qué hacer si ya existe un archivo.",
+                        "Lienzo · Prepara proporción, margen y fondo para una composición.",
+                        "Formato · Controla transparencia, compresión y calidad de salida.",
+                        "Mejora IA · Amplía detalles. Empieza con 2× para un resultado estable.",
+                        "Video · Crea una secuencia desde imágenes. Para ampliar video usa Mejorar video."
                     ][advancedTabs.currentIndex]
                 }
             }
@@ -733,6 +802,16 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
+                leftPadding: 14
+                rightPadding: 14
+                topPadding: 12
+                bottomPadding: 12
+                background: Rectangle {
+                    radius: 12
+                    color: theme.colors.surface
+                    border.width: 1
+                    border.color: theme.colors.border
+                }
                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                 ScrollBar.vertical: XScrollBar {}
                 StackLayout {
@@ -794,13 +873,12 @@ Item {
                         Text { text: "Quitar fondo"; color: theme.colors.text; font.pixelSize: 14; font.weight: Font.DemiBold }
                         XSwitch { text: "Quitar fondo"; checked: options.rembgEnabled; onToggled: imageController.setOption("rembgEnabled", checked) }
                         XSwitch { text: "Preferir GPU (si está disponible)"; checked: options.rembgGpu; onToggled: imageController.setOption("rembgGpu", checked) }
-                        LabeledControl { Layout.fillWidth: true; label: "Familia"; XComboBox { Layout.fillWidth: true; model: imageController.rembgFamilies; currentIndex: Math.max(0, find(options.rembgFamily)); onActivated: imageController.setOption("rembgFamily", currentText) } }
-                        LabeledControl { Layout.fillWidth: true; label: "Modelo"; XComboBox { Layout.fillWidth: true; model: imageController.rembgModels(options.rembgFamily); currentIndex: Math.max(0, find(options.rembgModel)); onActivated: imageController.setOption("rembgModel", currentText) } }
+                        LabeledControl { Layout.fillWidth: true; label: "Enfoque de recorte"; XComboBox { Layout.fillWidth: true; model: imageController.rembgModels(options.rembgFamily); currentIndex: Math.max(0, find(options.rembgModel)); onActivated: imageController.setOption("rembgModel", currentText) } }
                         LabeledControl { Layout.fillWidth: true; label: "Suavizado de borde: " + options.rembgSmooth; Slider { Layout.fillWidth: true; from: 0; to: 20; stepSize: 1; value: options.rembgSmooth; onMoved: imageController.setOption("rembgSmooth", value) } }
                         LabeledControl { Layout.fillWidth: true; label: "Expandir máscara: " + options.rembgExpand; Slider { Layout.fillWidth: true; from: -20; to: 40; stepSize: 1; value: options.rembgExpand; onMoved: imageController.setOption("rembgExpand", value) } }
                         Rectangle { Layout.fillWidth: true; height: 1; color: theme.colors.border }
                         Text { text: "Mejora con IA"; color: theme.colors.text; font.pixelSize: 14; font.weight: Font.DemiBold }
-                        Text { Layout.fillWidth: true; text: "Usala solo si quieres ampliar una imagen. La escala 2x es la opcion mas estable."; wrapMode: Text.WordWrap; color: theme.colors.textMuted; font.pixelSize: 10 }
+                        Text { Layout.fillWidth: true; text: "Úsala sólo si quieres ampliar una imagen. La escala 2× es la opción más estable."; wrapMode: Text.WordWrap; color: theme.colors.textMuted; font.pixelSize: 10 }
                         XSwitch { text: "Activar mejora con IA (recomendado: 2x)"; checked: options.upscaleEnabled; onToggled: imageController.setOption("upscaleEnabled", checked) }
                         LabeledControl { Layout.fillWidth: true; label: "Perfil de mejora"; XComboBox { Layout.fillWidth: true; model: imageController.upscaleModels; currentIndex: Math.max(0, find(options.upscaleModel)); onActivated: { imageController.setOption("upscaleEngine", "Upscayl"); imageController.setOption("upscaleModel", currentText) } } }
                         LabeledControl { Layout.fillWidth: true; label: "Aumento"; XComboBox { Layout.fillWidth: true; model: ["2", "3", "4"]; currentIndex: Math.max(0, find(options.upscaleScale)); onActivated: imageController.setOption("upscaleScale", currentText) } }

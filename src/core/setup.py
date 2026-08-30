@@ -8,7 +8,14 @@ import zipfile
 import requests
 
 from packaging import version
-from main import PROJECT_ROOT, BIN_DIR, FFMPEG_BIN_DIR, REMBG_MODELS_DIR, UPSCALING_DIR
+from main import (
+    BIN_DIR,
+    FFMPEG_BIN_DIR,
+    OBSOLETE_UPSCALE_MODELS,
+    PROJECT_ROOT,
+    REMBG_MODELS_DIR,
+    UPSCALING_DIR,
+)
 from src.core.constants import UPSCALING_TOOLS, FFMPEG_SAFE_VERSION, FFMPEG_SAFE_URL 
 
 DENO_BIN_DIR = os.path.join(BIN_DIR, "deno")
@@ -894,10 +901,7 @@ def sanitize_upscayl_models(models_dir):
     if not os.path.exists(models_dir):
         return
         
-    blacklist = [
-        "realesr-animevideov3-x2",
-        "realesr-animevideov3-x3"
-    ]
+    blacklist = sorted(OBSOLETE_UPSCALE_MODELS)
     
     purged_any = False
     for name in blacklist:
@@ -912,6 +916,79 @@ def sanitize_upscayl_models(models_dir):
                     print(f"ADVERTENCIA: No se pudo purgar el modelo {name}{ext}: {e}")
     
     return purged_any
+
+
+CURATED_UPSCAYL_MODELS = (
+    "realesrgan-x4plus",
+    "realesrgan-x4plus-anime",
+    "realesr-animevideov3-x4",
+)
+CURATED_REALESRGAN_URL = (
+    "https://github.com/xinntao/Real-ESRGAN/releases/download/"
+    "v0.2.5.0/realesrgan-ncnn-vulkan-20220424-windows.zip"
+)
+
+
+def ensure_curated_upscayl_models(progress_callback):
+    """Instala sólo los tres modelos mantenidos por Estudio y conserva los personalizados."""
+    models_target = os.path.join(UPSCALING_DIR, "upscayl", "models")
+    os.makedirs(models_target, exist_ok=True)
+    sanitize_upscayl_models(models_target)
+    missing = [
+        name for name in CURATED_UPSCAYL_MODELS
+        if not all(os.path.isfile(os.path.join(models_target, name + ext)) for ext in (".bin", ".param"))
+    ]
+    if not missing:
+        return True
+
+    archive_path = os.path.join(UPSCALING_DIR, "curated_realesrgan_models.zip")
+    extract_path = os.path.join(UPSCALING_DIR, "curated_realesrgan_extract")
+    try:
+        progress_callback("Descargando los modelos esenciales de mejora…", -1)
+        with requests.get(CURATED_REALESRGAN_URL, stream=True, timeout=120) as response:
+            response.raise_for_status()
+            total = int(response.headers.get("content-length", 0))
+            downloaded = 0
+            with open(archive_path, "wb") as output:
+                for chunk in response.iter_content(chunk_size=65536):
+                    if not chunk:
+                        continue
+                    output.write(chunk)
+                    downloaded += len(chunk)
+                    if total:
+                        progress_callback(
+                            f"Modelos esenciales: {downloaded / 1048576:.1f}/{total / 1048576:.1f} MB",
+                            int(downloaded * 100 / total),
+                        )
+
+        if os.path.isdir(extract_path):
+            shutil.rmtree(extract_path)
+        with zipfile.ZipFile(archive_path, "r") as archive:
+            archive.extractall(extract_path)
+
+        found = {name: {} for name in missing}
+        for current_root, _directories, filenames in os.walk(extract_path):
+            for filename in filenames:
+                stem, extension = os.path.splitext(filename)
+                if stem in found and extension.lower() in {".bin", ".param"}:
+                    found[stem][extension.lower()] = os.path.join(current_root, filename)
+        for name, parts in found.items():
+            if set(parts) != {".bin", ".param"}:
+                raise RuntimeError(f"El paquete oficial no contiene el modelo completo {name}.")
+            for extension, source in parts.items():
+                shutil.copy2(source, os.path.join(models_target, name + extension))
+        sanitize_upscayl_models(models_target)
+        return True
+    except Exception as error:
+        print(f"ERROR preparando modelos esenciales de Upscayl: {error}")
+        progress_callback(f"No se pudieron preparar los modelos esenciales: {error}", -1)
+        return False
+    finally:
+        try:
+            os.remove(archive_path)
+        except OSError:
+            pass
+        shutil.rmtree(extract_path, ignore_errors=True)
     
 def migrate_old_upscaling_models():
     """Migra los modelos antiguos de Real-ESRGAN y RealSR a la carpeta de Upscayl."""
@@ -998,6 +1075,8 @@ def check_and_download_upscaling_tools(progress_callback, target_tool=None):
             # Verificar si ya existe
             if os.path.exists(target_exe):
                 print(f"INFO: {tool_name} encontrado en {target_folder}")
+                if folder_name == "upscayl" and not ensure_curated_upscayl_models(progress_callback):
+                    return False
                 processed_count += 1
                 continue
                 
@@ -1073,135 +1152,8 @@ def check_and_download_upscaling_tools(progress_callback, target_tool=None):
                         shutil.rmtree(target_folder)
                     shutil.move(source_path, target_folder)
                 
-                # --- NUEVO: Descarga de modelos adicionales si existen ---
-                if "models_url" in info:
-                    models_url = info["models_url"]
-                    progress_callback(f"⬇️ {tool_name} (Modelos): Iniciando descarga...", -1)
-                    
-                    models_zip_path = os.path.join(UPSCALING_DIR, f"{folder_name}_models_temp.zip")
-                    with requests.get(models_url, stream=True, timeout=120) as r:
-                        r.raise_for_status()
-                        total_models_size = int(r.headers.get('content-length', 0))
-                        dl_models_size = 0
-                        last_reported_m_pct = -1
-                        with open(models_zip_path, 'wb') as fm:
-                            for chunk in r.iter_content(chunk_size=65536):
-                                if chunk:
-                                    fm.write(chunk)
-                                    dl_models_size += len(chunk)
-                                    if total_models_size > 0:
-                                        m_percent = int(dl_models_size * 100 / total_models_size)
-                                        if m_percent > last_reported_m_pct:
-                                            last_reported_m_pct = m_percent
-                                            dl_mb2 = dl_models_size / (1024*1024)
-                                            tot_mb2 = total_models_size / (1024*1024)
-                                            progress_callback(f"⬇️ {tool_name} (Modelos): {dl_mb2:.1f}/{tot_mb2:.1f} MB", m_percent)
-                                    else:
-                                        dl_mb2 = dl_models_size / (1024*1024)
-                                        if int(dl_mb2) > last_reported_m_pct:
-                                            last_reported_m_pct = int(dl_mb2)
-                                            progress_callback(f"⬇️ {tool_name} (Modelos): {dl_mb2:.1f} MB descargados...", -1)
-                    
-                    progress_callback(f"Extrayendo Modelos de {tool_name}...", 100)
-                    temp_models_dir = os.path.join(UPSCALING_DIR, f"{folder_name}_models_extract")
-                    if os.path.exists(temp_models_dir):
-                        shutil.rmtree(temp_models_dir)
-                    with zipfile.ZipFile(models_zip_path, 'r') as mzip:
-                        mzip.extractall(temp_models_dir)
-                    
-                    m_extracted = os.listdir(temp_models_dir)
-                    m_source = temp_models_dir
-                    if len(m_extracted) == 1 and os.path.isdir(os.path.join(temp_models_dir, m_extracted[0])):
-                        m_source = os.path.join(temp_models_dir, m_extracted[0])
-                        
-                    # Buscar la subcarpeta "models" real dentro de la extracción (Ej: custom-models-main/models)
-                    inner_models = os.path.join(m_source, "models")
-                    if os.path.exists(inner_models) and os.path.isdir(inner_models):
-                        m_source = inner_models
-                        
-                    models_target = os.path.join(target_folder, "models")
-                    # --- OPTIMIZACIÓN: Fusión de modelos en lugar de borrar la carpeta ---
-                    # Esto permite que los modelos migrados de RealSR no se borren.
-                    try:
-                        os.makedirs(models_target, exist_ok=True)
-                        shutil.copytree(m_source, models_target, dirs_exist_ok=True)
-                        shutil.rmtree(m_source)
-                    except Exception as e:
-                        print(f"ADVERTENCIA: Falló la fusión de modelos: {e}")
-                        if os.path.exists(models_target):
-                            shutil.rmtree(models_target)
-                        shutil.move(m_source, models_target)
-                    
-                    # Evitar WinError 32 reintentando el borrado del temporal
-                    import time
-                    for _ in range(3):
-                        try:
-                            os.remove(models_zip_path)
-                            break
-                        except Exception:
-                            time.sleep(0.5)
-                    try:
-                        shutil.rmtree(temp_models_dir, ignore_errors=True)
-                    except: pass
-                
-                # --- NUEVO: Descargar modelos de familias antiguas para usarlos en Upscayl ---
-                if folder_name == "upscayl":
-                    legacy_zips = [
-                        ("Real-ESRGAN", "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-windows.zip"),
-                        ("RealSR", "https://github.com/nihui/realsr-ncnn-vulkan/releases/download/20220728/realsr-ncnn-vulkan-20220728-windows.zip")
-                    ]
-                    models_target = os.path.join(target_folder, "models")
-                    os.makedirs(models_target, exist_ok=True)
-                    
-                    for leg_name, leg_url in legacy_zips:
-                        # --- OPTIMIZACIÓN FINAL: Saltar descarga si ya existen modelos clave ---
-                        # Evitamos bajar ~200MB si ya migramos o descargamos esto antes.
-                        canary = "realesrgan-x4plus.bin" if leg_name == "Real-ESRGAN" else "DF2K_x4.bin"
-                        if os.path.exists(os.path.join(models_target, canary)):
-                            print(f"INFO: Modelos de {leg_name} ya detectados. Saltando descarga de ZIP de {leg_name}.")
-                            continue
-                            
-                        progress_callback(f"⬇️ Modelos Adicionales ({leg_name}): Descargando...", -1)
-                        leg_zip_path = os.path.join(UPSCALING_DIR, f"{leg_name}_temp.zip")
-                        try:
-                            with requests.get(leg_url, stream=True, timeout=120) as r:
-                                r.raise_for_status()
-                                with open(leg_zip_path, 'wb') as fm:
-                                    for chunk in r.iter_content(chunk_size=65536):
-                                        if chunk: fm.write(chunk)
-                            progress_callback(f"Extrayendo Modelos de {leg_name}...", 100)
-                            leg_temp_dir = os.path.join(UPSCALING_DIR, f"{leg_name}_temp_extract")
-                            if os.path.exists(leg_temp_dir):
-                                shutil.rmtree(leg_temp_dir)
-                            with zipfile.ZipFile(leg_zip_path, 'r') as legzip:
-                                legzip.extractall(leg_temp_dir)
-                            
-                            # Buscar .bin y .param y mover a models_target
-                            for root_d, _, files_d in os.walk(leg_temp_dir):
-                                for f in files_d:
-                                    if f.endswith('.bin') or f.endswith('.param'):
-                                        src_p = os.path.join(root_d, f)
-                                        # Prevenir colisión de nombres genéricos en carpetas distintas (Ej: RealSR modelos 'x4')
-                                        dst_name = f
-                                        parent_name = os.path.basename(root_d)
-                                        if f.startswith("x4") and parent_name.startswith("models-"):
-                                            prefix = parent_name.replace("models-", "")
-                                            dst_name = f"{prefix}_{f}"
-                                            
-                                        dst_p = os.path.join(models_target, dst_name)
-                                        if not os.path.exists(dst_p):
-                                            shutil.copy2(src_p, dst_p)
-                                            
-                            # Purgar modelos prohibidos tras extracción de legacy
-                            sanitize_upscayl_models(models_target)
-                            
-                            # Limpiar
-                            for _ in range(3):
-                                try: os.remove(leg_zip_path); break
-                                except Exception: time.sleep(0.5)
-                            shutil.rmtree(leg_temp_dir, ignore_errors=True)
-                        except Exception as e:
-                            print(f"ADVERTENCIA: No se pudo descargar legacy models de {leg_name}: {e}")
+                if folder_name == "upscayl" and not ensure_curated_upscayl_models(progress_callback):
+                    return False
 
                 # --- PURGA FINAL DE SEGURIDAD ---
                 sanitize_upscayl_models(os.path.join(target_folder, "models"))

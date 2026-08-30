@@ -927,7 +927,7 @@ Item {
                                 compact: page.denseLayout
                                 model: downloadController.downloadTags
                                 currentIndex: Math.max(0, find(viewState.selectedTag))
-                                onActivated: downloadController.setValue("selectedTag", currentText)
+                                onActivated: downloadController.selectDownloadTag(currentText)
                                 ToolTip.visible: hovered
                                 ToolTip.text: "La etiqueta recuerda su color y su carpeta de destino."
                             }

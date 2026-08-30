@@ -209,8 +209,7 @@ class BatchController(QObject):
         elif key == "globalEmbedAudioCover":
             self.settings.set("batch_embed_audio_cover", bool(value))
         elif key == "selectedTag":
-            self.settings.set("selected_download_tag", str(value))
-            self._refresh_tag_state()
+            self.selectDownloadTag(str(value))
 
     def _compatible_preset(self, mode: str, current: str) -> str:
         names = self.presets.names("Solo Audio" if mode == "Solo Audio" else "Video+Audio")
@@ -258,6 +257,18 @@ class BatchController(QObject):
             selectedTagColor=tag["color"] if tag else "#6F7F8F",
             effectiveOutputPath=tag["folder"] if tag else self._state["outputPath"],
         )
+
+    @Slot(str)
+    def selectDownloadTag(self, name: str):
+        """Cambia la etiqueta y su carpeta asociada sin estados intermedios."""
+        requested = str(name or "Sin etiqueta")
+        tag = next((item for item in self._tags if item["name"] == requested), None)
+        self._set_state(
+            selectedTag=tag["name"] if tag else "Sin etiqueta",
+            selectedTagColor=tag["color"] if tag else "#6F7F8F",
+            effectiveOutputPath=tag["folder"] if tag else self._state["outputPath"],
+        )
+        self.settings.set("selected_download_tag", self._state["selectedTag"])
 
     @Slot(str, "QVariant")
     def _on_settings_changed(self, key, _value):

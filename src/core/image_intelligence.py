@@ -19,9 +19,8 @@ from PIL import Image, ImageFilter, ImageStat
 
 PERFORMANCE_PROFILES = (
     "Automático",
-    "Máxima calidad",
-    "Equilibrado",
-    "Rápido",
+    "Priorizar calidad",
+    "Priorizar velocidad",
 )
 
 
@@ -124,12 +123,9 @@ def performance_recipe(profile: str, hardware: dict[str, Any] | None = None) -> 
     ram_gb = float(hardware.get("availableRamGb") or 0)
     effective = profile if profile in PERFORMANCE_PROFILES else "Automático"
     if effective == "Automático":
-        if cpu_threads >= 8 and (not ram_gb or ram_gb >= 4):
-            effective = "Equilibrado"
-        else:
-            effective = "Rápido"
+        effective = "Equilibrado" if cpu_threads >= 8 and (not ram_gb or ram_gb >= 4) else "Priorizar velocidad"
 
-    if effective == "Máxima calidad":
+    if effective == "Priorizar calidad":
         return {
             "effective": effective,
             "concurrency": "Máximo (Potente)" if cpu_threads >= 8 else "Equilibrado",
@@ -140,7 +136,7 @@ def performance_recipe(profile: str, hardware: dict[str, Any] | None = None) -> 
             "encoderPreset": "medium",
             "encoderCrf": 16,
         }
-    if effective == "Rápido":
+    if effective == "Priorizar velocidad":
         return {
             "effective": effective,
             "concurrency": "Máximo (Potente)" if cpu_threads >= 8 else "Equilibrado",
@@ -235,21 +231,21 @@ def analyze_image(image_or_path: Image.Image | str | os.PathLike[str], *, source
             issue = "Detalle estable"
 
         if kind == "portrait":
-            rembg_model = "Portrait (Retratos)"
+            rembg_model = "Personas y retratos"
             rembg_reason = "prioriza cabello, rostro y silueta humana"
         elif kind == "illustration" or sharpness >= 0.12:
-            rembg_model = "DIS (Bordes Finos/Complejo)"
+            rembg_model = "Cabello y bordes finos"
             rembg_reason = "prioriza contornos finos y formas complejas"
         else:
-            rembg_model = "General (Estándar)"
+            rembg_model = "Objetos y productos"
             rembg_reason = "equilibrio de precisión para objetos y fotografía"
 
         if kind == "illustration":
             upscale_model = "Real-ESRGAN (Anime / Ilustración)"
             upscale_reason = "conserva líneas y colores planos"
         elif compressed:
-            upscale_model = "Real-ESRGAN V3 (Ligero y Rápido)"
-            upscale_reason = "reduce el costo en material ya comprimido"
+            upscale_model = "Real-ESRGAN (General / Fotografía)"
+            upscale_reason = "recupera textura y suaviza artefactos de compresión"
         else:
             upscale_model = "Real-ESRGAN (General / Fotografía)"
             upscale_reason = "recupera textura con menos aspecto artificial"
@@ -290,4 +286,3 @@ def estimate_output(analysis: dict[str, Any], scale: int | str = 1, task: str = 
     mp = width * height / 1_000_000
     raw_mb = width * height * 4 / (1024 ** 2)
     return f"Salida estimada: {width} × {height} · {mp:.1f} MP · ~{raw_mb:.0f} MB en memoria"
-

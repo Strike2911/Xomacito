@@ -17,6 +17,12 @@ Button {
                                                         : down ? pressedColor()
                                                         : hovered ? hoverColor()
                                                         : baseColor()
+    readonly property color currentForegroundColor: (!enabled || hovered || down
+                                                       || kind === "primary"
+                                                       || kind === "danger"
+                                                       || kind === "success")
+                                                      ? contrastText(currentBackgroundColor)
+                                                      : theme.colors.text
 
     function baseColor() {
         if (!enabled) return theme.colors.surfaceSoft
@@ -51,9 +57,7 @@ Button {
     }
 
     function foregroundColor() {
-        if (!enabled || kind === "primary" || kind === "danger" || kind === "success")
-            return contrastText(currentBackgroundColor)
-        return theme.colors.text
+        return currentForegroundColor
     }
 
     contentItem: Text {

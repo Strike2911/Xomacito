@@ -761,7 +761,7 @@ Item {
                         compact: true
                         model: batchController.downloadTags
                         currentIndex: Math.max(0, find(viewState.selectedTag))
-                        onActivated: batchController.setValue("selectedTag", currentText)
+                        onActivated: batchController.selectDownloadTag(currentText)
                     }
                 }
                 XButton {
