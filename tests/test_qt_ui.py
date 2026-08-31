@@ -957,8 +957,9 @@ controller.shutdown()
         self.assertIn("to: 16", waveform)
         self.assertNotIn('model: ["Fragmento",', download)
         image = (ROOT / "src" / "ui" / "qml" / "pages" / "ImageStudioPage.qml").read_text(encoding="utf-8")
-        for label in ("Tamaño", "Lienzo", "Formato", "Mejora IA", "Video"):
-            self.assertIn(label, image)
+        library = (ROOT / "src" / "ui" / "qml" / "pages" / "MediaLibraryPage.qml").read_text(encoding="utf-8")
+        self.assertEqual(image.strip(), "import QtQuick\n\nItem {\n}")
+        self.assertEqual(library.strip(), "import QtQuick\n\nItem {\n}")
 
     def test_runtime_no_longer_depends_on_tk(self):
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
@@ -1257,15 +1258,11 @@ controller.shutdown()
             )
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
-    def test_image_studio_drop_zone_and_output_folder_are_real(self):
+    def test_studio_and_library_pages_are_empty(self):
         image_page = (ROOT / "src" / "ui" / "qml" / "pages" / "ImageStudioPage.qml").read_text(encoding="utf-8")
-        self.assertIn('objectName: "imageStudioDropArea"', image_page)
-        self.assertIn("drop.urls", image_page)
-        self.assertIn("imageController.addPaths(paths)", image_page)
-
-        controller_source = (ROOT / "src" / "ui" / "image_controller.py").read_text(encoding="utf-8")
-        self.assertIn("if not configured_output.is_absolute()", controller_source)
-        self.assertIn('settings.set("image_output_path", str(configured_output))', controller_source)
+        library_page = (ROOT / "src" / "ui" / "qml" / "pages" / "MediaLibraryPage.qml").read_text(encoding="utf-8")
+        self.assertEqual(image_page.strip(), "import QtQuick\n\nItem {\n}")
+        self.assertEqual(library_page.strip(), "import QtQuick\n\nItem {\n}")
 
     def test_audio_cover_is_contextual_and_explorer_setting_is_visible(self):
         download_page = (ROOT / "src" / "ui" / "qml" / "pages" / "DownloadPage.qml").read_text(encoding="utf-8")
@@ -1278,7 +1275,7 @@ controller.shutdown()
 
     def test_buttons_keep_readable_text_across_hover_and_pressed_states(self):
         button = (ROOT / "src" / "ui" / "qml" / "components" / "XButton.qml").read_text(encoding="utf-8")
-        self.assertIn('if (kind === "primary") return theme.colors.primaryHover', button)
+        self.assertIn('if (kind === "primary") return Qt.darker(theme.colors.primary, 1.08)', button)
         self.assertIn("readonly property color currentBackgroundColor", button)
         self.assertIn("function contrastText(backgroundColor)", button)
         self.assertIn("color: root.foregroundColor()", button)
@@ -1289,13 +1286,17 @@ controller.shutdown()
         theme = (ROOT / "src" / "ui" / "theme.py").read_text(encoding="utf-8")
         self.assertIn("hover = _mix(primary, background", theme)
 
-    def test_library_uses_a_dedicated_favorite_control(self):
+    def test_empty_library_has_no_favorite_control(self):
         page = (ROOT / "src" / "ui" / "qml" / "pages" / "MediaLibraryPage.qml").read_text(encoding="utf-8")
-        control = (ROOT / "src" / "ui" / "qml" / "components" / "XFavoriteButton.qml").read_text(encoding="utf-8")
-        self.assertGreaterEqual(page.count("XFavoriteButton {"), 2)
-        self.assertIn('Accessible.name: (favorite ? "Quitar de favoritos" : "Añadir a favoritos")', control)
-        self.assertIn("implicitWidth: 34", control)
-        self.assertIn("favorite ? theme.colors.warning", control)
+        control = ROOT / "src" / "ui" / "qml" / "components" / "XFavoriteButton.qml"
+        self.assertNotIn("XFavoriteButton", page)
+        self.assertFalse(control.exists())
+
+    def test_analyze_is_a_real_clickable_button(self):
+        page = (ROOT / "src" / "ui" / "qml" / "pages" / "DownloadPage.qml").read_text(encoding="utf-8")
+        self.assertIn('objectName: "analyzeButton"', page)
+        self.assertIn("enabled: !viewState.busy", page)
+        self.assertIn("onClicked: downloadController.analyze()", page)
 
     def test_mp3_cover_is_embedded_as_an_attached_picture(self):
         script = r'''

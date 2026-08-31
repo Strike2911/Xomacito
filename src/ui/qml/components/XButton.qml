@@ -34,11 +34,11 @@ Button {
     }
 
     function hoverColor() {
-        if (kind === "primary") return theme.colors.primaryHover
+        if (kind === "primary") return Qt.darker(theme.colors.primary, 1.08)
         if (kind === "danger") return Qt.darker(theme.colors.error, 1.08)
         if (kind === "success") return Qt.darker(theme.colors.success, 1.08)
-        if (kind === "ghost") return theme.colors.surfaceSoft
-        return Qt.lighter(theme.colors.surfaceRaised, 1.08)
+        if (kind === "ghost") return theme.colors.surfaceRaised
+        return Qt.darker(theme.colors.surfaceRaised, 1.08)
     }
 
     function pressedColor() {

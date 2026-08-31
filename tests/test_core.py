@@ -49,6 +49,7 @@ from src.core.processor import (
 )
 from src.core.restart import RESTART_WAIT_ENV, clean_restart_environment, restart_wait_requested
 from src.core.single_instance import SingleInstanceGuard
+from src.core.thumbnail_export import premiere_thumbnail_path, save_premiere_thumbnail
 from src.core.ytdlp_runtime import (
     configure_ytdlp_options,
     is_youtube_access_error,
@@ -1454,6 +1455,29 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertNotIn("customtkinter", source)
         self.assertNotIn("_tcl_data", source)
         self.assertNotIn("_tk_data", source)
+
+    def test_thumbnail_export_reencodes_real_premiere_formats(self):
+        from PIL import Image
+
+        payload = io.BytesIO()
+        Image.new("RGBA", (12, 8), (255, 0, 0, 96)).save(payload, "PNG")
+        with tempfile.TemporaryDirectory() as directory:
+            result = save_premiere_thumbnail(payload.getvalue(), Path(directory) / "portada.webp")
+            self.assertEqual(result.suffix, ".jpg")
+            with Image.open(result) as exported:
+                self.assertEqual(exported.format, "JPEG")
+                self.assertEqual(exported.mode, "RGB")
+                self.assertFalse(bool(exported.info.get("progressive")))
+
+            png = save_premiere_thumbnail(payload.getvalue(), Path(directory) / "portada.png")
+            with Image.open(png) as exported_png:
+                self.assertEqual(exported_png.format, "PNG")
+                self.assertEqual(exported_png.mode, "RGBA")
+
+        self.assertEqual(premiere_thumbnail_path("miniatura.avif").suffix, ".jpg")
+        source = (ROOT / "src" / "ui" / "download_controller.py").read_text(encoding="utf-8")
+        self.assertIn("save_premiere_thumbnail(image_data, destination)", source)
+        self.assertNotIn("Imágenes (*.jpg *.jpeg *.png *.webp)", source)
 
     def test_release_build_and_benchmark_scripts_are_present(self):
         build_script = (ROOT / "scripts" / "build_release.ps1").read_text(encoding="utf-8-sig")

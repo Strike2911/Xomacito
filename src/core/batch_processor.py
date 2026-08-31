@@ -22,6 +22,7 @@ from src.core.downloader import (
 from src.core.exceptions import UserCancelledError
 from src.core.file_naming import next_available_media_stem
 from src.core.video_upscaler import VideoUpscaler
+from src.core.thumbnail_export import save_premiere_thumbnail
 from main import UPSCALING_DIR
 
 from src.core.constants import (
@@ -1562,12 +1563,9 @@ class QueueManager:
             response.raise_for_status()
             image_data = response.content
             
-            # Detectar formato inteligente
-            smart_ext = get_smart_thumbnail_extension(image_data) # <-- USAR NUEVA FUNCIÓN
-            
             # Nombre del archivo
             title = single_tab.sanitize_filename(job.config.get('title', 'thumbnail'))
-            final_path_smart = os.path.join(thumbnails_dir, f"{title}{smart_ext}") # <-- Usar smart_ext
+            final_path_smart = os.path.join(thumbnails_dir, f"{title}.jpg")
             
             # Resolver conflictos
             conflict_policy = batch_tab.conflict_policy_menu.get()
@@ -1580,18 +1578,7 @@ class QueueManager:
                 self.ui_callback(job.job_id, "SKIPPED", "Omitido: Miniatura ya existe")
                 return # Salir limpiamente
 
-            # Re-codificar imagen con PIL (preservando transparencia)
-            try:
-                pil_image = Image.open(BytesIO(image_data))
-                if smart_ext == '.png':
-                    pil_image.save(final_path, "PNG")
-                else:
-                    pil_image.convert("RGB").save(final_path, "JPEG", quality=95)
-            except Exception as pil_e:
-                print(f"ERROR: Falló el procesamiento de la imagen (PIL): {pil_e}")
-                # Fallback: guardar el archivo original (podría fallar la importación)
-                with open(final_path, 'wb') as f:
-                    f.write(image_data)
+            final_path = str(save_premiere_thumbnail(image_data, final_path))
             
             # Limpiar backup si existía
             if backup_path and os.path.exists(backup_path):
@@ -1628,34 +1615,14 @@ class QueueManager:
             response.raise_for_status()
             image_data = response.content
             
-            # Detectar formato inteligente
-            smart_ext = get_smart_thumbnail_extension(image_data) # <-- USAR NUEVA FUNCIÓN
-            
             # Generar nombre basado en el video
             video_dir = os.path.dirname(video_filepath)
             video_name = os.path.splitext(os.path.basename(video_filepath))[0]
-            thumbnail_path_smart = os.path.join(video_dir, f"{video_name}{smart_ext}") # <-- Usar smart_ext
-
-            # Re-codificar imagen con PIL (preservando transparencia)
-            try:
-                pil_image = Image.open(BytesIO(image_data))
-                if smart_ext == '.png':
-                    pil_image.save(thumbnail_path_smart, "PNG")
-                else:
-                    pil_image.convert("RGB").save(thumbnail_path_smart, "JPEG", quality=95)
-                
-                print(f"INFO: Miniatura (re-codificada) guardada: {thumbnail_path_smart}")
-                job.thumbnail_path = thumbnail_path_smart # ✅ NUEVO: Guardar en el job
-                return thumbnail_path_smart
-            # --- FIN DE CORRECCIÓN ---
-            except Exception as pil_e:
-                print(f"ERROR: Falló el procesamiento de la imagen (PIL): {pil_e}")
-                # Fallback: guardar el archivo original (podría fallar la importación)
-                # Usamos el nombre .jpg original para consistencia
-                with open(thumbnail_path_smart, 'wb') as f:
-                    f.write(image_data)
-                print(f"INFO: Miniatura (raw) guardada: {thumbnail_path_smart}")
-                return thumbnail_path_smart
+            thumbnail_path_smart = os.path.join(video_dir, f"{video_name}.jpg")
+            thumbnail_path_smart = str(save_premiere_thumbnail(image_data, thumbnail_path_smart))
+            print(f"INFO: Miniatura compatible con Premiere: {thumbnail_path_smart}")
+            job.thumbnail_path = thumbnail_path_smart
+            return thumbnail_path_smart
             
         except Exception as e:
             print(f"ERROR al descargar miniatura para {job.job_id}: {e}")

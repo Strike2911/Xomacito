@@ -204,7 +204,14 @@ Item {
                     onTextEdited: downloadController.setValue("url", text)
                     onAccepted: downloadController.analyze()
                 }
-                XButton { compact: page.denseLayout; text: "Analizar"; leadingText: "↘"; enabled: !viewState.busy && viewState.url.length > 3; onClicked: downloadController.analyze() }
+                XButton {
+                    objectName: "analyzeButton"
+                    compact: page.denseLayout
+                    text: viewState.busy ? "Analizando…" : "Analizar"
+                    leadingText: viewState.busy ? "" : "↘"
+                    enabled: !viewState.busy
+                    onClicked: downloadController.analyze()
+                }
                 XButton { compact: page.denseLayout; text: "Importar"; kind: "secondary"; onClicked: downloadController.chooseLocalFile() }
                 XButton { compact: page.denseLayout; text: "Limpiar"; kind: "ghost"; visible: viewState.analyzed || viewState.localFile; onClicked: downloadController.resetSource() }
             }

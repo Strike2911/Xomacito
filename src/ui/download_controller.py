@@ -36,6 +36,11 @@ from src.core.downloader import (
 from src.core.exceptions import UserCancelledError
 from src.core.file_naming import next_available_media_stem, next_available_path
 from src.core.processor import FFmpegProcessor, clean_and_convert_vtt_to_srt, pixel_format_has_alpha
+from src.core.thumbnail_export import (
+    PREMIERE_THUMBNAIL_FILTER,
+    premiere_thumbnail_path,
+    save_premiere_thumbnail,
+)
 from src.core.video_upscaler import VideoUpscaler
 from src.core.ytdlp_runtime import (
     configure_ytdlp_options,
@@ -2019,17 +2024,23 @@ class DownloadController(QObject):
     def saveThumbnail(self):
         if not self._state["thumbnailSource"]:
             return
-        destination, _ = QFileDialog.getSaveFileName(None, "Guardar miniatura", f"{safe_filename(self._state['title'])}.jpg", "Imágenes (*.jpg *.jpeg *.png *.webp)")
+        destination, _ = QFileDialog.getSaveFileName(
+            None,
+            "Guardar miniatura para Premiere",
+            f"{safe_filename(self._state['title'])}.jpg",
+            PREMIERE_THUMBNAIL_FILTER,
+        )
         if destination:
             try:
                 source = self._state["thumbnailSource"]
                 if source.startswith("file:"):
-                    shutil.copy2(QUrl(source).toLocalFile(), destination)
+                    image_data = Path(QUrl(source).toLocalFile()).read_bytes()
                 else:
                     response = requests.get(source, timeout=30)
                     response.raise_for_status()
-                    Path(destination).write_bytes(response.content)
-                self.notificationRequested.emit("success", "Miniatura guardada", destination)
+                    image_data = response.content
+                saved = save_premiere_thumbnail(image_data, destination)
+                self.notificationRequested.emit("success", "Miniatura compatible con Premiere", str(saved))
             except Exception as exc:
                 self.notificationRequested.emit("error", "No se pudo guardar", str(exc))
 
@@ -2038,13 +2049,14 @@ class DownloadController(QObject):
         if not source:
             return
         try:
-            destination = self._resolve_output(folder, title, ".jpg", ask=False)
+            destination = premiere_thumbnail_path(self._resolve_output(folder, title, ".jpg", ask=False))
             if source.startswith("file:"):
-                shutil.copy2(QUrl(source).toLocalFile(), destination)
+                image_data = Path(QUrl(source).toLocalFile()).read_bytes()
             else:
                 response = requests.get(source, timeout=30)
                 response.raise_for_status()
-                destination.write_bytes(response.content)
+                image_data = response.content
+            save_premiere_thumbnail(image_data, destination)
         except Exception as exc:
             safe_console_print(f"ADVERTENCIA: no se pudo guardar la miniatura: {exc}")
 

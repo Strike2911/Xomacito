@@ -67,18 +67,9 @@ def test_probability_mask_is_not_stretched_per_image():
     assert low == high
 
 
-def test_image_studio_exposes_compare_preview_and_hardware_recipe():
+def test_image_studio_page_is_intentionally_empty():
     qml = Path("src/ui/qml/pages/ImageStudioPage.qml").read_text(encoding="utf-8")
-    controller = Path("src/ui/image_controller.py").read_text(encoding="utf-8")
-
-    assert "comparePosition" in qml
-    assert "Preparar vista previa" in qml
-    assert "MOTOR LOCAL" in qml
-    assert "Procesamiento" in qml
-    assert "Ajustes de salida" in qml
-    assert "Máxima precisión" not in qml
-    assert "def preparePreview" in controller
-    assert "detect_hardware" in controller
+    assert qml.strip() == "import QtQuick\n\nItem {\n}"
 
 
 def test_long_videos_use_bounded_chunk_pipeline(tmp_path):

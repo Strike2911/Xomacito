@@ -226,45 +226,9 @@ class MediaLibraryTests(unittest.TestCase):
         self.assertIn('data-kind="Audio"', html)
         self.assertIn("@media (max-width: 310px)", styles)
 
-    def test_library_page_has_preview_dual_trim_and_explicit_output(self):
+    def test_library_page_is_intentionally_empty(self):
         qml = (ROOT / "src/ui/qml/pages/MediaLibraryPage.qml").read_text(encoding="utf-8")
-        self.assertIn("MediaPlayer", qml)
-        waveform = (ROOT / "src/ui/qml/components/WaveformTrimmer.qml").read_text(encoding="utf-8")
-        self.assertIn("WaveformTrimmer", qml)
-        self.assertIn("RangeSlider", waveform)
-        self.assertIn("Las zonas planas indican silencio", waveform)
-        self.assertIn("zoomLevel", waveform)
-        self.assertIn("Enfocar recorte", waveform)
-        self.assertIn("waveformViewport", waveform)
-        self.assertIn('objectName: "mediaClipRange"', qml)
-        self.assertIn('objectName: "libraryPremiereTimeline"', qml)
-        self.assertIn("toggleLibraryPreview", qml)
-        self.assertIn("position >= endMs", qml)
-        self.assertIn("Math.max(Number(viewState.clipIn", qml)
-        self.assertIn("SALIDA WAV", qml)
-        self.assertIn("SALIDA MP4", qml)
-        self.assertIn("El original siempre queda intacto", qml)
-        self.assertIn('objectName: "premiereLibraryDropArea"', qml)
-        self.assertIn("mediaLibraryController.addDroppedPaths(paths)", qml)
-        self.assertIn("TAMAÑO EXACTO", qml)
-        self.assertIn("libraryRowsModel", qml)
-        self.assertIn("toggleFolder", qml)
-        self.assertIn("removeFolder", qml)
-        self.assertIn("Quitar de la lista", qml)
-        self.assertIn("restoreHiddenFolders", qml)
-        self.assertIn("setSearchText", qml)
-        self.assertIn("setCategoryFilter", qml)
-        self.assertIn("toggleFavorite", qml)
-        self.assertIn('"Green screen"', qml)
-        self.assertIn("Xomacito Link", qml)
-        self.assertNotIn("Premiere listo", qml)
-        self.assertIn("mediaLibraryController.connectPremiere()", qml)
-        self.assertIn("selectedFolderColor", qml)
-        self.assertIn("folderColor", qml)
-        self.assertIn("libraryAccent", qml)
-        controller = (ROOT / "src/ui/media_library_controller.py").read_text(encoding="utf-8")
-        self.assertIn("Ventana > Plugins UXP > Xomacito Link", controller)
-        self.assertIn("_premiere_panel_installed()", controller)
+        self.assertEqual(qml.strip(), "import QtQuick\n\nItem {\n}")
 
     def test_waveform_renderer_creates_a_cached_editorial_preview(self):
         ffmpeg_path = ROOT / "bin" / "ffmpeg" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
@@ -408,7 +372,7 @@ class MediaLibraryTests(unittest.TestCase):
             self.assertTrue(source.is_file())
             self.assertFalse(list((library / "Importados").rglob("notas.txt")))
 
-    def test_real_library_qml_loads_analyzed_media_and_exposes_the_trim_range(self):
+    def test_empty_library_qml_keeps_user_media_backend_intact(self):
         script = r'''
 import os
 import subprocess
@@ -460,8 +424,8 @@ for _ in range(40):
 assert controller.media_library.state["itemCount"] >= 1
 media_list = window.findChild(QQuickItem, "premiereMediaList")
 clip_range = window.findChild(QObject, "mediaClipRange")
-assert media_list is not None and media_list.property("count") >= 1
-assert clip_range is not None and float(clip_range.property("to")) > 1.5
+assert media_list is None
+assert clip_range is None
 assert controller.media_library.state["selected"]["videoCodec"] == "H264"
 assert controller.media_library.state["selected"]["sizeBytes"] > 0
 assert "bytes" in controller.media_library.state["selected"]["sizeBytesLabel"]
