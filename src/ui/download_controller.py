@@ -252,6 +252,8 @@ class DownloadController(QObject):
         self._active_worker = None
         self._current_counts_as_download = False
         self._last_download_was_partial = False
+        self._partial_download_start = 0.0
+        self._partial_download_end = 0.0
         self.progressReported.connect(self._apply_progress)
         self.settings.changed.connect(self._on_settings_changed)
 
@@ -1601,7 +1603,15 @@ class DownloadController(QObject):
         if self.cancellation.is_set():
             raise UserCancelledError("Proceso cancelado.")
 
-        if options.get("fragmentEnabled") and options.get("fragmentRanges"):
+        if options.get("fragmentEnabled") and downloaded and self._last_download_was_partial:
+            partial_options = self._relative_partial_clip_options(options)
+            if options.get("recode_video_enabled") or options.get("recode_audio_enabled"):
+                result = self._recode_file(input_file, partial_options, downloaded=False)
+            else:
+                result = self._clip_without_recode(input_file, partial_options)
+            if Path(input_file) != Path(result):
+                Path(input_file).unlink(missing_ok=True)
+        elif options.get("fragmentEnabled") and options.get("fragmentRanges"):
             result = self._process_multiple_fragments(input_file, options, downloaded)
         elif options.get("extractFramesEnabled"):
             result = self._extract_frames(input_file, options, downloaded)
@@ -1611,7 +1621,7 @@ class DownloadController(QObject):
             result = self._recode_file(input_file, options, downloaded)
         elif options.get("fragmentEnabled") and options.get("local_file"):
             result = self._clip_without_recode(input_file, options)
-        elif options.get("fragmentEnabled") and downloaded and not self._last_download_was_partial:
+        elif options.get("fragmentEnabled") and downloaded:
             result = self._clip_without_recode(input_file, options)
             if not options.get("keepOriginalOnClip") and Path(input_file) != Path(result):
                 Path(input_file).unlink(missing_ok=True)
@@ -1642,6 +1652,35 @@ class DownloadController(QObject):
         ):
             result = self._embed_audio_thumbnail(result, options["thumbnail_url"])
         return result
+
+    @staticmethod
+    def _partial_download_window(options: dict) -> tuple[float, float] | None:
+        """Añade margen para que el corte útil no dependa del primer GOP descargado."""
+        start = seconds_from_time(options.get("startTime"))
+        end = seconds_from_time(options.get("endTime"))
+        duration = float(options.get("duration") or 0)
+        if end <= start:
+            return None
+        padded_start = max(0.0, start - 12.0)
+        padded_end = end + 2.0
+        if duration > 0:
+            padded_end = min(duration, padded_end)
+        return padded_start, max(padded_start + 0.25, padded_end)
+
+    def _relative_partial_clip_options(self, options: dict) -> dict:
+        """Convierte tiempos globales a la ventana parcial ya descargada."""
+        relative = dict(options)
+        start = seconds_from_time(options.get("startTime"))
+        end = seconds_from_time(options.get("endTime"))
+        relative_start = max(0.0, start - self._partial_download_start)
+        relative_end = relative_start + max(0.0, end - start)
+        relative.update({
+            "startTime": f"{relative_start:.6f}",
+            "endTime": f"{relative_end:.6f}",
+            "duration": max(0.0, self._partial_download_end - self._partial_download_start),
+            "preciseClip": True,
+        })
+        return relative
 
     def _embed_audio_thumbnail(self, audio_file: str, thumbnail_url: str) -> str:
         """Inserta la miniatura como portada en MP3/M4A sin recodificar el audio."""
@@ -1723,6 +1762,8 @@ class DownloadController(QObject):
     def _download_worker(self, options: dict) -> str:
         options = dict(options)
         self._last_download_was_partial = False
+        self._partial_download_start = 0.0
+        self._partial_download_end = 0.0
         options["title"] = next_available_media_stem(
             options["output_path"], options["title"]
         )
@@ -1750,10 +1791,21 @@ class DownloadController(QObject):
         output_template = str(Path(options["output_path"]) / f"{options['title']}.%(ext)s")
         ydl_options: dict[str, Any] = {
             "outtmpl": output_template, "format": selector, "postprocessors": [], "noplaylist": True,
-            "ffmpeg_location": self.ffmpeg.ffmpeg_path, "retries": 2, "fragment_retries": 2,
+            "ffmpeg_location": self.ffmpeg.ffmpeg_path, "retries": 4, "fragment_retries": 4,
+            "concurrent_fragment_downloads": 6,
+            "buffersize": 1024 * 1024,
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "referer": options["url"],
         }
+        if is_youtube_url(options.get("url", "")):
+            # Conserva el mismo cliente usado durante el analisis: en pruebas
+            # reales evito URLs CDN que FFmpeg rechazaba con HTTP 403.
+            ydl_options["extractor_args"] = {
+                "youtube": {"player_client": ["web_embedded"]},
+            }
+            # Los bloques HTTP permiten que yt-dlp renueve la conexion cuando
+            # el CDN limita una transferencia larga.
+            ydl_options["http_chunk_size"] = 10 * 1024 * 1024
         merge_container = preferred_merge_container(video, audio)
         if merge_container:
             ydl_options["merge_output_format"] = merge_container
@@ -1773,17 +1825,26 @@ class DownloadController(QObject):
             and not options.get("fragmentRanges")
             and not options.get("forceFullDownload")
             and not options.get("keepOriginalOnClip")
-            and not options.get("preciseClip")
         )
-        if partial and (options.get("startTime") or options.get("endTime")):
+        window = self._partial_download_window(options) if partial else None
+        if window:
             try:
                 from yt_dlp.utils import download_range_func
-                start = seconds_from_time(options.get("startTime"))
-                end = seconds_from_time(options.get("endTime")) or float("inf")
-                ydl_options["download_ranges"] = download_range_func(None, [(start, end)])
-                ydl_options["force_keyframes_at_cuts"] = bool(options.get("preciseClip"))
+                padded_start, padded_end = window
+                ydl_options["download_ranges"] = download_range_func(
+                    None, [(padded_start, padded_end)]
+                )
+                # No fuerces fotogramas clave aqui: eso recodificaria lentamente
+                # toda la ventana durante la descarga. Los 12 s anteriores
+                # conservan el GOP necesario y el corte exacto se hace localmente.
+                self._partial_download_start = padded_start
+                self._partial_download_end = padded_end
             except Exception:
                 partial = False
+                self._partial_download_start = 0.0
+                self._partial_download_end = 0.0
+        else:
+            partial = False
         self.progressReported.emit(0.02, "Descargando…")
         invalid_argument_retry = False
         try:
@@ -1805,6 +1866,8 @@ class DownloadController(QObject):
             fallback = dict(ydl_options)
             fallback.pop("download_ranges", None)
             fallback.pop("force_keyframes_at_cuts", None)
+            self._partial_download_start = 0.0
+            self._partial_download_end = 0.0
             fallback.pop("merge_output_format", None)
             fallback["format"] = (
                 "bestaudio[ext=m4a]/bestaudio/best"

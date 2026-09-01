@@ -1398,6 +1398,84 @@ controller.shutdown()
             )
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
+    def test_remote_precise_trim_uses_a_padded_window_and_rebases_the_final_cut(self):
+        controller = DownloadController.__new__(DownloadController)
+        window = controller._partial_download_window({
+            "startTime": "00:07:50.50",
+            "endTime": "00:08:13.10",
+            "duration": 900.0,
+        })
+        self.assertEqual(window, (458.5, 495.1))
+
+        controller._partial_download_start = window[0]
+        controller._partial_download_end = window[1]
+        relative = controller._relative_partial_clip_options({
+            "startTime": "00:07:50.50",
+            "endTime": "00:08:13.10",
+            "duration": 900.0,
+        })
+        self.assertAlmostEqual(float(relative["startTime"]), 12.0, places=3)
+        self.assertAlmostEqual(float(relative["endTime"]), 34.6, places=3)
+        self.assertAlmostEqual(relative["duration"], 36.6, places=3)
+        self.assertTrue(relative["preciseClip"])
+
+        source = (ROOT / "src/ui/download_controller.py").read_text(encoding="utf-8")
+        self.assertIn('"http_chunk_size"] = 10 * 1024 * 1024', source)
+        self.assertIn('"concurrent_fragment_downloads": 6', source)
+        self.assertIn('"player_client": ["web_embedded"]', source)
+        self.assertIn('ydl_options["download_ranges"] = download_range_func', source)
+        self.assertNotIn('ydl_options["force_keyframes_at_cuts"] = True', source)
+
+    def test_partial_remote_trim_is_precisely_processed_after_the_download(self):
+        import threading
+
+        controller = DownloadController.__new__(DownloadController)
+        controller._image_post = None
+        controller.cancellation = threading.Event()
+        controller._last_download_was_partial = False
+        captured = {}
+
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            source = folder / "ventana.mp4"
+            source.write_bytes(b"ventana")
+
+            def fake_download(_options):
+                controller._last_download_was_partial = True
+                controller._partial_download_start = 458.5
+                controller._partial_download_end = 495.1
+                return str(source)
+
+            def fake_clip(input_file, options, *, output_stem=None):
+                captured.update({
+                    "input": input_file,
+                    "start": options["startTime"],
+                    "end": options["endTime"],
+                    "stem": output_stem,
+                })
+                output = folder / "final.mp4"
+                output.write_bytes(b"final")
+                return str(output)
+
+            controller._download_worker = fake_download
+            controller._clip_without_recode = fake_clip
+            result = controller._process_worker({
+                "local_file": "",
+                "fragmentEnabled": True,
+                "fragmentRanges": [],
+                "startTime": "00:07:50.50",
+                "endTime": "00:08:13.10",
+                "duration": 900.0,
+                "recode_video_enabled": False,
+                "recode_audio_enabled": False,
+            })
+
+            self.assertEqual(result, str(folder / "final.mp4"))
+            self.assertEqual(captured["input"], str(source))
+            self.assertAlmostEqual(float(captured["start"]), 12.0, places=3)
+            self.assertAlmostEqual(float(captured["end"]), 34.6, places=3)
+            self.assertFalse(source.exists())
+
     def test_audio_cover_is_contextual_and_explorer_setting_is_visible(self):
         download_page = (ROOT / "src" / "ui" / "qml" / "pages" / "DownloadPage.qml").read_text(encoding="utf-8")
         settings_page = (ROOT / "src" / "ui" / "qml" / "pages" / "SettingsPage.qml").read_text(encoding="utf-8")

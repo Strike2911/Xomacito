@@ -172,7 +172,7 @@ class XomacitoWrapperTests(unittest.TestCase):
     def test_update_prompt_hides_internal_version_sha_and_extra_notes(self):
         prompt = build_update_prompt(
             {
-                "latest_version": "4.0.14",
+                "latest_version": "4.0.15",
                 "public_version": "1.1",
                 "release_notes": "Texto remoto que no debe mostrarse.",
                 "installer_digest": "sha256:" + ("a" * 64),
@@ -181,7 +181,7 @@ class XomacitoWrapperTests(unittest.TestCase):
         )
         self.assertIn("Xomacito 1.1", prompt)
         self.assertIn("- Arreglo de bugs de la versión 1.0.", prompt)
-        self.assertNotIn("4.0.14", prompt)
+        self.assertNotIn("4.0.15", prompt)
         self.assertNotIn("sha256", prompt.casefold())
         self.assertNotIn("Texto remoto", prompt)
         self.assertIn("¿Quieres descargarla e instalarla ahora?", prompt)
@@ -398,8 +398,8 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertNotIn("Strike", notice["contributors"])
         self.assertFalse(notice["smoothMotionPromotion"])
 
-    def test_release_4014_uses_public_version_11_and_one_bugfix_line(self):
-        notice = release_notice_for_version("4.0.14")
+    def test_release_4015_uses_public_version_11_and_one_bugfix_line(self):
+        notice = release_notice_for_version("4.0.15")
 
         self.assertEqual(notice["title"], "Xomacito 1.1")
         self.assertEqual(notice["highlights"], ["Arreglo de Bugs de la versión 1.0"])
@@ -1318,7 +1318,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("PrivilegesRequired=lowest", installer)
         self.assertIn("OutputBaseFilename=Xomacito-1.1-Setup", installer)
-        self.assertIn('#define MyAppVersion "4.0.14"', installer)
+        self.assertIn('#define MyAppVersion "4.0.15"', installer)
         self.assertIn('#define MyAppDisplayVersion "1.1"', installer)
         self.assertIn("AppVersion={#MyAppDisplayVersion}", installer)
         self.assertIn("shellexec postinstall skipifsilent skipifdoesntexist", installer)
