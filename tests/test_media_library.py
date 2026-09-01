@@ -226,9 +226,10 @@ class MediaLibraryTests(unittest.TestCase):
         self.assertIn('data-kind="Audio"', html)
         self.assertIn("@media (max-width: 310px)", styles)
 
-    def test_library_page_is_intentionally_empty(self):
+    def test_library_page_explains_its_empty_state(self):
         qml = (ROOT / "src/ui/qml/pages/MediaLibraryPage.qml").read_text(encoding="utf-8")
-        self.assertEqual(qml.strip(), "import QtQuick\n\nItem {\n}")
+        self.assertIn("Biblioteca en preparación", qml)
+        self.assertIn("Este espacio está vacío", qml)
 
     def test_waveform_renderer_creates_a_cached_editorial_preview(self):
         ffmpeg_path = ROOT / "bin" / "ffmpeg" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")

@@ -627,6 +627,13 @@ controller.shutdown()
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
     def test_black_bull_reward_is_readable_without_a_misleading_theme_badge(self):
+        main_qml = (ROOT / "src/ui/qml/Main.qml").read_text(encoding="utf-8")
+        self.assertIn('objectName: "smoothMotionBuilderCatLeft"', main_qml)
+        self.assertIn('objectName: "smoothMotionBuilderCatRight"', main_qml)
+        for name in ("smooth-motion-cat-left.webp", "smooth-motion-cat-right.webp"):
+            asset = ROOT / "assets" / "release" / name
+            self.assertTrue(asset.is_file())
+            self.assertGreater(asset.stat().st_size, 100_000)
         script = r'''
 from pathlib import Path
 from PySide6.QtCore import QObject, QUrl
@@ -916,9 +923,9 @@ controller.shutdown()
         self.assertIn("onSeekRequested: function(value) { page.seekTrimPreview(value) }", download)
         self.assertIn("preciseClockText", download)
         self.assertIn('playbackError = "Preparando una vista previa estable…"', download)
-        self.assertIn("id: trimPlaybackStartDelay", download)
-        self.assertIn("trimPlaybackStartDelay.restart()", download)
-        self.assertIn("trimPlayer.position = startMs", download)
+        self.assertNotIn("id: trimPlaybackStartDelay", download)
+        self.assertIn("var globalPosition = trimPlayer.position + offsetMs", download)
+        self.assertIn("trimPopup.selectionPlayback = globalPosition >= startMs", download)
         self.assertIn("property bool mediaLoadSeekPending: false", download)
         self.assertIn("if (trimPopup.mediaLoadSeekPending)", download)
         self.assertIn("Boolean(viewState.localFile) || Boolean(viewState.trimPreviewFallback)", download)
@@ -937,13 +944,31 @@ controller.shutdown()
         self.assertIn("sourceClipRect: root.sourceCropRect(frameProbe.sourceSize.width, frameProbe.sourceSize.height)", premiere)
         self.assertIn("id: frameProbe", premiere)
         self.assertIn("id: timeGrid", premiere)
-        self.assertIn('text: "DESPLAZAR"', premiere)
-        self.assertIn("id: viewportSlider", premiere)
-        self.assertIn("root.panBy(direction * root.viewportDuration * 0.12)", premiere)
+        self.assertNotIn('text: "DESPLAZAR"', premiere)
+        self.assertNotIn("id: viewportSlider", premiere)
+        self.assertIn("id: smoothAutoPan", premiere)
+        self.assertIn("root.requestScrubAtX(mouse.x)", premiere)
+        self.assertIn("root.panBy(root.autoPanDirection", premiere)
+        self.assertIn("root.panBy(direction * root.viewportDuration * 0.08)", premiere)
         self.assertIn("width: 7; height: parent.height; radius: 3.5", premiere)
         self.assertIn("property real interactivePlayhead: playhead", premiere)
-        self.assertIn("root.requestScrub(root.xToTime(mouse.x))", premiere)
+        self.assertIn("property int autoPanDirection: 0", premiere)
+        self.assertIn("var bounded = clamp(value, 0, duration)", premiere)
         self.assertIn("root.outPoint - 0.20", premiere)
+        self.assertIn('objectName: "trimFragmentQueue"', download)
+        self.assertIn('objectName: "addTrimFragmentButton"', download)
+        self.assertIn("downloadController.addFragment(options.startTime, options.endTime)", download)
+        self.assertIn("downloadController.removeFragment(index)", download)
+        self.assertIn('text: "Marcar inicio"', download)
+        self.assertIn('text: "Marcar final"', download)
+        self.assertIn("trimPopup.selectionPlayback", download)
+        self.assertIn('objectName: "trimEditingWorkspace"', download)
+        self.assertIn("Layout.preferredWidth: 286", download)
+        self.assertIn("property bool trimSeekingPreview: false", download)
+        self.assertIn("page.trimSeekingPreview = true", download)
+        self.assertIn("|| page.trimSeekingPreview", download)
+        self.assertIn('text: "✓  Corte preciso siempre activo"', download)
+        self.assertNotIn('XSwitch { text: "Corte preciso"', download)
         video_range = (ROOT / "src" / "ui" / "qml" / "components" / "VideoRangeSelector.qml").read_text(encoding="utf-8")
         self.assertIn('root.clock(root.inPoint) + "  —  " + root.clock(root.outPoint)', video_range)
         self.assertIn('property url fallbackSource: ""', video_range)
@@ -958,8 +983,8 @@ controller.shutdown()
         self.assertNotIn('model: ["Fragmento",', download)
         image = (ROOT / "src" / "ui" / "qml" / "pages" / "ImageStudioPage.qml").read_text(encoding="utf-8")
         library = (ROOT / "src" / "ui" / "qml" / "pages" / "MediaLibraryPage.qml").read_text(encoding="utf-8")
-        self.assertEqual(image.strip(), "import QtQuick\n\nItem {\n}")
-        self.assertEqual(library.strip(), "import QtQuick\n\nItem {\n}")
+        self.assertIn("Estudio en preparación", image)
+        self.assertIn("Biblioteca en preparación", library)
 
     def test_runtime_no_longer_depends_on_tk(self):
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
@@ -1150,6 +1175,7 @@ download = controller.download
 download._set_state(mode="Solo Audio", preset="Audio - MP3 128kbps")
 download._options.update({
     "fragmentEnabled": True,
+    "fragmentRanges": [{"startTime": "00:00:01", "endTime": "00:00:02"}],
     "startTime": "00:00:01",
     "endTime": "00:00:02",
 })
@@ -1166,8 +1192,10 @@ download._apply_url_analysis(normalize_info({
 assert download.state["mode"] == "Video+Audio", download.state
 assert download.state["preset"] in controller.presets.videoPresets
 assert download.options["fragmentEnabled"] is False
+assert download.options["fragmentRanges"] == []
 assert download.options["startTime"] == "00:00:00"
 assert download.options["endTime"] == "00:02:05"
+assert download.options["preciseClip"] is True
 controller.shutdown()
 '''
         with tempfile.TemporaryDirectory() as appdata:
@@ -1258,11 +1286,117 @@ controller.shutdown()
             )
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
-    def test_studio_and_library_pages_are_empty(self):
+    def test_studio_and_library_pages_explain_their_empty_state(self):
         image_page = (ROOT / "src" / "ui" / "qml" / "pages" / "ImageStudioPage.qml").read_text(encoding="utf-8")
         library_page = (ROOT / "src" / "ui" / "qml" / "pages" / "MediaLibraryPage.qml").read_text(encoding="utf-8")
-        self.assertEqual(image_page.strip(), "import QtQuick\n\nItem {\n}")
-        self.assertEqual(library_page.strip(), "import QtQuick\n\nItem {\n}")
+        self.assertIn("Estudio en preparación", image_page)
+        self.assertIn("permanecerá vacío", image_page)
+        self.assertIn("Biblioteca en preparación", library_page)
+        self.assertIn("Este espacio está vacío", library_page)
+
+    def test_multiple_trim_ranges_are_queued_and_processed_once(self):
+        script = r'''
+import tempfile
+from pathlib import Path
+from PySide6.QtWidgets import QApplication
+from src.ui.application import AppController
+
+app = QApplication([])
+controller = AppController(app, Path.cwd(), "2.5")
+download = controller.download
+download._set_state(duration=120.0)
+download.addFragment("00:00:05", "00:00:12")
+download.addFragment("00:00:30", "00:00:42")
+assert len(download.options["fragmentRanges"]) == 2
+download.useFragment(1)
+assert download.options["startTime"] == "00:00:30"
+assert download.options["endTime"] == "00:00:42"
+
+with tempfile.TemporaryDirectory() as directory:
+    folder = Path(directory)
+    source = folder / "entrada.mp4"
+    source.write_bytes(b"media")
+    calls = []
+    def fake_clip(input_file, options, *, output_stem=None):
+        calls.append((input_file, options["startTime"], options["endTime"], output_stem))
+        output = folder / f"{output_stem}.mp4"
+        output.write_bytes(b"clip")
+        return str(output)
+    download._clip_without_recode = fake_clip
+    result = download._process_multiple_fragments(str(source), {
+        "fragmentRanges": list(download.options["fragmentRanges"]),
+        "output_path": str(folder), "title": "prueba", "keepOriginalOnClip": True,
+        "recode_video_enabled": False, "recode_audio_enabled": False,
+    }, downloaded=False)
+    assert result == str(folder)
+    assert [item[1:3] for item in calls] == [
+        ("00:00:05", "00:00:12"), ("00:00:30", "00:00:42")
+    ]
+    assert [item[3] for item in calls] == ["prueba_fragmento_01", "prueba_fragmento_02"]
+
+download.removeFragment(0)
+assert len(download.options["fragmentRanges"]) == 1
+download.clearFragments()
+assert download.options["fragmentRanges"] == []
+controller.shutdown()
+'''
+        with tempfile.TemporaryDirectory() as appdata:
+            environment = dict(os.environ)
+            environment.update({"QT_QPA_PLATFORM": "offscreen", "APPDATA": appdata})
+            result = subprocess.run(
+                [sys.executable, "-c", script], cwd=ROOT, env=environment,
+                capture_output=True, text=True, timeout=25, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
+    def test_precise_clip_reencodes_with_fresh_timestamps(self):
+        script = r'''
+import json
+import subprocess
+import tempfile
+from pathlib import Path
+from PySide6.QtWidgets import QApplication
+from src.ui.application import AppController
+
+app = QApplication([])
+controller = AppController(app, Path.cwd(), "2.5")
+download = controller.download
+ffmpeg = download.ffmpeg.ffmpeg_path
+ffprobe = str(Path(ffmpeg).with_name("ffprobe.exe"))
+with tempfile.TemporaryDirectory() as directory:
+    folder = Path(directory)
+    source = folder / "entrada_largo_gop.mp4"
+    subprocess.run([
+        ffmpeg, "-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=24:duration=4",
+        "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=4",
+        "-c:v", "libx264", "-g", "96", "-keyint_min", "96", "-sc_threshold", "0",
+        "-c:a", "aac", "-shortest", str(source),
+    ], check=True, capture_output=True)
+    result = Path(download._clip_without_recode(str(source), {
+        "output_path": str(folder), "title": "corte", "mode": "Video+Audio",
+        "startTime": "00:00:01.35", "endTime": "00:00:02.65", "preciseClip": True,
+    }))
+    assert result.suffix.lower() == ".mp4", result
+    probe = subprocess.run([
+        ffprobe, "-v", "error", "-show_entries",
+        "format=start_time,duration:stream=codec_name,codec_type", "-of", "json", str(result),
+    ], check=True, capture_output=True, text=True)
+    media = json.loads(probe.stdout)
+    codecs = {(stream["codec_type"], stream["codec_name"]) for stream in media["streams"]}
+    assert ("video", "h264") in codecs, codecs
+    assert ("audio", "aac") in codecs, codecs
+    assert abs(float(media["format"]["start_time"])) < 0.05, media["format"]
+    assert 1.20 <= float(media["format"]["duration"]) <= 1.42, media["format"]
+controller.shutdown()
+'''
+        with tempfile.TemporaryDirectory() as appdata:
+            environment = dict(os.environ)
+            environment.update({"QT_QPA_PLATFORM": "offscreen", "APPDATA": appdata})
+            result = subprocess.run(
+                [sys.executable, "-c", script], cwd=ROOT, env=environment,
+                capture_output=True, text=True, timeout=35, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
     def test_audio_cover_is_contextual_and_explorer_setting_is_visible(self):
         download_page = (ROOT / "src" / "ui" / "qml" / "pages" / "DownloadPage.qml").read_text(encoding="utf-8")

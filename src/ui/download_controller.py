@@ -73,9 +73,10 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "keepFullSubtitle": False,
     "autoSaveThumbnail": False,
     "fragmentEnabled": False,
+    "fragmentRanges": [],
     "startTime": "00:00:00",
     "endTime": "",
-    "preciseClip": False,
+    "preciseClip": True,
     "forceFullDownload": False,
     "keepOriginalOnClip": False,
     "applyPreset": False,
@@ -315,6 +316,8 @@ class DownloadController(QObject):
 
     @Slot(str, "QVariant")
     def setOption(self, key: str, value):
+        if key == "preciseClip":
+            value = True
         if key not in self._options or self._options.get(key) == value:
             return
         self._options[key] = value
@@ -328,6 +331,60 @@ class DownloadController(QObject):
             "embed_thumbnail": self._options["embedThumbnail"],
         }
         self.settings.set("recode_settings", persisted)
+
+    @Slot(str, str)
+    def addFragment(self, start_time: str, end_time: str):
+        """Añade a la cola un corte válido sin duplicarlo."""
+        error = self._fragment_range_error(start_time, end_time)
+        if error:
+            self.notificationRequested.emit("warning", "Revisa el fragmento", error)
+            return
+        fragment = {
+            "startTime": str(start_time).strip(),
+            "endTime": str(end_time).strip(),
+        }
+        ranges = [dict(item) for item in self._options.get("fragmentRanges", []) if isinstance(item, dict)]
+        if any(
+            item.get("startTime") == fragment["startTime"]
+            and item.get("endTime") == fragment["endTime"]
+            for item in ranges
+        ):
+            self.notificationRequested.emit("info", "Fragmento ya añadido", "Ese intervalo ya está en la lista.")
+            return
+        if len(ranges) >= 24:
+            self.notificationRequested.emit("warning", "Límite alcanzado", "Puedes procesar hasta 24 fragmentos a la vez.")
+            return
+        ranges.append(fragment)
+        ranges.sort(key=lambda item: self._parse_clock(item.get("startTime", "")) or 0)
+        self._options["fragmentRanges"] = ranges
+        self._options["fragmentEnabled"] = True
+        self.optionsChanged.emit()
+
+    @Slot(int)
+    def removeFragment(self, index: int):
+        ranges = [dict(item) for item in self._options.get("fragmentRanges", []) if isinstance(item, dict)]
+        if index < 0 or index >= len(ranges):
+            return
+        ranges.pop(index)
+        self._options["fragmentRanges"] = ranges
+        self.optionsChanged.emit()
+
+    @Slot(int)
+    def useFragment(self, index: int):
+        ranges = self._options.get("fragmentRanges", [])
+        if index < 0 or index >= len(ranges) or not isinstance(ranges[index], dict):
+            return
+        fragment = ranges[index]
+        self._options["startTime"] = str(fragment.get("startTime") or "00:00:00")
+        self._options["endTime"] = str(fragment.get("endTime") or "")
+        self.optionsChanged.emit()
+
+    @Slot()
+    def clearFragments(self):
+        if not self._options.get("fragmentRanges"):
+            return
+        self._options["fragmentRanges"] = []
+        self.optionsChanged.emit()
 
     def _ensure_preset_for_mode(self, mode: str):
         if mode == "Imágenes":
@@ -1156,8 +1213,10 @@ class DownloadController(QObject):
         image_count = int(info.get("image_count") or len(info.get("xomacito_images") or []) or (1 if image_post else 0))
         self._options.update({
             "fragmentEnabled": False,
+            "fragmentRanges": [],
             "startTime": "00:00:00",
             "endTime": self._format_clock(duration) if duration > 0 else "",
+            "preciseClip": True,
         })
         self.optionsChanged.emit()
         self._set_state(
@@ -1204,8 +1263,10 @@ class DownloadController(QObject):
         )
         self._options.update({
             "fragmentEnabled": False,
+            "fragmentRanges": [],
             "startTime": "00:00:00",
             "endTime": self._format_clock(float(result["duration"] or 0)) if result["duration"] else "",
+            "preciseClip": True,
         })
         self.optionsChanged.emit()
         self._ensure_preset_for_mode("Video+Audio" if self._video_choices else "Solo Audio")
@@ -1388,11 +1449,9 @@ class DownloadController(QObject):
             return None
         return int(match.group(1)) * 3600 + int(match.group(2)) * 60 + float(match.group(3))
 
-    def _fragment_error(self) -> str:
-        if not self._options.get("fragmentEnabled"):
-            return ""
-        start = self._parse_clock(self._options.get("startTime", ""))
-        end = self._parse_clock(self._options.get("endTime", ""))
+    def _fragment_range_error(self, start_value: str, end_value: str) -> str:
+        start = self._parse_clock(start_value)
+        end = self._parse_clock(end_value)
         if start is None or end is None:
             return "Usa el formato HH:MM:SS en Inicio y Final; por ejemplo 00:01:30."
         if end <= start:
@@ -1401,6 +1460,26 @@ class DownloadController(QObject):
         if duration > 0 and end > duration + 0.75:
             return f"El Final supera la duración ({self._format_clock(duration)})."
         return ""
+
+    def _fragment_error(self) -> str:
+        if not self._options.get("fragmentEnabled"):
+            return ""
+        ranges = self._options.get("fragmentRanges", [])
+        if isinstance(ranges, list) and ranges:
+            for index, fragment in enumerate(ranges, 1):
+                if not isinstance(fragment, dict):
+                    return f"El fragmento {index} no es válido."
+                error = self._fragment_range_error(
+                    str(fragment.get("startTime") or ""),
+                    str(fragment.get("endTime") or ""),
+                )
+                if error:
+                    return f"Fragmento {index}: {error}"
+            return ""
+        return self._fragment_range_error(
+            self._options.get("startTime", ""),
+            self._options.get("endTime", ""),
+        )
 
     def _apply_choices(self, choices: dict):
         self._video_map = {entry["label"]: entry for entry in choices["video"]}
@@ -1503,6 +1582,12 @@ class DownloadController(QObject):
                 "res_width": self._options["resWidth"], "res_height": self._options["resHeight"],
                 "maintain_aspect": self._options["maintainAspect"],
             })
+        if options.get("fragmentEnabled"):
+            # Los cortes por copia de flujo dependen de fotogramas clave y pueden
+            # comenzar congelados o adelantados. Todo fragmento se procesa con
+            # precisión de fotograma, incluso si una configuración antigua decía
+            # lo contrario.
+            options["preciseClip"] = True
         return options
 
     def _process_worker(self, options: dict) -> str:
@@ -1516,7 +1601,9 @@ class DownloadController(QObject):
         if self.cancellation.is_set():
             raise UserCancelledError("Proceso cancelado.")
 
-        if options.get("extractFramesEnabled"):
+        if options.get("fragmentEnabled") and options.get("fragmentRanges"):
+            result = self._process_multiple_fragments(input_file, options, downloaded)
+        elif options.get("extractFramesEnabled"):
             result = self._extract_frames(input_file, options, downloaded)
         elif options.get("upscaleVideoEnabled"):
             result = self._upscale_video(input_file, options, downloaded)
@@ -1681,7 +1768,13 @@ class DownloadController(QObject):
             if options.get("cleanSubtitle"):
                 ydl_options["convertsubtitles"] = "srt"
         cookie, using_cookies = self._cookie_options()
-        partial = options.get("fragmentEnabled") and not options.get("forceFullDownload") and not options.get("keepOriginalOnClip")
+        partial = (
+            options.get("fragmentEnabled")
+            and not options.get("fragmentRanges")
+            and not options.get("forceFullDownload")
+            and not options.get("keepOriginalOnClip")
+            and not options.get("preciseClip")
+        )
         if partial and (options.get("startTime") or options.get("endTime")):
             try:
                 from yt_dlp.utils import download_range_func
@@ -1823,24 +1916,102 @@ class DownloadController(QObject):
             Path(input_file).unlink(missing_ok=True)
         return str(output)
 
-    def _clip_without_recode(self, input_file: str, options: dict) -> str:
+    def _process_multiple_fragments(self, input_file: str, options: dict, downloaded: bool) -> str:
+        ranges = [item for item in options.get("fragmentRanges", []) if isinstance(item, dict)]
+        if not ranges:
+            raise RuntimeError("No hay fragmentos en la lista.")
         source = Path(input_file)
-        output = self._resolve_output(Path(options["output_path"]), options["title"] + "_fragmento", source.suffix)
+        base_title = safe_filename(options.get("title") or source.stem)
+        for index, fragment in enumerate(ranges, 1):
+            if self.cancellation.is_set():
+                raise UserCancelledError("Proceso cancelado.")
+            self.progressReported.emit(
+                (index - 1) / max(1, len(ranges)),
+                f"Procesando fragmento {index} de {len(ranges)}…",
+            )
+            fragment_options = dict(options)
+            fragment_options.update({
+                "fragmentRanges": [],
+                "startTime": str(fragment.get("startTime") or ""),
+                "endTime": str(fragment.get("endTime") or ""),
+                "title": f"{base_title}_fragmento_{index:02d}",
+            })
+            if options.get("recode_video_enabled") or options.get("recode_audio_enabled"):
+                self._recode_file(str(source), fragment_options, downloaded=False)
+            else:
+                self._clip_without_recode(
+                    str(source), fragment_options,
+                    output_stem=fragment_options["title"],
+                )
+        if downloaded and not options.get("keepOriginalOnClip") and source.exists():
+            source.unlink(missing_ok=True)
+        self.progressReported.emit(1.0, f"{len(ranges)} fragmentos completados.")
+        return str(Path(options["output_path"]))
+
+    def _clip_without_recode(
+        self, input_file: str, options: dict, *, output_stem: str | None = None,
+    ) -> str:
+        source = Path(input_file)
+        audio_only = options.get("mode") == "Solo Audio"
+        output_suffix = ".m4a" if audio_only else ".mp4"
+        output = self._resolve_output(
+            Path(options["output_path"]),
+            output_stem or options["title"] + "_fragmento",
+            output_suffix,
+        )
         if not output:
             raise UserCancelledError("Corte cancelado.")
-        command = [self.ffmpeg.ffmpeg_path, "-y", "-nostdin"]
         start = seconds_from_time(options.get("startTime"))
         end = seconds_from_time(options.get("endTime"))
+        command = [
+            self.ffmpeg.ffmpeg_path,
+            "-y",
+            "-nostdin",
+            "-fflags",
+            "+genpts",
+            "-i",
+            str(source),
+        ]
+        # Buscar después de abrir la entrada evita el salto al fotograma clave
+        # anterior. Al recodificar se generan PTS nuevos desde cero y se elimina
+        # el congelamiento que algunos reproductores muestran al inicio.
         if start:
-            command += ["-ss", str(start)]
-        command += ["-i", str(source)]
+            command += ["-ss", f"{start:.6f}"]
         if end and end > start:
-            command += ["-t", str(end - start)]
-        command += ["-map", "0", "-c", "copy", str(output)]
+            command += ["-t", f"{end - start:.6f}"]
+        if audio_only:
+            command += [
+                "-map", "0:a:0?",
+                "-vn",
+                "-c:a", "aac",
+                "-b:a", "192k",
+            ]
+        else:
+            command += [
+                "-map", "0:v:0?",
+                "-map", "0:a:0?",
+                "-sn",
+                "-dn",
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-crf", "18",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-movflags", "+faststart",
+            ]
+        command += [
+            "-avoid_negative_ts", "make_zero",
+            "-reset_timestamps", "1",
+            str(output),
+        ]
+        self.progressReported.emit(0.0, "Creando corte preciso y compatible…")
         creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         completed = subprocess.run(command, capture_output=True, text=True, creationflags=creationflags)
         if completed.returncode:
             raise RuntimeError(completed.stderr[-1200:])
+        if not output.exists() or output.stat().st_size <= 0:
+            raise RuntimeError("FFmpeg no generó un fragmento válido.")
         return str(output)
 
     def _extract_frames(self, input_file: str, options: dict, downloaded: bool) -> str:

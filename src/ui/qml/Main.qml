@@ -1260,6 +1260,34 @@ ApplicationWindow {
                     asynchronous: true
                     cache: true
                 }
+                AnimatedImage {
+                    objectName: "smoothMotionBuilderCatLeft"
+                    anchors.left: parent.left
+                    anchors.leftMargin: 12
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 3
+                    height: Math.min(parent.height * 0.72, 240)
+                    width: height * 0.872
+                    source: "../../../assets/release/smooth-motion-cat-left.webp"
+                    fillMode: Image.PreserveAspectFit
+                    playing: smoothMotionPopup.opened && settingsController.state.animationsEnabled
+                    cache: true
+                    z: 3
+                }
+                AnimatedImage {
+                    objectName: "smoothMotionBuilderCatRight"
+                    anchors.right: parent.right
+                    anchors.rightMargin: 12
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 3
+                    height: Math.min(parent.height * 0.72, 240)
+                    width: height * 0.881
+                    source: "../../../assets/release/smooth-motion-cat-right.webp"
+                    fillMode: Image.PreserveAspectFit
+                    playing: smoothMotionPopup.opened && settingsController.state.animationsEnabled
+                    cache: true
+                    z: 3
+                }
             }
 
             Text {

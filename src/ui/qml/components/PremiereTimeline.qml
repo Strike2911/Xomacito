@@ -18,6 +18,9 @@ Item {
     property bool waveformBusy: false
     property real interactivePlayhead: playhead
     property bool scrubbing: false
+    property real scrubPointerX: width / 2
+    property int autoPanDirection: 0
+    readonly property real autoPanEdge: Math.min(72, Math.max(42, width * 0.08))
     readonly property int timelineTickCount: width >= 900 ? 8 : 6
     signal inPointMoved(real value)
     signal outPointMoved(real value)
@@ -84,9 +87,27 @@ Item {
     }
 
     function requestScrub(value) {
-        var bounded = clamp(value, inPoint, outPoint)
+        var bounded = clamp(value, 0, duration)
         interactivePlayhead = bounded
         seekRequested(bounded)
+    }
+
+    function requestScrubAtX(positionX) {
+        scrubPointerX = positionX
+        if (scrubbing && zoomFactor > 1) {
+            if (positionX <= autoPanEdge && viewportStart > 0)
+                autoPanDirection = -1
+            else if (positionX >= width - autoPanEdge && viewportEnd < duration)
+                autoPanDirection = 1
+            else
+                autoPanDirection = 0
+        }
+        requestScrub(xToTime(clamp(positionX, 0, width)))
+    }
+
+    function stopScrubbing() {
+        scrubbing = false
+        autoPanDirection = 0
     }
 
     onDurationChanged: {
@@ -98,12 +119,37 @@ Item {
             interactivePlayhead = playhead
         if (zoomFactor <= 1 || viewportDuration <= 0)
             return
-        if (playhead < viewportStart || playhead > viewportEnd) {
+        if (playhead > viewportStart + viewportDuration * 0.88 && playhead < duration) {
             viewportStart = clamp(
-                playhead - viewportDuration * 0.15,
+                playhead - viewportDuration * 0.82,
                 0,
                 Math.max(0, duration - viewportDuration)
             )
+        } else if (playhead < viewportStart + viewportDuration * 0.10 && playhead > 0) {
+            viewportStart = clamp(
+                playhead - viewportDuration * 0.12,
+                0,
+                Math.max(0, duration - viewportDuration)
+            )
+        }
+    }
+
+    Timer {
+        id: smoothAutoPan
+        interval: 16
+        repeat: true
+        running: root.scrubbing && root.autoPanDirection !== 0
+        onTriggered: {
+            var edge = Math.max(1, root.autoPanEdge)
+            var depth = root.autoPanDirection < 0
+                      ? (edge - Math.max(0, root.scrubPointerX)) / edge
+                      : (root.scrubPointerX - (root.width - edge)) / edge
+            var strength = root.clamp(depth, 0.12, 1.35)
+            var previousStart = root.viewportStart
+            root.panBy(root.autoPanDirection * root.viewportDuration * (0.0035 + 0.014 * strength))
+            root.requestScrub(root.xToTime(root.clamp(root.scrubPointerX, 0, root.width)))
+            if (Math.abs(previousStart - root.viewportStart) < 0.0001)
+                root.autoPanDirection = 0
         }
     }
 
@@ -149,17 +195,17 @@ Item {
                 preventStealing: true
                 onPressed: function(mouse) {
                     root.scrubbing = true
-                    root.requestScrub(root.xToTime(mouse.x))
+                    root.requestScrubAtX(mouse.x)
                 }
                 onPositionChanged: function(mouse) {
                     if (pressed)
-                        root.requestScrub(root.xToTime(mouse.x))
+                        root.requestScrubAtX(mouse.x)
                 }
                 onReleased: function(mouse) {
-                    root.requestScrub(root.xToTime(mouse.x))
-                    root.scrubbing = false
+                    root.requestScrubAtX(mouse.x)
+                    root.stopScrubbing()
                 }
-                onCanceled: root.scrubbing = false
+                onCanceled: root.stopScrubbing()
             }
 
             Row {
@@ -220,38 +266,6 @@ Item {
                 }
             }
 
-            Row {
-                id: panTools
-                parent: zoomRail
-                anchors.left: parent.left
-                anchors.leftMargin: 9
-                anchors.right: zoomTools.left
-                anchors.rightMargin: 14
-                anchors.verticalCenter: parent.verticalCenter
-                height: 22
-                spacing: 7
-                visible: root.zoomFactor > 1
-                z: 20
-
-                Text {
-                    width: 66
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "DESPLAZAR"
-                    color: "#AEB5C5"
-                    font.pixelSize: 9
-                    font.weight: Font.Bold
-                }
-                Slider {
-                    id: viewportSlider
-                    width: Math.max(90, panTools.width - 73)
-                    height: 20
-                    from: 0
-                    to: Math.max(0, root.duration - root.viewportDuration)
-                    value: root.viewportStart
-                    stepSize: Math.max(0.02, root.viewportDuration / 200)
-                    onMoved: root.viewportStart = root.clamp(value, from, to)
-                }
-            }
         }
 
         Item {
@@ -387,7 +401,7 @@ Item {
                 if (root.zoomFactor <= 1)
                     return
                 var direction = event.angleDelta.y > 0 ? -1 : 1
-                root.panBy(direction * root.viewportDuration * 0.12)
+                root.panBy(direction * root.viewportDuration * 0.08)
             }
         }
 
@@ -463,7 +477,7 @@ Item {
             id: playheadMarker
             objectName: "premierePlayhead"
             visible: root.duration > 0
-            property real boundedTime: root.clamp(root.interactivePlayhead, root.inPoint, root.outPoint)
+            property real boundedTime: root.clamp(root.interactivePlayhead, 0, root.duration)
             x: root.timeToX(boundedTime) - width / 2
             y: zoomRail.height
             width: 26

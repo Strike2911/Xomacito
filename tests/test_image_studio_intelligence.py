@@ -67,9 +67,10 @@ def test_probability_mask_is_not_stretched_per_image():
     assert low == high
 
 
-def test_image_studio_page_is_intentionally_empty():
+def test_image_studio_page_explains_its_empty_state():
     qml = Path("src/ui/qml/pages/ImageStudioPage.qml").read_text(encoding="utf-8")
-    assert qml.strip() == "import QtQuick\n\nItem {\n}"
+    assert "Estudio en preparación" in qml
+    assert "permanecerá vacío" in qml
 
 
 def test_long_videos_use_bounded_chunk_pipeline(tmp_path):

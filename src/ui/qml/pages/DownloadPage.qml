@@ -11,6 +11,7 @@ Item {
     property bool denseLayout: height < 640
     property bool trimUserMuted: false
     property real trimPendingScrubSeconds: -1
+    property bool trimSeekingPreview: false
 
     MediaPlayer {
         id: trimPlayer
@@ -51,7 +52,7 @@ Item {
             var offset = Number(viewState.trimPreviewOffset || 0)
             var globalPosition = position / 1000 + offset
             var endSeconds = Math.max(0, page.clockSeconds(options.endTime))
-            if (endSeconds > 0 && globalPosition >= endSeconds) {
+            if (trimPopup.selectionPlayback && endSeconds > 0 && globalPosition >= endSeconds) {
                 pause()
                 position = Math.max(0, endSeconds - offset) * 1000
                 trimPopup.pendingSeekSeconds = endSeconds
@@ -70,6 +71,13 @@ Item {
             page.trimPendingScrubSeconds = -1
             trimPlayer.position = Math.max(0, target - Number(viewState.trimPreviewOffset || 0)) * 1000
         }
+    }
+
+    Timer {
+        id: trimSeekCoverTimer
+        interval: 280
+        repeat: false
+        onTriggered: page.trimSeekingPreview = false
     }
 
     function clockText(seconds) {
@@ -106,18 +114,21 @@ Item {
         downloadController.setOption(optionName, page.preciseClockText(bounded))
         trimPopup.pendingSeekSeconds = bounded
         trimPopup.previewActivated = true
+        trimPopup.selectionPlayback = false
+        page.trimSeekingPreview = true
+        trimSeekCoverTimer.restart()
         if (trimPlayer.playbackState === MediaPlayer.PlayingState)
             trimPlayer.pause()
         trimPlayer.position = Math.max(0, bounded - Number(viewState.trimPreviewOffset || 0)) * 1000
     }
 
     function seekTrimPreview(seconds) {
-        var start = Math.max(0, page.clockSeconds(options.startTime))
-        var end = Math.max(start, page.clockSeconds(options.endTime))
-        var bounded = Math.max(start, Math.min(end, Number(seconds) || 0))
+        var bounded = Math.max(0, Math.min(Number(viewState.duration || 0), Number(seconds) || 0))
         trimPopup.pendingSeekSeconds = bounded
         trimPopup.previewActivated = true
-        trimPlaybackStartDelay.stop()
+        trimPopup.selectionPlayback = false
+        page.trimSeekingPreview = true
+        trimSeekCoverTimer.restart()
         if (trimPlayer.playbackState === MediaPlayer.PlayingState)
             trimPlayer.pause()
         page.trimPendingScrubSeconds = bounded
@@ -127,7 +138,6 @@ Item {
 
     function toggleTrimPreview() {
         if (trimPlayer.playbackState === MediaPlayer.PlayingState) {
-            trimPlaybackStartDelay.stop()
             trimPlayer.pause()
             return
         }
@@ -135,14 +145,10 @@ Item {
         var startMs = Math.max(0, page.clockSeconds(options.startTime) * 1000 - offsetMs)
         var endMs = Math.max(startMs, page.clockSeconds(options.endTime) * 1000 - offsetMs)
         trimPopup.previewActivated = true
-        if (trimPlayer.position < startMs || trimPlayer.position >= endMs) {
-            trimPlayer.pause()
-            trimPlayer.position = startMs
-            trimPopup.pendingSeekSeconds = page.clockSeconds(options.startTime)
-            trimPopup.playbackSeekRetries = 0
-            trimPlaybackStartDelay.restart()
-            return
-        }
+        page.trimSeekingPreview = false
+        trimSeekCoverTimer.stop()
+        var globalPosition = trimPlayer.position + offsetMs
+        trimPopup.selectionPlayback = globalPosition >= startMs && globalPosition < endMs
         trimPlayer.play()
     }
 
@@ -396,16 +402,17 @@ Item {
                 property bool previousEnabled: false
                 property string previousStart: "00:00:00"
                 property string previousEnd: ""
+                property var previousRanges: []
                 property bool previewActivated: false
                 property real pendingSeekSeconds: 0
                 property string playbackError: ""
                 property bool fallbackRequested: false
                 property bool mediaLoadSeekPending: false
-                property int playbackSeekRetries: 0
+                property bool selectionPlayback: false
                 parent: Overlay.overlay
                 x: Math.round((parent.width - width) / 2)
                 y: Math.round((parent.height - height) / 2)
-                width: Math.min(1050, parent.width - 24)
+                width: Math.min(1220, parent.width - 24)
                 height: Math.min(800, parent.height - 24)
                 padding: 18
                 modal: true
@@ -416,7 +423,9 @@ Item {
                     previousEnabled = Boolean(options.fragmentEnabled)
                     previousStart = options.startTime
                     previousEnd = options.endTime
+                    previousRanges = JSON.parse(JSON.stringify(options.fragmentRanges || []))
                     downloadController.setOption("fragmentEnabled", true)
+                    downloadController.setOption("preciseClip", true)
                     if (page.clockSeconds(options.endTime) <= 0)
                         downloadController.setOption("endTime", page.clockText(viewState.duration))
                     trimWaveformDelay.restart()
@@ -425,7 +434,8 @@ Item {
                     playbackError = ""
                     fallbackRequested = false
                     mediaLoadSeekPending = false
-                    playbackSeekRetries = 0
+                    selectionPlayback = false
+                    page.trimSeekingPreview = false
                     pendingSeekSeconds = Math.max(0, page.clockSeconds(options.startTime))
                     trimPlayer.stop()
                     trimPlayer.position = pendingSeekSeconds * 1000
@@ -436,9 +446,10 @@ Item {
                     }
                 }
                 onClosed: {
-                    trimPlaybackStartDelay.stop()
                     trimScrubSeekTimer.stop()
+                    trimSeekCoverTimer.stop()
                     page.trimPendingScrubSeconds = -1
+                    page.trimSeekingPreview = false
                     trimPlayer.stop()
                     trimWaveformDelay.stop()
                     trimFilmstripDelay.stop()
@@ -456,26 +467,6 @@ Item {
                     repeat: false
                     onTriggered: downloadController.prepareTrimFilmstrip()
                 }
-                Timer {
-                    id: trimPlaybackStartDelay
-                    interval: 90
-                    repeat: false
-                    onTriggered: {
-                        if (!trimPopup.opened)
-                            return
-                        var offsetMs = Number(viewState.trimPreviewOffset || 0) * 1000
-                        var startMs = Math.max(0, page.clockSeconds(options.startTime) * 1000 - offsetMs)
-                        if (Math.abs(trimPlayer.position - startMs) > 180 && trimPopup.playbackSeekRetries < 4) {
-                            trimPopup.playbackSeekRetries += 1
-                            trimPlayer.position = startMs
-                            restart()
-                            return
-                        }
-                        trimPopup.playbackSeekRetries = 0
-                        trimPlayer.play()
-                    }
-                }
-
                 contentItem: ColumnLayout {
                     spacing: 12
                     RowLayout {
@@ -494,19 +485,33 @@ Item {
                             onClicked: {
                                 downloadController.setOption("startTime", trimPopup.previousStart)
                                 downloadController.setOption("endTime", trimPopup.previousEnd)
+                                downloadController.setOption("fragmentRanges", trimPopup.previousRanges)
                                 downloadController.setOption("fragmentEnabled", trimPopup.previousEnabled)
                                 trimPopup.close()
                             }
                         }
                     }
 
-                    Rectangle {
+                    RowLayout {
+                        objectName: "trimEditingWorkspace"
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.minimumHeight: viewState.hasVideo ? 430 : 300
+                        spacing: 12
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            spacing: 10
+
+                            Rectangle {
                         id: trimPreviewPanel
                         objectName: "downloadTrimPreview"
                         visible: Boolean(viewState.trimPreviewSource)
                         Layout.fillWidth: true
-                        Layout.preferredHeight: viewState.hasVideo ? Math.max(240, trimPopup.height - 520) : 108
-                        Layout.minimumHeight: viewState.hasVideo ? 240 : 100
+                        Layout.fillHeight: Boolean(viewState.hasVideo)
+                        Layout.preferredHeight: viewState.hasVideo ? 330 : 108
+                        Layout.minimumHeight: viewState.hasVideo ? 270 : 100
                         radius: 12
                         color: "#050609"
                         border.color: theme.colors.border
@@ -521,7 +526,10 @@ Item {
                         }
                         Image {
                             anchors.fill: trimPreviewVideo
-                            visible: Boolean(viewState.hasVideo) && (!trimPopup.previewActivated || trimPlayer.mediaStatus === MediaPlayer.LoadingMedia)
+                            visible: Boolean(viewState.hasVideo)
+                                     && (!trimPopup.previewActivated
+                                         || page.trimSeekingPreview
+                                         || trimPlayer.mediaStatus === MediaPlayer.LoadingMedia)
                             source: viewState.thumbnailSource || ""
                             fillMode: Image.PreserveAspectFit
                             asynchronous: true
@@ -633,41 +641,189 @@ Item {
                         }
                     }
 
-                    PremiereTimeline {
-                        id: trimPremiereTimeline
-                        objectName: "trimPremiereTimeline"
-                        visible: Boolean(viewState.hasVideo) && Number(viewState.duration || 0) > 0
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 184
-                        duration: Number(viewState.duration || 0)
-                        inPoint: Math.max(0, page.clockSeconds(options.startTime))
-                        outPoint: Math.max(0, page.clockSeconds(options.endTime))
-                        playhead: trimPlayer.position / 1000 + Number(viewState.trimPreviewOffset || 0)
-                        filmstripSource: viewState.trimFilmstripSource || ""
-                        fallbackSource: viewState.thumbnailSource || ""
-                        waveformSource: viewState.waveformSource || ""
-                        filmstripBusy: Boolean(viewState.trimFilmstripBusy)
-                        waveformBusy: Boolean(viewState.waveformBusy)
-                        onInPointMoved: function(value) { page.setTrimBoundary("startTime", value) }
-                        onOutPointMoved: function(value) { page.setTrimBoundary("endTime", value) }
-                        onSeekRequested: function(value) { page.seekTrimPreview(value) }
-                    }
+                        PremiereTimeline {
+                            id: trimPremiereTimeline
+                            objectName: "trimPremiereTimeline"
+                            visible: Boolean(viewState.hasVideo) && Number(viewState.duration || 0) > 0
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 184
+                            Layout.minimumHeight: 174
+                            duration: Number(viewState.duration || 0)
+                            inPoint: Math.max(0, page.clockSeconds(options.startTime))
+                            outPoint: Math.max(0, page.clockSeconds(options.endTime))
+                            playhead: trimPlayer.position / 1000 + Number(viewState.trimPreviewOffset || 0)
+                            filmstripSource: viewState.trimFilmstripSource || ""
+                            fallbackSource: viewState.thumbnailSource || ""
+                            waveformSource: viewState.waveformSource || ""
+                            filmstripBusy: Boolean(viewState.trimFilmstripBusy)
+                            waveformBusy: Boolean(viewState.waveformBusy)
+                            onInPointMoved: function(value) { page.setTrimBoundary("startTime", value) }
+                            onOutPointMoved: function(value) { page.setTrimBoundary("endTime", value) }
+                            onSeekRequested: function(value) { page.seekTrimPreview(value) }
+                        }
 
-                    WaveformTrimmer {
-                        objectName: "downloadWaveformTrimmer"
-                        visible: !viewState.hasVideo && Boolean(viewState.hasAudio)
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 190
-                        compact: true
-                        waveformSource: viewState.waveformSource || ""
-                        busy: Boolean(viewState.waveformBusy)
-                        errorText: viewState.waveformError || ""
-                        duration: Number(viewState.duration || 0)
-                        inPoint: Math.max(0, page.clockSeconds(options.startTime))
-                        outPoint: Math.max(0, page.clockSeconds(options.endTime))
-                        onInPointMoved: function(value) { page.setTrimBoundary("startTime", value) }
-                        onOutPointMoved: function(value) { page.setTrimBoundary("endTime", value) }
-                        onRetryRequested: downloadController.prepareWaveform()
+                        WaveformTrimmer {
+                            objectName: "downloadWaveformTrimmer"
+                            visible: !viewState.hasVideo && Boolean(viewState.hasAudio)
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 190
+                            Layout.minimumHeight: 180
+                            compact: true
+                            waveformSource: viewState.waveformSource || ""
+                            busy: Boolean(viewState.waveformBusy)
+                            errorText: viewState.waveformError || ""
+                            duration: Number(viewState.duration || 0)
+                            inPoint: Math.max(0, page.clockSeconds(options.startTime))
+                            outPoint: Math.max(0, page.clockSeconds(options.endTime))
+                            onInPointMoved: function(value) { page.setTrimBoundary("startTime", value) }
+                            onOutPointMoved: function(value) { page.setTrimBoundary("endTime", value) }
+                            onRetryRequested: downloadController.prepareWaveform()
+                        }
+
+                        }
+
+                        Rectangle {
+                            id: fragmentQueuePanel
+                            objectName: "trimFragmentQueue"
+                            Layout.preferredWidth: 286
+                            Layout.minimumWidth: 260
+                            Layout.fillHeight: true
+                            radius: 11
+                            color: theme.colors.surfaceSoft
+                            border.color: theme.colors.border
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                spacing: 7
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: "FRAGMENTOS  " + (options.fragmentRanges || []).length
+                                        color: theme.colors.text
+                                        font.pixelSize: 10
+                                        font.weight: Font.Bold
+                                    }
+                                    Text {
+                                        visible: (options.fragmentRanges || []).length > 0
+                                        text: "Limpiar"
+                                        color: theme.colors.primary
+                                        font.pixelSize: 9
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            anchors.margins: -6
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: downloadController.clearFragments()
+                                        }
+                                    }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Añade cada intervalo que quieras procesar."
+                                    color: theme.colors.textMuted
+                                    font.pixelSize: 9
+                                    wrapMode: Text.WordWrap
+                                }
+                                XButton {
+                                    objectName: "addTrimFragmentButton"
+                                    Layout.fillWidth: true
+                                    compact: true
+                                    text: "+  Añadir corte actual"
+                                    kind: "secondary"
+                                    enabled: page.fragmentReady()
+                                    onClicked: downloadController.addFragment(options.startTime, options.endTime)
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+                                    XButton {
+                                        Layout.fillWidth: true
+                                        compact: true
+                                        text: "Marcar inicio"
+                                        kind: "ghost"
+                                        onClicked: page.setTrimBoundary(
+                                            "startTime",
+                                            trimPlayer.position / 1000 + Number(viewState.trimPreviewOffset || 0)
+                                        )
+                                    }
+                                    XButton {
+                                        Layout.fillWidth: true
+                                        compact: true
+                                        text: "Marcar final"
+                                        kind: "ghost"
+                                        onClicked: page.setTrimBoundary(
+                                            "endTime",
+                                            trimPlayer.position / 1000 + Number(viewState.trimPreviewOffset || 0)
+                                        )
+                                    }
+                                }
+                                ListView {
+                                    id: fragmentQueueList
+                                    objectName: "trimFragmentQueueList"
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    clip: true
+                                    spacing: 5
+                                    model: options.fragmentRanges || []
+                                    delegate: Rectangle {
+                                        required property int index
+                                        required property var modelData
+                                        width: fragmentQueueList.width
+                                        height: 38
+                                        radius: 8
+                                        color: fragmentMouse.containsMouse ? theme.colors.surfaceRaised : "transparent"
+                                        border.color: theme.colors.border
+                                        Text {
+                                            anchors.left: parent.left
+                                            anchors.leftMargin: 8
+                                            anchors.right: removeFragment.left
+                                            anchors.rightMargin: 5
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: (index + 1) + ".  " + modelData.startTime + "  →  " + modelData.endTime
+                                            color: theme.colors.text
+                                            font.pixelSize: 9
+                                            font.family: "Consolas"
+                                            elide: Text.ElideRight
+                                        }
+                                        Rectangle {
+                                            id: removeFragment
+                                            anchors.right: parent.right
+                                            anchors.rightMargin: 5
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 26; height: 26; radius: 7
+                                            color: removeMouse.containsMouse ? theme.colors.surfaceRaised : "transparent"
+                                            Text { anchors.centerIn: parent; text: "×"; color: theme.colors.textMuted; font.pixelSize: 15 }
+                                            MouseArea {
+                                                id: removeMouse
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: downloadController.removeFragment(index)
+                                            }
+                                        }
+                                        MouseArea {
+                                            id: fragmentMouse
+                                            anchors.fill: parent
+                                            anchors.rightMargin: 34
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: downloadController.useFragment(index)
+                                        }
+                                    }
+                                    Text {
+                                        anchors.centerIn: parent
+                                        width: parent.width - 12
+                                        visible: fragmentQueueList.count === 0
+                                        text: "La lista está vacía.\nEl corte actual seguirá funcionando como antes."
+                                        color: theme.colors.textDim
+                                        font.pixelSize: 9
+                                        horizontalAlignment: Text.AlignHCenter
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     GridLayout {
@@ -718,7 +874,21 @@ Item {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        XSwitch { text: "Corte preciso"; checked: options.preciseClip; onToggled: downloadController.setOption("preciseClip", checked) }
+                        Rectangle {
+                            Layout.preferredWidth: preciseCutLabel.implicitWidth + 28
+                            Layout.preferredHeight: 32
+                            radius: 9
+                            color: theme.colors.surfaceSoft
+                            border.color: "#6964CB"
+                            Text {
+                                id: preciseCutLabel
+                                anchors.centerIn: parent
+                                text: "✓  Corte preciso siempre activo"
+                                color: theme.colors.text
+                                font.pixelSize: 10
+                                font.weight: Font.DemiBold
+                            }
+                        }
                         XSwitch {
                             text: "Conservar archivo completo"
                             checked: options.keepOriginalOnClip
@@ -737,11 +907,14 @@ Item {
                                 downloadController.setOption("fragmentEnabled", false)
                                 downloadController.setOption("startTime", "00:00:00")
                                 downloadController.setOption("endTime", page.clockText(viewState.duration))
+                                downloadController.clearFragments()
                                 trimPopup.close()
                             }
                         }
                         XButton {
-                            text: "Usar este fragmento"
+                            text: (options.fragmentRanges || []).length > 0
+                                  ? "Usar " + (options.fragmentRanges || []).length + " fragmentos"
+                                  : "Usar este fragmento"
                             compact: true
                             kind: "primary"
                             enabled: page.fragmentReady()
