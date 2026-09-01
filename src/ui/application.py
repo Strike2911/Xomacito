@@ -418,7 +418,13 @@ class AppController(QObject):
                 latestVersion=str(info.get("latest_version") or ""),
                 releaseNotes=str(info.get("release_notes") or ""),
             )
-            self.updatePromptRequested.emit(info)
+            # El mapa visible no necesita la revisión interna. Mantenerla sólo
+            # en _pending_update impide que QML pueda mostrarla por accidente.
+            visible_info = dict(info)
+            visible_info.pop("latest_version", None)
+            visible_info.pop("current_version", None)
+            visible_info["public_version"] = self.version
+            self.updatePromptRequested.emit(visible_info)
         else:
             error = str(info.get("error") or "")
             if info.get("update_available") and not installer_url and not error:

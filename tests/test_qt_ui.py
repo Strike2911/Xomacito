@@ -1426,6 +1426,15 @@ controller.shutdown()
         self.assertIn('ydl_options["download_ranges"] = download_range_func', source)
         self.assertNotIn('ydl_options["force_keyframes_at_cuts"] = True', source)
 
+    def test_update_popup_never_uses_the_internal_update_version(self):
+        qml = (ROOT / "src/ui/qml/Main.qml").read_text(encoding="utf-8")
+        application = (ROOT / "src/ui/application.py").read_text(encoding="utf-8")
+
+        self.assertIn('text: "Xomacito " + appController.version', qml)
+        self.assertNotIn("window.updateInfo.public_version || appController.version", qml)
+        self.assertIn('visible_info.pop("latest_version", None)', application)
+        self.assertIn('visible_info["public_version"] = self.version', application)
+
     def test_partial_remote_trim_is_precisely_processed_after_the_download(self):
         import threading
 
