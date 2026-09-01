@@ -126,8 +126,8 @@ def main() -> int:
             "appearance_mode": "Dark",
             "selected_theme_accent": "Strike",
             "theme_selection_explicit": True,
-            "release_notice_seen_version": "4.0.16",
-            "guided_tour_seen_version": "4.0.16",
+            "release_notice_seen_version": "4.0.17",
+            "guided_tour_seen_version": "4.0.17",
             "social_onboarding_dismissed": True,
             "premiere_library_enabled": True,
             "premiere_library_path": str(library),
@@ -156,7 +156,7 @@ def main() -> int:
 
         app = QApplication.instance() or QApplication(["xomacito-gallery"])
         QGuiApplication.setApplicationDisplayName("Xomacito 1.1")
-        controller = AppController(app, ROOT, "1.1", "4.0.16")
+        controller = AppController(app, ROOT, "1.1", "4.0.17")
         public_library_path = r"C:\Xomacito\Biblioteca"
         engine = QQmlApplicationEngine()
         context = engine.rootContext()

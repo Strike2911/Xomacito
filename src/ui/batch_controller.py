@@ -89,6 +89,8 @@ class _RuntimeAdapter:
 
 
 class BatchController(QObject):
+    VIDEO_QUALITY_DEFAULT = "Mejor Calidad (Auto)"
+    AUDIO_QUALITY_DEFAULT = "MP3 · 320 kbps"
     stateChanged = Signal()
     selectedChanged = Signal()
     selectedPlaylistEntriesChanged = Signal()
@@ -196,6 +198,10 @@ class BatchController(QObject):
             self._set_state(
                 globalMode=mode,
                 globalPreset=self._compatible_preset(mode, self._state["globalPreset"]),
+                globalQuality=(
+                    self.AUDIO_QUALITY_DEFAULT if mode == "Solo Audio"
+                    else self.VIDEO_QUALITY_DEFAULT
+                ),
             )
         elif key == "globalPreset":
             self._set_state(globalPreset=self._compatible_preset(self._state["globalMode"], str(value)))
@@ -257,6 +263,26 @@ class BatchController(QObject):
             selectedTagColor=tag["color"] if tag else "#6F7F8F",
             effectiveOutputPath=tag["folder"] if tag else self._state["outputPath"],
         )
+        self._sync_waiting_job_destinations()
+
+    def _sync_waiting_job_destinations(self):
+        """Aplica el destino visible a trabajos que todavía no han empezado."""
+        if not hasattr(self, "manager"):
+            return
+        output_path = str(self._state.get("effectiveOutputPath") or "").strip()
+        destination_tag = str(self._state.get("selectedTag") or "Sin etiqueta")
+        changed_jobs = []
+        for job in self.manager.jobs:
+            if job.status not in {"PENDING", "FAILED"}:
+                continue
+            job.config["output_path"] = output_path
+            job.config["destination_tag"] = destination_tag
+            changed_jobs.append(job)
+        for job in changed_jobs:
+            self._replace_job_model(job, job.status, job.progress_message)
+        selected_job_id = str(self._state.get("selectedJobId") or "")
+        if selected_job_id and any(job.job_id == selected_job_id for job in changed_jobs):
+            self.selectJob(selected_job_id)
 
     @Slot(str)
     def selectDownloadTag(self, name: str):
@@ -269,6 +295,7 @@ class BatchController(QObject):
             effectiveOutputPath=tag["folder"] if tag else self._state["outputPath"],
         )
         self.settings.set("selected_download_tag", self._state["selectedTag"])
+        self._sync_waiting_job_destinations()
 
     @Slot(str, "QVariant")
     def _on_settings_changed(self, key, _value):
@@ -671,6 +698,11 @@ class BatchController(QObject):
             job.config["recode_preset_name"] = self._compatible_preset(
                 str(value), str(job.config.get("recode_preset_name") or "")
             )
+            if job.job_type == "PLAYLIST":
+                job.config["playlist_quality"] = (
+                    self.AUDIO_QUALITY_DEFAULT if str(value) == "Solo Audio"
+                    else self.VIDEO_QUALITY_DEFAULT
+                )
         elif key == "preset":
             mode = job.config.get("playlist_mode", job.config.get("mode", "Video+Audio"))
             job.config[config_key] = self._compatible_preset(str(mode), str(value))

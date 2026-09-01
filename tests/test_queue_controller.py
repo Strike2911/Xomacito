@@ -61,12 +61,21 @@ assert batch.selected["itemCount"] == 2, batch.selected
 assert batch.selectedPlaylistEntries[1]["selected"] is False
 
 batch.setSelectedOption("mode", "Solo Audio")
-batch.setSelectedOption("quality", "Solo Audio (Mejor)")
+assert job.config["playlist_quality"] == "MP3 · 320 kbps", job.config
+batch.setSelectedOption("quality", "M4A · AAC")
 assert job.config["playlist_mode"] == "Solo Audio", job.config
-assert job.config["playlist_quality"] == "Solo Audio (Mejor)", job.config
+assert job.config["playlist_quality"] == "M4A · AAC", job.config
 assert job.config["recode_preset_name"] in controller.presets.audioPresets, job.config
 assert batch.selected["outputFormat"] == "MP3", batch.selected
 assert "mode" not in job.config
+
+batch.selectDownloadTag("Sin etiqueta")
+batch.setValue("outputPath", r"E:\Recursos de Videos\2\Horror music")
+assert job.config["output_path"] == r"E:\Recursos de Videos\2\Horror music", job.config
+assert job.config["destination_tag"] == "Sin etiqueta", job.config
+batch.selectDownloadTag("Música")
+assert job.config["output_path"] == r"C:\Media\Musica", job.config
+assert job.config["destination_tag"] == "Música", job.config
 
 batch.setPlaylistSelectionCount(2)
 assert job.config["selected_indices"] == [0, 1], job.config
@@ -212,6 +221,9 @@ controller.shutdown()
         self.assertIn("ELEGIR CANTIDAD", qml)
         self.assertIn("setPlaylistSelectionCount", qml)
         self.assertIn("presetStore.audioPresets : presetStore.videoPresets", qml)
+        self.assertIn('?["MP3 · 320 kbps", "MP3 · 192 kbps"'.replace(" ", ""), qml.replace(" ", "").replace("\n", ""))
+        self.assertIn('"M4A · AAC", "OPUS · Original"', qml)
+        self.assertIn(': ["Mejor Calidad (Auto)", "4K", "1080p"', qml)
         self.assertIn("salida \" + outputFormat", qml)
         self.assertIn("id: advanced", qml)
         self.assertIn("reuseItems: true", qml)

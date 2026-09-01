@@ -57,12 +57,15 @@ def build_batch_analysis_options(url: str, playlist_enabled: bool, fast_requeste
     return options
 
 
-def playlist_audio_postprocessors() -> list[dict]:
-    """Salida de audio universal para elementos descargados desde playlists."""
+def playlist_audio_postprocessors(codec: str = "mp3", quality: str = "192") -> list[dict]:
+    """Crea la salida de audio elegida para elementos de una playlist."""
+    codec = str(codec or "mp3").casefold()
+    if codec not in {"mp3", "m4a", "opus"}:
+        codec = "mp3"
     return [{
         "key": "FFmpegExtractAudio",
-        "preferredcodec": "mp3",
-        "preferredquality": "192",
+        "preferredcodec": codec,
+        "preferredquality": str(quality or "192"),
     }]
 
 
@@ -450,10 +453,12 @@ class QueueManager:
         if hasattr(self, 'subfolder_path') and self.subfolder_path:
             base_output_dir = self.subfolder_path
 
-        # Crear carpeta de la playlist
+        # La carpeta mostrada por la interfaz es el destino final. Sólo se usa
+        # una subcarpeta cuando el usuario activa explícitamente esa opción al
+        # iniciar la cola; en ese caso subfolder_path ya contiene dicha ruta.
         raw_title = job.config.get('title', 'Playlist')
         playlist_title = self.main_app.single_tab.sanitize_filename(raw_title)
-        playlist_dir = os.path.join(base_output_dir, playlist_title)
+        playlist_dir = os.path.abspath(os.path.expanduser(str(base_output_dir)))
         os.makedirs(playlist_dir, exist_ok=True)
 
         print(f"INFO: Iniciando playlist '{playlist_title}' ({total_videos} items). Modo Miniatura: {thumbnail_mode}")
@@ -711,13 +716,8 @@ class QueueManager:
             job.failure_messages.append(str(message).strip())
 
     def _finish_playlist_job(self, job: Job, playlist_dir: str, label: str) -> None:
-        """No permite declarar éxito cuando la carpeta quedó vacía."""
+        """No permite declarar éxito cuando no se produjo ningún archivo."""
         if job.completed_items <= 0:
-            try:
-                if os.path.isdir(playlist_dir) and not os.listdir(playlist_dir):
-                    os.rmdir(playlist_dir)
-            except OSError:
-                pass
             detail = job.failure_messages[0] if job.failure_messages else "yt-dlp no creó ningún archivo."
             raise RuntimeError(
                 f"No se descargó ningún elemento ({job.failed_items}/{job.total_items} fallaron). {detail}"
@@ -762,14 +762,19 @@ class QueueManager:
             options['merge_output_format'] = "mp4/mkv"
 
         elif mode == "Solo Audio":
-            if "Mejor Compatible" in quality_setting:
-                # Preferir M4A (AAC) o MP3 directo.
-                # Si no existe, descargará el mejor y luego convertiremos (post-proceso)
-                selector = "bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio"
-                options['recode_audio_enabled'] = True # Forzar recodificación si es necesario
-                options['recode_audio_codec_name'] = "MP3 (libmp3lame)" # Estandarizar a MP3
+            normalized = str(quality_setting or "").casefold()
+            if "m4a" in normalized or "aac" in normalized:
+                selector = "bestaudio[ext=m4a]/bestaudio"
+                options['audio_output_codec'] = "m4a"
+                options['audio_output_quality'] = "256"
+            elif "opus" in normalized:
+                selector = "bestaudio[ext=webm][acodec^=opus]/bestaudio[acodec^=opus]/bestaudio"
+                options['audio_output_codec'] = "opus"
+                options['audio_output_quality'] = "0"
             else:
                 selector = "bestaudio/best"
+                options['audio_output_codec'] = "mp3"
+                options['audio_output_quality'] = "320" if "320" in normalized else "192"
         
         options['format_selector'] = selector
 
@@ -796,10 +801,10 @@ class QueueManager:
         if options.get('merge_output_format'):
             ydl_opts['merge_output_format'] = options['merge_output_format']
         if options.get("mode") == "Solo Audio":
-            # El stream de mayor calidad de YouTube suele venir dentro de WEBM.
-            # En la cola siempre lo extraemos a MP3 para entregar un archivo de
-            # audio real y compatible, igual que en la pantalla principal.
-            ydl_opts["postprocessors"] = playlist_audio_postprocessors()
+            ydl_opts["postprocessors"] = playlist_audio_postprocessors(
+                options.get("audio_output_codec", "mp3"),
+                options.get("audio_output_quality", "192"),
+            )
             ydl_opts["keepvideo"] = False
         
         # Hook de progreso

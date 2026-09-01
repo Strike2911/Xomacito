@@ -1,5 +1,5 @@
 #define MyAppName "Xomacito"
-#define MyAppVersion "4.0.16"
+#define MyAppVersion "4.0.17"
 #define MyAppDisplayVersion "1.1"
 #define MyAppExeName "Xomacito.exe"
 #define ProjectRoot ".."
@@ -28,7 +28,7 @@ RestartApplications=no
 CreateUninstallRegKey=no
 Uninstallable=no
 MinVersion=10.0.17763
-VersionInfoVersion=4.0.16.0
+VersionInfoVersion=4.0.17.0
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppDisplayVersion}
 VersionInfoDescription=Xomacito 1.1 - Actualización ligera

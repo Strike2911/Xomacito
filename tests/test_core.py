@@ -398,8 +398,8 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertNotIn("Strike", notice["contributors"])
         self.assertFalse(notice["smoothMotionPromotion"])
 
-    def test_release_4016_uses_public_version_11_and_one_bugfix_line(self):
-        notice = release_notice_for_version("4.0.16")
+    def test_release_4017_uses_public_version_11_and_one_bugfix_line(self):
+        notice = release_notice_for_version("4.0.17")
 
         self.assertEqual(notice["title"], "Xomacito 1.1")
         self.assertEqual(notice["highlights"], ["Arreglo de Bugs de la versión 1.0"])
@@ -1318,7 +1318,7 @@ class XomacitoWrapperTests(unittest.TestCase):
 
         self.assertIn("PrivilegesRequired=lowest", installer)
         self.assertIn("OutputBaseFilename=Xomacito-1.1-Setup", installer)
-        self.assertIn('#define MyAppVersion "4.0.16"', installer)
+        self.assertIn('#define MyAppVersion "4.0.17"', installer)
         self.assertIn('#define MyAppDisplayVersion "1.1"', installer)
         self.assertIn("AppVersion={#MyAppDisplayVersion}", installer)
         self.assertIn("shellexec postinstall skipifsilent skipifdoesntexist", installer)

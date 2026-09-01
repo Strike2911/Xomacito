@@ -64,6 +64,31 @@ class PlaylistDownloadTests(unittest.TestCase):
         self.assertEqual(postprocessors[0]["preferredcodec"], "mp3")
         self.assertEqual(postprocessors[0]["preferredquality"], "192")
 
+        high = playlist_audio_postprocessors("mp3", "320")
+        aac = playlist_audio_postprocessors("m4a", "256")
+        opus = playlist_audio_postprocessors("opus", "0")
+        self.assertEqual(high[0]["preferredquality"], "320")
+        self.assertEqual(aac[0]["preferredcodec"], "m4a")
+        self.assertEqual(opus[0]["preferredcodec"], "opus")
+
+    def test_audio_quality_options_select_real_audio_outputs(self):
+        manager = QueueManager(_runtime("."), lambda *_args: None)
+        cases = {
+            "MP3 · 320 kbps": ("mp3", "320"),
+            "MP3 · 192 kbps": ("mp3", "192"),
+            "M4A · AAC": ("m4a", "256"),
+            "OPUS · Original": ("opus", "0"),
+        }
+        for label, expected in cases.items():
+            with self.subTest(label=label):
+                options = {}
+                manager._apply_playlist_quality(options, "Solo Audio", label)
+                self.assertEqual(
+                    (options["audio_output_codec"], options["audio_output_quality"]),
+                    expected,
+                )
+                self.assertTrue(options["format_selector"].startswith("bestaudio"))
+
     def test_playlist_video_prefers_mp4_and_announces_mkv_fallback(self):
         with tempfile.TemporaryDirectory() as output:
             manager = QueueManager(_runtime(output), lambda *_args: None)
@@ -117,7 +142,10 @@ class PlaylistDownloadTests(unittest.TestCase):
     def test_playlist_is_completed_only_after_a_real_file_exists(self):
         with tempfile.TemporaryDirectory() as output:
             events = []
-            manager = QueueManager(_runtime(output), lambda *args: events.append(args))
+            old_default = Path(output) / "destino-anterior"
+            chosen = Path(output) / "Horror music"
+            chosen.mkdir()
+            manager = QueueManager(_runtime(str(old_default)), lambda *args: events.append(args))
             manager.pause_event.clear()
             job = Job(
                 {
@@ -125,6 +153,7 @@ class PlaylistDownloadTests(unittest.TestCase):
                     "selected_indices": [0],
                     "playlist_mode": "Video+Audio",
                     "playlist_quality": "Mejor Calidad (Auto)",
+                    "output_path": str(chosen),
                 },
                 job_type="PLAYLIST",
             )
@@ -136,8 +165,7 @@ class PlaylistDownloadTests(unittest.TestCase):
                     }
                 ]
             }
-            expected = Path(output) / "Mi Playlist" / "Tema.mp4"
-            expected.parent.mkdir(parents=True)
+            expected = chosen / "Tema.mp4"
             expected.write_bytes(b"video")
 
             with patch.object(
@@ -150,7 +178,9 @@ class PlaylistDownloadTests(unittest.TestCase):
             self.assertEqual(job.status, "COMPLETED")
             self.assertEqual(job.completed_items, 1)
             self.assertEqual(job.failed_items, 0)
-            self.assertEqual(Path(job.final_filepath), expected.parent)
+            self.assertEqual(Path(job.final_filepath), chosen)
+            self.assertFalse((chosen / "Mi Playlist").exists())
+            self.assertFalse(old_default.exists())
             self.assertTrue(any(event[1] == "COMPLETED" for event in events))
 
 

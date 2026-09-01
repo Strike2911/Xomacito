@@ -604,8 +604,11 @@ Item {
                             XComboBox {
                                 Layout.fillWidth: true
                                 compact: true
-                                model: ["Mejor Calidad (Auto)", "1080p", "720p",
-                                    "480p", "Solo Audio (Mejor)"]
+                                model: (selected.mode || viewState.globalMode) === "Solo Audio"
+                                    ? ["MP3 · 320 kbps", "MP3 · 192 kbps",
+                                        "M4A · AAC", "OPUS · Original"]
+                                    : ["Mejor Calidad (Auto)", "4K", "1080p",
+                                        "720p", "480p", "Mejor Compatible"]
                                 currentIndex: Math.max(0, find(
                                     selected.quality || viewState.globalQuality))
                                 onActivated: selected.jobId

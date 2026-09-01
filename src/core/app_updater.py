@@ -30,12 +30,26 @@ IDEA_CONTRIBUTORS = [
     "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan",
 ]
 PUBLIC_VERSION_BY_INTERNAL = {
+    "4.0.17": "1.1",
     "4.0.16": "1.1",
     "4.0.15": "1.1",
     "4.0.14": "1.1",
 }
 PUBLIC_BUGFIX_NOTE = "- Arreglo de bugs de la versión 1.0."
 RELEASE_NOTICES = {
+    "4.0.17": {
+        "eyebrow": "XOMACITO 1.1",
+        "title": "Xomacito 1.1",
+        "subtitle": "ARREGLO DE BUGS DE LA VERSIÓN 1.0",
+        "message": "Una revisión enfocada en estabilidad y comodidad de edición.",
+        "highlights": [
+            "Arreglo de Bugs de la versión 1.0",
+        ],
+        "contributors": IDEA_CONTRIBUTORS,
+        "closing": "Gracias a todos los aportadores de ideas de Xomacito 1.1.",
+        "platinumCelebration": False,
+        "smoothMotionPromotion": False,
+    },
     "4.0.16": {
         "eyebrow": "XOMACITO 1.1",
         "title": "Xomacito 1.1",
