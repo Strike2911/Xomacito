@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import requests
-from PySide6.QtCore import QObject, Property, Signal, Slot
+from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer
 
 
 _AUTH_CALLBACK_PAGE = """<!doctype html>
@@ -252,6 +252,11 @@ class SocialController(QObject):
         self._local_collection_state: dict = {}
         self._collection_sync_inflight = False
         self._collection_sync_queued = False
+        self._last_synced_collection_state = None
+        self._collection_debounce = QTimer(self)
+        self._collection_debounce.setSingleShot(True)
+        self._collection_debounce.setInterval(700)
+        self._collection_debounce.timeout.connect(self._start_collection_sync)
         saved_email = str(settings.get("social_email", "")).strip().lower()
         self._state = {
             "configured": bool(self._url and self._anon_key),
@@ -1014,7 +1019,7 @@ class SocialController(QObject):
                 headers=self._headers(),
                 params={
                     "select": "username,downloads_count,cats_count",
-                    "order": "downloads_count.desc,cats_count.desc",
+                    "order": "downloads_count.desc,username.asc",
                     "limit": "100",
                 },
                 timeout=20,
@@ -1035,6 +1040,11 @@ class SocialController(QObject):
             }
             for index, row in enumerate(payload if isinstance(payload, list) else [])
         ]
+        # Gacha purchases and sales do not award leaderboard points. Equal
+        # download counts share a rank; cats remain a discovery history.
+        rows.sort(key=lambda row: (-row["downloads"], row["username"].casefold()))
+        for index, row in enumerate(rows):
+            row["rank"] = rows[index - 1]["rank"] if index and row["downloads"] == rows[index - 1]["downloads"] else index + 1
         username = str(self._state.get("username") or "")
         current = next((row for row in rows if row["username"] == username), {})
         return {
@@ -1078,6 +1088,7 @@ class SocialController(QObject):
         """Une colecciones y conserva el saldo de tiradas de la revisión más nueva."""
         local = dict(local_state or {})
         remote = dict(remote_state or {})
+        from src.core.cat_gacha import merge_economy
 
         def strings(field, limit, length=128):
             values = []
@@ -1155,7 +1166,8 @@ class SocialController(QObject):
         )[:128]
 
         return {
-            "schema": 5,
+            "schema": 7,
+            **merge_economy(local, remote),
             "downloadProgress": normalized_number(balance_source, "downloadProgress", 9),
             "earnedRolls": normalized_number(balance_source, "earnedRolls"),
             "totalDownloads": number("totalDownloads"),
@@ -1243,6 +1255,9 @@ class SocialController(QObject):
     def _start_collection_sync(self):
         if self._collection_sync_inflight or not self._state.get("authenticated"):
             return
+        if self._last_synced_collection_state == self._local_collection_state:
+            return
+        self._last_synced_collection_state = dict(self._local_collection_state)
         self._collection_sync_inflight = True
         self.pool.submit(
             self._collection_sync_worker,
@@ -1261,6 +1276,7 @@ class SocialController(QObject):
     def _collection_sync_failed(self, message, detail):
         self._collection_sync_inflight = False
         self._collection_sync_queued = False
+        self._last_synced_collection_state = None
         print(detail or message)
         self.notificationRequested.emit("warning", "Sincronización pendiente", str(message))
 
@@ -1272,7 +1288,7 @@ class SocialController(QObject):
         if self._collection_sync_inflight:
             self._collection_sync_queued = True
             return
-        self._start_collection_sync()
+        self._collection_debounce.start()
 
     @Slot(int)
     def recordDownload(self, completed_items=1):

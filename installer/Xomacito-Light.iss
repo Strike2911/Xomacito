@@ -1,9 +1,10 @@
 #define MyAppName "Xomacito"
-#define MyAppVersion "4.0.17"
-#define MyAppDisplayVersion "1.1"
+#define MyAppVersion "4.0.19"
+#define MyAppDisplayVersion "1.2"
 #define MyAppExeName "Xomacito.exe"
 #define ProjectRoot ".."
 #define UninstallKey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{8B474FFD-6C60-4B82-889E-7DD12563E7E5}_is1"
+#define UninstallRegistryKey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{{8B474FFD-6C60-4B82-889E-7DD12563E7E5}_is1"
 
 [Setup]
 AppId={{8B474FFD-6C60-4B82-889E-7DD12563E7E5}
@@ -17,7 +18,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#ProjectRoot}\release
-OutputBaseFilename=Xomacito-1.1-Update-Light
+OutputBaseFilename=Xomacito-1.2-Update-Light
 SetupIconFile={#ProjectRoot}\Xomacito-icon.ico
 Compression=lzma2/max
 SolidCompression=yes
@@ -28,10 +29,10 @@ RestartApplications=no
 CreateUninstallRegKey=no
 Uninstallable=no
 MinVersion=10.0.17763
-VersionInfoVersion=4.0.17.0
+VersionInfoVersion=4.0.19.0
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppDisplayVersion}
-VersionInfoDescription=Xomacito 1.1 - Actualización ligera
+VersionInfoDescription=Xomacito 1.2 - Actualización ligera
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
@@ -45,6 +46,10 @@ Source: "{#ProjectRoot}\dist\Xomacito\_internal\src\ui\themes\*"; DestDir: "{app
 Source: "{#ProjectRoot}\dist\Xomacito\_internal\assets\*"; DestDir: "{app}\_internal\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#ProjectRoot}\dist\Xomacito\_internal\premiere-panel\*"; DestDir: "{app}\_internal\premiere-panel"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#ProjectRoot}\dist\Xomacito\_internal\Xomacito-icon.ico"; DestDir: "{app}\_internal"; Flags: ignoreversion
+
+[Registry]
+Root: HKCU; Subkey: "{#UninstallRegistryKey}"; ValueType: string; ValueName: "DisplayVersion"; ValueData: "{#MyAppDisplayVersion}"; Flags: dontcreatekey
+Root: HKCU; Subkey: "{#UninstallRegistryKey}"; ValueType: string; ValueName: "DisplayName"; ValueData: "Xomacito {#MyAppDisplayVersion}"; Flags: dontcreatekey
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--updated"; WorkingDir: "{app}"; Flags: shellexec skipifnotsilent skipifdoesntexist; Check: IsAutoUpdate

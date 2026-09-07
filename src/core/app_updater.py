@@ -30,6 +30,8 @@ IDEA_CONTRIBUTORS = [
     "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan",
 ]
 PUBLIC_VERSION_BY_INTERNAL = {
+    "4.0.19": "1.2",
+    "4.0.18": "1.2",
     "4.0.17": "1.1",
     "4.0.16": "1.1",
     "4.0.15": "1.1",
@@ -37,6 +39,21 @@ PUBLIC_VERSION_BY_INTERNAL = {
 }
 PUBLIC_BUGFIX_NOTE = "- Arreglo de bugs de la versión 1.0."
 RELEASE_NOTICES = {
+    "4.0.19": {
+        "eyebrow": "XOMACITO 1.2", "title": "Estudio y nueva temporada gatuna",
+        "subtitle": "MÁS CONTROL, MENOS ESPERA",
+        "message": "Compara tus imágenes y empieza una nueva colección con saldo virtual.",
+        "highlights": [
+            "Estudio con comparador antes/después y progreso gatuno animado.",
+            "Cajas, inventario y ventas más fluidas; omitir animación se guarda como preferencia.",
+            "Los gatos anteriores se convierten una sola vez en su valor virtual. Recibes un gato inicial gratis.",
+            "El scoreboard inicia una temporada nueva y conserva el historial de descargas.",
+            "La actualización ligera reutiliza tus componentes y modelos instalados.",
+        ],
+        "contributors": IDEA_CONTRIBUTORS,
+        "closing": "Gracias por acompañarnos en esta nueva temporada.",
+        "platinumCelebration": False, "smoothMotionPromotion": False,
+    },
     "4.0.17": {
         "eyebrow": "XOMACITO 1.1",
         "title": "Xomacito 1.1",
@@ -737,9 +754,11 @@ class AppUpdateError(RuntimeError):
 def build_update_prompt(update_info: dict, current_version: str) -> str:
     """Construye una alerta pública sin exponer la revisión interna ni su hash."""
     public_version = str(update_info.get("public_version") or current_version or "1.1")
+    note = ("- Estudio con comparador, cajas gatunas y una interfaz más fluida."
+            if public_version == "1.2" else PUBLIC_BUGFIX_NOTE)
     return (
         f"Xomacito {public_version}\n\n"
-        f"{PUBLIC_BUGFIX_NOTE}\n\n"
+        f"{note}\n\n"
         "¿Quieres descargarla e instalarla ahora?\n\n"
         "Si eliges Sí, Xomacito verificará el instalador, se cerrará "
         "durante la actualización y volverá a abrirse al terminar."

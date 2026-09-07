@@ -69,8 +69,9 @@ def test_probability_mask_is_not_stretched_per_image():
 
 def test_image_studio_page_explains_its_empty_state():
     qml = Path("src/ui/qml/pages/ImageStudioPage.qml").read_text(encoding="utf-8")
-    assert "Estudio en preparación" in qml
-    assert "permanecerá vacío" in qml
+    assert "Arrastra una imagen para comenzar" in qml
+    assert "imageController.start()" in qml
+    assert "ImageComparison" in qml
 
 
 def test_long_videos_use_bounded_chunk_pipeline(tmp_path):

@@ -9,6 +9,7 @@ from PyInstaller.utils.hooks import collect_all
 PROJECT_ROOT = Path(SPECPATH).resolve().parent
 
 datas = [
+    (str(PROJECT_ROOT / "assets" / "progress"), "assets/progress"),
     (str(PROJECT_ROOT / "src" / "ui" / "qml"), "src/ui/qml"),
     (str(PROJECT_ROOT / "src" / "ui" / "themes"), "src/ui/themes"),
     (str(PROJECT_ROOT / "assets" / "xomacito-logo.png"), "assets"),

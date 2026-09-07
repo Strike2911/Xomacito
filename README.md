@@ -1,6 +1,6 @@
 # Xomacito
 
-Versión visible actual: **Xomacito 1.1**. Revisión interna de actualización: **4.0.17**.
+Versión visible actual: **Xomacito 1.2**. Revisión interna de actualización: **4.0.19**.
 
 Aplicación independiente para Windows que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike** pero principalmente inspirado en Dowp hecho por Marck.
 
@@ -8,7 +8,7 @@ Aplicación independiente para Windows que permite descargar, convertir y prepar
 
 [![Descargar Xomacito](https://img.shields.io/badge/Descargar-Xomacito-2ea44f?style=for-the-badge&logo=windows)](https://github.com/Strike2911/Xomacito/releases/latest)
 
-Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión más reciente, ejecútalo y sigue el asistente. El instalador incluye FFmpeg y los componentes necesarios para usar las funciones principales; los modelos de inteligencia artificial se descargan únicamente cuando se solicitan.
+Para una instalación nueva, descarga `Xomacito-1.2-Setup.exe`. Si ya tienes Xomacito instalado, utiliza `Xomacito-1.2-Update-Light.exe`: conserva los componentes y modelos existentes y reduce la descarga aproximadamente un 81%. Ambos están disponibles en la versión más reciente. El instalador completo incluye FFmpeg y los componentes principales; los modelos de inteligencia artificial se descargan únicamente cuando se solicitan.
 
 > Windows puede mostrar una advertencia de SmartScreen porque el instalador todavía no utiliza un certificado comercial de firma de código. Comprueba que el archivo provenga de este repositorio antes de ejecutarlo.
 
@@ -29,10 +29,10 @@ Descarga el único instalador `Xomacito-<versión>-Setup.exe` desde la versión 
 - Removedor de fondos renovado con modelos BiRefNet para retratos, bordes finos y escenas complejas.
 - Tema Strike como apariencia inicial, paletas con saturación más sobria, fondos adaptativos y colección gatuna equipable.
 - Recorrido guiado breve y opcional, con ayuda contextual disponible en cada apartado desde el botón **Guía**.
-- Gacha de gatos: una tirada diaria gratis y una tirada adicional por cada 10 descargas exitosas.
+- Cajas con ruleta, saldo virtual ($1.00 por cada 10 descargas válidas), regalo diario e inventario con venta de copias.
 - 145 personajes con nombres estandarizados en mayúsculas y rarezas estables de 1 a 6 estrellas.
 - Gatos míticos de 6 estrellas con animaciones exclusivas de desbloqueo y equipamiento.
-- Auras mejorables de cinco niveles para los gatos repetidos después de completar la colección.
+- Auras mejorables de cinco niveles para los gatos repetidos, conservadas al vender copias.
 - Cuenta comunitaria con correo de recuperación y recompensa única de 15 tiradas verificadas.
 - Sonido de confirmación al finalizar una descarga.
 - Instalación por usuario y desinstalador integrado en Windows.
@@ -64,7 +64,7 @@ Los runtimes de compilación, herramientas externas, modelos, builds y preferenc
 
 El release se genera directamente desde `main.py` y la carpeta `src`, sin PyArmor ni otra etapa de ofuscación. `scripts/build_release.ps1` cancela la compilación si detecta envoltorios de PyArmor o si el spec deja de apuntar al código fuente legible.
 
-La revisión interna 4.0.17 mantiene el nombre público Xomacito 1.1. La numeración 4.x se usa únicamente para comparar actualizaciones y no se muestra como versión pública.
+La revisión interna 4.0.19 mantiene el nombre público Xomacito 1.2. La numeración 4.x se usa únicamente para comparar actualizaciones y no se muestra como versión pública.
 
 Para volver a importar o ampliar la colección sin cambiar las rarezas ya asignadas:
 
@@ -73,6 +73,8 @@ Para volver a importar o ampliar la colección sin cambiar las rarezas ya asigna
 ```
 
 ## Desarrollo
+
+Consulta el [funcionamiento de Estudio, precios y migración de gatos](docs/estudio-y-economia-gatuna.md). En esta copia de desarrollo, `Probar-Xomacito.cmd` abre la aplicación desde el código actualizado.
 
 Instala Python 3.11 y crea un entorno virtual:
 

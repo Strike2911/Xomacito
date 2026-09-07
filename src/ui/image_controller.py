@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 from PySide6.QtCore import QObject, Property, QMimeData, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QColorDialog, QFileDialog
@@ -215,6 +215,7 @@ class ImageController(QObject):
             self._state["format"] = "MP4"
         elif active_task == "removeBackground" and self._state["format"] not in {"PNG", "WEBP"}:
             self._state["format"] = "PNG"
+        self._process_item_outputs = {}
         self._next_id = 1
         self.progressReported.connect(self._apply_progress)
 
@@ -295,6 +296,8 @@ class ImageController(QObject):
 
     @Slot(str)
     def setTask(self, task):
+        if self._state["busy"]:
+            return
         if task not in TASK_DEFAULTS or self._state["task"] == task:
             return
         old_video = self._state["task"] == "upscaleVideo"
@@ -407,6 +410,8 @@ class ImageController(QObject):
 
     @Slot("QStringList")
     def addPaths(self, paths):
+        if self._state["busy"]:
+            return
         additions = []
         for value in paths:
             path = QUrl(str(value)).toLocalFile() if str(value).startswith("file:") else str(value)
@@ -549,6 +554,8 @@ class ImageController(QObject):
 
     @Slot(int)
     def select(self, index):
+        if self._state["busy"]:
+            return
         if not 0 <= index < self.items.rowCount(): return
         self._set_state(
             selectedIndex=index, previewSource="", resultPreviewSource="",
@@ -560,12 +567,31 @@ class ImageController(QObject):
         item = self.items.item(index)
         self.pool.submit(
             self._thumbnail_worker, item,
-            on_result=lambda path, row=index: self._thumbnail_done(row, path),
+            on_result=lambda path, row=index, item_id=item["itemId"]: self._thumbnail_done(row, path, item_id),
             on_error=lambda message, detail: self._failed_preview(message, detail),
         )
 
+        self._load_selected_result()
+
+    def _load_selected_result(self):
+        item = dict(self.selected)
+        output = item.get("output", "")
+        if not output or not Path(output).is_file():
+            return
+        item_id = item["itemId"]
+        self.pool.submit(
+            self._thumbnail_worker,
+            {"path": output, "page": 1, "itemId": f"result-{item_id}", "mediaType": item.get("mediaType", "image")},
+            on_result=lambda payload: self._selected_result_done(item_id, output, payload),
+        )
+
+    def _selected_result_done(self, item_id, output, payload):
+        if self.selected.get("itemId") != item_id or self.selected.get("output") != output:
+            return
+        path = payload.get("path", "") if isinstance(payload, dict) else payload
+        self._set_state(resultPreviewSource=QUrl.fromLocalFile(path).toString(), lastOutput=output)
+
     def _thumbnail_worker(self, item):
-        self._ensure_engines()
         if item.get("mediaType") == "video" or Path(item["path"]).suffix.lower() in VIDEO_EXTENSIONS:
             frame = self.ffmpeg.get_frame_from_video(item["path"])
             if not frame:
@@ -574,16 +600,26 @@ class ImageController(QObject):
                 analysis = analyze_image(sample, source_path=item["path"])
             analysis["mediaType"] = "video"
             return {"path": str(frame), "analysis": analysis}
-        thumb = self.processor.generate_thumbnail(
-            item["path"], size=(900, 700), page_number=item["page"],
-            dpi=int(self.settings.get("preview_vector_dpi", 96)),
-        )
+        # A raster preview does not need to import the AI and vector engines.
+        # Preserve alpha and EXIF orientation for an aligned comparison.
+        try:
+            with Image.open(item["path"]) as source:
+                thumb = ImageOps.exif_transpose(source).convert("RGBA")
+                thumb.thumbnail((900, 700), Image.Resampling.LANCZOS)
+        except (UnidentifiedImageError, OSError):
+            self._ensure_engines()
+            thumb = self.processor.generate_thumbnail(
+                item["path"], size=(900, 700), page_number=item["page"],
+                dpi=int(self.settings.get("preview_vector_dpi", 96)),
+            )
         if thumb is None: raise RuntimeError("No se pudo generar la previsualización.")
-        target = Path(tempfile.gettempdir()) / f"xomacito_preview_{item['itemId']}.png"
+        target = Path(tempfile.gettempdir()) / f"xomacito_preview_{item['itemId']}_{uuid.uuid4().hex}.png"
         thumb.save(target, "PNG")
         return {"path": str(target), "analysis": analyze_image(thumb, source_path=item["path"])}
 
-    def _thumbnail_done(self, row, payload):
+    def _thumbnail_done(self, row, payload, item_id=None):
+        if item_id is not None and (self.items.item(row) or {}).get("itemId") != item_id:
+            return
         if isinstance(payload, dict):
             path = payload.get("path", "")
             analysis = payload.get("analysis") or {}
@@ -613,6 +649,8 @@ class ImageController(QObject):
 
     @Slot(int)
     def remove(self, index):
+        if self._state["busy"]:
+            return
         if not 0 <= index < self.items.rowCount(): return
         self.items.remove(index)
         next_index = min(index, self.items.rowCount() - 1)
@@ -804,14 +842,15 @@ class ImageController(QObject):
 
     @Slot()
     def start(self):
-        if self._state["busy"] or not self.items.rowCount(): return
+        if self._state["busy"] or self._state["previewBusy"] or not self.items.rowCount(): return
         output = Path(str(self._state["outputPath"])).expanduser()
         if not output.is_absolute():
             output = Path.home() / "Downloads"
             self.setValue("outputPath", str(output))
         if self._state["createSubfolder"]: output /= safe_filename(self._state["subfolderName"])
         output.mkdir(parents=True, exist_ok=True)
-        self.cancel_event.clear(); self._set_state(busy=True, progress=0.0, status="Preparando conversión…", lastOutput="")
+        self._process_item_outputs = {}
+        self.cancel_event.clear(); self._set_state(busy=True, progress=0.0, status="Preparando conversión…", lastOutput="", resultPreviewSource="")
         snapshot = self.items.items(); options = self._conversion_options()
         self.pool.submit(
             self._process_worker, snapshot, output, options,
@@ -834,6 +873,7 @@ class ImageController(QObject):
             for index, item in enumerate(items):
                 if self.cancel_event.is_set(): raise RuntimeError("Proceso cancelado.")
                 if self._state["processOnlyNew"] and item.get("output") and Path(item["output"]).exists():
+                    self._process_item_outputs[item["itemId"]] = item["output"]
                     outputs.append(item["output"]); continue
                 path = self._output_path(output_dir, item, options["format"])
                 path = self._conflict_path(path)
@@ -844,7 +884,9 @@ class ImageController(QObject):
                     self.progressReported.emit(value, message or f"Procesando {item['name']}…")
                 try:
                     ok = self.converter.convert_file(item["path"], str(path), options, page_number=item["page"], progress_callback=callback, cancellation_event=self.cancel_event)
-                    if ok: outputs.append(str(path))
+                    if ok:
+                        outputs.append(str(path))
+                        self._process_item_outputs[item["itemId"]] = str(path)
                     else: errors.append(f"{item['name']}: conversión incompleta")
                 except Exception as exc:
                     errors.append(f"{item['name']}: {exc}")
@@ -856,6 +898,7 @@ class ImageController(QObject):
         finally:
             self.inkscape.stop_session()
             if not self.settings.get("keep_ai_models_in_memory", False): self.converter.clear_ai_sessions()
+        if self.cancel_event.is_set(): raise RuntimeError("Proceso cancelado.")
         if errors: raise RuntimeError("\n".join(errors[:12]))
         if not outputs: raise RuntimeError("No se generó ningún archivo.")
         return outputs
@@ -933,20 +976,13 @@ class ImageController(QObject):
     def _process_done(self, outputs):
         output_set = list(outputs)
         for row, item in enumerate(self.items.items()):
-            matching = next((path for path in output_set if Path(path).stem.startswith(safe_filename(item["title"]))), "")
+            matching = self._process_item_outputs.get(item["itemId"], "")
+            if not matching:
+                matching = next((path for path in output_set if Path(path).stem == safe_filename(item["title"])), "")
             if matching: self.items.update_item(row, {"status": "COMPLETED", "detail": "Completado", "output": matching})
         first = outputs[0]
         self._set_state(busy=False, progress=1.0, status=f"Completado: {len(outputs)} archivos.", lastOutput=first)
-        if Path(first).is_file():
-            self.pool.submit(
-                self._thumbnail_worker,
-                {"path": first, "page": 1, "itemId": "result", "mediaType": "image"},
-                on_result=lambda payload: self._set_state(
-                    resultPreviewSource=QUrl.fromLocalFile(
-                        payload.get("path", "") if isinstance(payload, dict) else payload
-                    ).toString()
-                ),
-            )
+        self._load_selected_result()
         self.notificationRequested.emit("success", "Conversión completada", str(Path(first).parent))
 
     @Slot()
@@ -976,7 +1012,10 @@ class ImageController(QObject):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     @Slot(float, str)
-    def _apply_progress(self, value, message): self._set_state(progress=value, status=message)
+    def _apply_progress(self, value, message):
+        if not self._state["busy"] and not self._state["previewBusy"]:
+            return
+        self._set_state(progress=min(0.99, max(0.0, value)), status=message)
 
     def _failed(self, message, detail=""):
         cancelled = self.cancel_event.is_set() or "cancel" in message.lower()

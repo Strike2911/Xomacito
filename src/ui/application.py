@@ -122,6 +122,7 @@ class AppController(QObject):
         self._clipboard.dataChanged.connect(self._schedule_clipboard_check)
         self.app.applicationStateChanged.connect(self._on_application_state_changed)
         self.cats.stateChanged.connect(self.catChanged)
+        self.cats.ensureEconomyReset()
         self.cats.stateChanged.connect(
             lambda: self.theme.setCatThemeUnlocks(self.cats.state.get("themeUnlockCount", 0))
         )

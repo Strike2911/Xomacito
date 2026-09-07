@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +17,72 @@ RARITY_COLORS = {
     6: "#FF5FE7",
 }
 ROLL_WEIGHTS = {1: 48, 2: 28, 3: 15, 4: 7, 5: 1.8, 6: 0.2}
+RARITY_NAMES = {1: "Común", 2: "Peculiar", 3: "Raro", 4: "Épico", 5: "Legendario", 6: "Mítico"}
+DOWNLOAD_REWARD_CENTS = 100
+ECONOMY_EPOCH = 1
+BOXES = (
+    {"id": "daily", "name": "Regalo diario", "priceCents": 0, "color": "#65DD91", "weights": ROLL_WEIGHTS},
+    {"id": "basic", "name": "Caja callejera", "priceCents": 100, "color": "#50BFFF", "weights": ROLL_WEIGHTS},
+    {"id": "rare", "name": "Caja estelar", "priceCents": 500, "color": "#B06CFF", "weights": {2: 15, 3: 35, 4: 30, 5: 17, 6: 3}},
+    {"id": "mythic", "name": "Caja celestial", "priceCents": 1500, "color": "#FFD75E", "weights": {3: 10, 4: 25, 5: 45, 6: 20}},
+)
+
+
+def money(cents: int) -> str:
+    return f"${cents / 100:.2f}"
+
+
+def economy_snapshot(state: dict) -> dict:
+    """Normalize legacy tickets once, keeping the wallet and inventory atomic."""
+    def number(value):
+        try:
+            return max(0, int(value or 0))
+        except (ValueError, TypeError):
+            return 0
+    modern = isinstance(state.get("inventory"), dict) and "walletCents" in state
+    duplicates = state.get("duplicates", {})
+    inventory = state["inventory"] if modern else {
+        str(cat_id): 1 + number(duplicates.get(cat_id, 0))
+        for cat_id in state.get("unlockedIds", [])
+    }
+    return {
+        "economyEpoch": number(state.get("economyEpoch")),
+        "resetCreditCents": number(state.get("resetCreditCents")),
+        "liquidatedInventory": dict(state.get("liquidatedInventory") or {}),
+        "walletCents": number(state.get("walletCents")) if modern else number(state.get("earnedRolls")) * DOWNLOAD_REWARD_CENTS,
+        "inventory": {str(key): number(value) for key, value in inventory.items()},
+        "economyRevision": number(state.get("economyRevision", state.get("rollBalanceRevision", number(state.get("totalDownloads")) + number(state.get("totalRolls"))))),
+        "economyUpdatedAt": number(state.get("economyUpdatedAt")),
+    }
+
+
+def merge_economy(local: dict, remote: dict) -> dict:
+    """An older collection must never resurrect spent money or sold copies."""
+    snapshots = [economy_snapshot(local), economy_snapshot(remote)]
+    def rank(value):
+        # Stable tie break makes the merge commutative across devices.
+        digest = hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+        return value["economyEpoch"], value["economyRevision"], value["economyUpdatedAt"], digest
+    return max(snapshots, key=rank)
+
+
+def reset_economy(state: dict, catalog: list) -> dict:
+    """Sell the pre-season stock once; retain download history and existing cash."""
+    current = economy_snapshot(state)
+    if current["economyEpoch"] >= ECONOMY_EPOCH:
+        return dict(state)
+    prices = {cat.id: cat.price_cents for cat in catalog}
+    sold = {key: quantity for key, quantity in current["inventory"].items()
+            if key in prices and quantity > 0}
+    credit = sum(prices[key] * quantity for key, quantity in sold.items())
+    starter = starter_cat(catalog)
+    stock = {cat.id: 0 for cat in catalog}
+    stock[starter.id] = 1  # A free base companion after liquidating every old copy.
+    return {**state, **current, "schema": 7, "economyEpoch": ECONOMY_EPOCH,
+            "resetCreditCents": credit, "liquidatedInventory": sold,
+            "walletCents": current["walletCents"] + credit,
+            "inventory": stock, "equippedId": starter.id,
+            "economyRevision": current["economyRevision"] + 1}
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +99,13 @@ class CatDefinition:
     @property
     def rarity_color(self) -> str:
         return RARITY_COLORS[self.rarity]
+
+    @property
+    def price_cents(self) -> int:
+        # Stable individual valuations within disjoint rarity bands.
+        low, high = {1: (10, 25), 2: (30, 55), 3: (70, 140),
+                     4: (200, 400), 5: (600, 1000), 6: (2000, 3500)}[self.rarity]
+        return low + int(hashlib.sha256(self.id.encode()).hexdigest()[:8], 16) % (high - low + 1)
 
 
 def load_cat_catalog(project_root: str | Path) -> list[CatDefinition]:

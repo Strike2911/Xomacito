@@ -2,16 +2,33 @@ from __future__ import annotations
 
 import random
 import hashlib
+import time
 from datetime import date
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QCoreApplication, QObject, Property, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import QCoreApplication, QObject, Property, QTimer, QUrl, Signal, Slot, QSortFilterProxyModel
 
-from src.core.cat_gacha import ROLL_WEIGHTS, CatDefinition, load_cat_catalog, starter_cat
+from src.core.cat_gacha import (BOXES, DOWNLOAD_REWARD_CENTS, RARITY_NAMES, ROLL_WEIGHTS,
+                                CatDefinition, economy_snapshot, merge_economy, money,
+                                load_cat_catalog, starter_cat, reset_economy, ECONOMY_EPOCH)
 
 from .list_model import ObjectListModel
 from .settings_store import SettingsStore
+
+
+class InventoryFilter(QSortFilterProxyModel):
+    def __init__(self, source, parent):
+        super().__init__(parent)
+        self.search = ""
+        self.rarity = 0
+        self.setSourceModel(source)
+
+    def filterAcceptsRow(self, row, parent):
+        item = self.sourceModel()._items[row]
+        return (item.get("quantity", 0) > 0
+                and (not self.rarity or item["rarity"] == self.rarity)
+                and self.search in item["name"].casefold())
 
 
 class CatGachaController(QObject):
@@ -23,7 +40,7 @@ class CatGachaController(QObject):
     ROLES = [
         "catId", "name", "source", "rarity", "rarityColor", "stars",
         "animationStyle", "unlocked", "equipped", "duplicateCount",
-        "effectLevel", "effectName",
+        "effectLevel", "effectName", "quantity", "price", "priceCents", "canSell",
     ]
 
     EFFECT_NAMES = ("Sin aura", "Destello", "Resplandor", "Aurora", "Cósmica", "Xoma")
@@ -45,10 +62,20 @@ class CatGachaController(QObject):
         self._rng = rng or random.SystemRandom()
         self._today = today_provider
         self.collection = ObjectListModel(self.ROLES, self)
+        self._inventory_model = InventoryFilter(self.collection, self)
+        self._skip_animation = bool(settings.get("skip_cat_animation", False))
+        self._static_cards = {cat.id: {
+            "catId": cat.id, "name": cat.name, "source": self._url(cat),
+            "rarity": cat.rarity, "rarityColor": cat.rarity_color,
+            "stars": "★" * cat.rarity, "animationStyle": self._animation_style(cat),
+            "priceCents": cat.price_cents, "price": money(cat.price_cents),
+        } for cat in self.catalog}
 
         saved = settings.get("cat_gacha", {})
         if not isinstance(saved, dict):
             saved = {}
+        if "walletCents" not in saved and settings.get("cat_gacha_legacy_backup") is None:
+            settings.set("cat_gacha_legacy_backup", saved)
         starter = starter_cat(self.catalog)
         unlocked = {
             str(cat_id) for cat_id in saved.get("unlockedIds", [])
@@ -95,6 +122,16 @@ class CatGachaController(QObject):
             str(value) for value in hashes if isinstance(value, str) and value
         } if isinstance(hashes, list) else set()
         self._known_day = self._today().isoformat()
+        migrated = economy_snapshot({**saved, "unlockedIds": sorted(self._unlocked)})
+        self._wallet = migrated["walletCents"]
+        self._inventory = migrated["inventory"]
+        self._economy_revision = migrated["economyRevision"]
+        self._economy_updated_at = migrated["economyUpdatedAt"]
+        self._economy_epoch = migrated["economyEpoch"]
+        self._reset_credit = migrated["resetCreditCents"]
+        self._liquidated_inventory = migrated["liquidatedInventory"]
+        self._opening = False
+        self._repair_equipped()
         self._state: dict = {}
         self._daily_timer = QTimer(self)
         self._daily_timer.setInterval(60_000)
@@ -111,6 +148,36 @@ class CatGachaController(QObject):
     @Property(QObject, constant=True)
     def model(self):
         return self.collection
+
+    @Property(QObject, constant=True)
+    def inventoryModel(self):
+        return self._inventory_model
+
+    @Slot(str, int)
+    def setInventoryFilter(self, search, rarity):
+        self._inventory_model.search = str(search).casefold().strip()
+        self._inventory_model.rarity = int(rarity)
+        self._inventory_model.invalidateFilter()
+
+    @Slot(bool)
+    def setSkipAnimation(self, enabled):
+        if self._skip_animation == bool(enabled):
+            return
+        self._skip_animation = bool(enabled)
+        self.settings.set("skip_cat_animation", self._skip_animation)
+        self._refresh()
+
+    @Slot()
+    def ensureEconomyReset(self):
+        if self._economy_epoch >= ECONOMY_EPOCH:
+            return
+        before = self.sync_snapshot()
+        self.settings.set("cat_economy_reset_backup", before)
+        reset = reset_economy(before, self.catalog)
+        self.mergeRemoteState(reset)
+        self._equipped_id = reset["equippedId"]
+        self._refresh()
+        self._persist()
 
     def _url(self, cat: CatDefinition) -> str:
         return QUrl.fromLocalFile(str(cat.avatar_path)).toString()
@@ -165,6 +232,9 @@ class CatGachaController(QObject):
             "duplicateCount": duplicate_count,
             "effectLevel": effect_level,
             "effectName": self.EFFECT_NAMES[effect_level],
+            "quantity": self._inventory.get(cat.id, 0),
+            "priceCents": cat.price_cents,
+            "price": money(cat.price_cents),
             **extra,
         }
 
@@ -179,6 +249,7 @@ class CatGachaController(QObject):
             self._refresh()
 
     def _refresh(self):
+        self._earned_rolls = self._wallet // DOWNLOAD_REWARD_CENTS
         equipped = self._by_id[self._equipped_id]
         daily_available = self._daily_available()
         visible_catalog = [
@@ -188,6 +259,20 @@ class CatGachaController(QObject):
         completion_catalog = [cat for cat in self.catalog if not cat.exclusive]
         completion_unlocked = sum(cat.id in self._unlocked for cat in completion_catalog)
         self._state = {
+            "skipAnimation": self._skip_animation,
+            "resetCredit": money(self._reset_credit),
+            "economyEpoch": self._economy_epoch,
+            "wallet": money(self._wallet),
+            "walletCents": self._wallet,
+            "ownedCount": sum(self._inventory.values()),
+            "ownedUniqueCount": sum(value > 0 for value in self._inventory.values()),
+            "inventoryValue": money(sum(self._by_id[key].price_cents * value for key, value in self._inventory.items() if key in self._by_id)),
+            "opening": self._opening,
+            "boxes": [{**{key: value for key, value in box.items() if key != "weights"},
+                       "price": "Gratis" if not box["priceCents"] else money(box["priceCents"]),
+                       "available": not self._opening and (daily_available if box["id"] == "daily" else self._wallet >= box["priceCents"]),
+                       "odds": " · ".join(f"{RARITY_NAMES[r]} {w:g}%" for r, w in box["weights"].items())}
+                      for box in BOXES],
             "downloadProgress": self._download_progress,
             "downloadProgressRatio": self._download_progress / 10.0,
             "downloadsUntilRoll": 10 - self._download_progress,
@@ -195,7 +280,7 @@ class CatGachaController(QObject):
             "totalDownloads": self._total_downloads,
             "totalRolls": self._total_rolls,
             "dailyAvailable": daily_available,
-            "canRoll": daily_available or self._earned_rolls > 0,
+            "canRoll": not self._opening and (daily_available or self._wallet >= DOWNLOAD_REWARD_CENTS),
             "unlockedCount": sum(cat.id in self._unlocked for cat in visible_catalog),
             "isPlatinum": completion_unlocked == len(completion_catalog),
             "themeUnlockCount": sum(
@@ -226,14 +311,12 @@ class CatGachaController(QObject):
         for cat in visible_catalog:
             items.append(
                 {
-                    "catId": cat.id,
-                    "name": cat.name,
-                    "source": self._url(cat),
-                    "rarity": cat.rarity,
-                    "rarityColor": cat.rarity_color,
-                    "stars": "★" * cat.rarity,
-                    "animationStyle": self._animation_style(cat),
+                    **self._static_cards[cat.id],
                     "unlocked": cat.id in self._unlocked,
+                    "quantity": self._inventory.get(cat.id, 0),
+                    "priceCents": cat.price_cents,
+                    "price": money(cat.price_cents),
+                    "canSell": self._can_sell(cat.id),
                     "equipped": cat.id == self._equipped_id,
                     "duplicateCount": self._duplicates.get(cat.id, 0),
                     "effectLevel": min(5, self._duplicates.get(cat.id, 0)),
@@ -242,7 +325,8 @@ class CatGachaController(QObject):
                     ],
                 }
             )
-        self.collection.replace(items)
+        self.collection.reconcile(items, "catId")
+        self._state["inventoryItems"] = items
         self.stateChanged.emit()
 
     def _persist(self):
@@ -254,11 +338,20 @@ class CatGachaController(QObject):
     def _advance_roll_balance_revision(self, amount=1):
         """Marca una mutación del saldo para que una copia antigua no lo reviva."""
         self._roll_balance_revision += max(1, int(amount or 1))
+        self._economy_revision = max(self._economy_revision + 1, self._roll_balance_revision)
+        self._economy_updated_at = time.time_ns()
 
     def sync_snapshot(self) -> dict:
         """Estado portable de la colección para restaurarlo en otra PC."""
         return {
-            "schema": 5,
+            "schema": 7,
+            "economyEpoch": self._economy_epoch,
+            "resetCreditCents": self._reset_credit,
+            "liquidatedInventory": self._liquidated_inventory,
+            "walletCents": self._wallet,
+            "inventory": dict(sorted(self._inventory.items())),
+            "economyRevision": self._economy_revision,
+            "economyUpdatedAt": self._economy_updated_at,
             "downloadProgress": self._download_progress,
             "earnedRolls": self._earned_rolls,
             "totalDownloads": self._total_downloads,
@@ -280,6 +373,7 @@ class CatGachaController(QObject):
         """Une el progreso remoto sin borrar premios obtenidos en este equipo."""
         remote = dict(remote_state or {})
         before = self.sync_snapshot()
+        economy = merge_economy(before, remote)
 
         remote_unlocked = {
             str(cat_id) for cat_id in remote.get("unlockedIds", [])
@@ -358,22 +452,29 @@ class CatGachaController(QObject):
         ):
             self._equipped_id = remote_equipped
 
-        if self.sync_snapshot() == before:
+        if self.sync_snapshot() == before and economy == economy_snapshot(before):
             return
+        self._wallet = economy["walletCents"]
+        self._inventory = {key: value for key, value in economy["inventory"].items() if key in self._by_id}
+        self._economy_revision = economy["economyRevision"]
+        self._economy_updated_at = economy["economyUpdatedAt"]
+        self._economy_epoch = economy["economyEpoch"]
+        self._reset_credit = economy["resetCreditCents"]
+        self._liquidated_inventory = economy["liquidatedInventory"]
+        self._repair_equipped()
         self._refresh()
         self._persist()
 
-    def _choose_cat(self) -> CatDefinition:
-        rollable = [cat for cat in self.catalog if not cat.exclusive]
-        locked = [cat for cat in rollable if cat.id not in self._unlocked]
-        candidates = locked or rollable
+    def _choose_cat(self, weights=None) -> CatDefinition:
+        weights = weights or ROLL_WEIGHTS
+        candidates = [cat for cat in self.catalog if not cat.exclusive and weights.get(cat.rarity, 0) > 0]
         by_rarity: dict[int, list[CatDefinition]] = {}
         for cat in candidates:
             by_rarity.setdefault(cat.rarity, []).append(cat)
         rarities = sorted(by_rarity)
         rarity = self._rng.choices(
             rarities,
-            weights=[ROLL_WEIGHTS[value] for value in rarities],
+            weights=[weights[value] for value in rarities],
             k=1,
         )[0]
         return self._rng.choice(by_rarity[rarity])
@@ -385,16 +486,14 @@ class CatGachaController(QObject):
             return
         self._total_downloads += amount
         rolls, self._download_progress = divmod(self._download_progress + amount, 10)
-        self._earned_rolls += rolls
+        self._wallet += rolls * DOWNLOAD_REWARD_CENTS
         self._advance_roll_balance_revision(amount)
         self._refresh()
         self._persist()
         if rolls:
-            pending = self._earned_rolls
             self.notificationRequested.emit(
-                "success",
-                f"¡{rolls} tirada{'s' if rolls != 1 else ''} gatuna{'s' if rolls != 1 else ''} conseguida{'s' if rolls != 1 else ''}!",
-                f"Tienes {pending} disponible{'s' if pending != 1 else ''}. Abre Personalización para usarlas.",
+                "success", f"+{money(rolls * DOWNLOAD_REWARD_CENTS)} virtuales",
+                f"Saldo: {money(self._wallet)}. Abre Personalización para elegir una caja.",
             )
 
     @Slot(int)
@@ -403,7 +502,7 @@ class CatGachaController(QObject):
         amount = max(0, int(amount or 0))
         if not amount:
             return
-        self._earned_rolls += amount
+        self._wallet += amount * DOWNLOAD_REWARD_CENTS
         self._advance_roll_balance_revision(amount)
         self._refresh()
         self._persist()
@@ -425,35 +524,76 @@ class CatGachaController(QObject):
 
     @Slot(result="QVariantMap")
     def roll(self):
-        daily_available = self._daily_available()
-        if not daily_available and self._earned_rolls <= 0:
-            self.notificationRequested.emit(
-                "warning", "Todavía no hay tiradas", "Completa 10 descargas o vuelve mañana.",
-            )
+        return self.openBox("daily" if self._daily_available() else "basic")
+
+    @Slot(str, result="QVariantMap")
+    def openBox(self, box_id):
+        box = next((item for item in BOXES if item["id"] == box_id), None)
+        if not box or self._opening:
             return {}
-        if daily_available:
+        if (box_id == "daily" and not self._daily_available()) or self._wallet < box["priceCents"]:
+            self.notificationRequested.emit("warning", "Caja no disponible", "Completa descargas, vende gatos o vuelve mañana por tu regalo diario.")
+            return {}
+        cat = self._choose_cat(box["weights"])
+        if box_id == "daily":
             self._last_daily_roll = self._today().isoformat()
         else:
-            self._earned_rolls -= 1
+            self._wallet -= box["priceCents"]
         self._advance_roll_balance_revision()
-
-        cat = self._choose_cat()
+        self._inventory[cat.id] = self._inventory.get(cat.id, 0) + 1
         is_new = cat.id not in self._unlocked
-        if is_new:
-            self._unlocked.add(cat.id)
-        else:
+        self._unlocked.add(cat.id)
+        if not is_new:
             self._duplicates[cat.id] = self._duplicates.get(cat.id, 0) + 1
         self._total_rolls += 1
-        result = self._result(
-            cat,
-            isNew=is_new,
-            themeUnlocked=bool(is_new and cat.rarity >= 5),
-            effectUpgraded=not is_new,
-        )
+        self._opening = True
+        reel = [] if self._skip_animation else [self._result(self._choose_cat(box["weights"])) for _ in range(40)]
+        if reel:
+            reel[34] = self._result(cat)
+        result = self._result(cat, isNew=is_new, themeUnlocked=bool(is_new and cat.rarity >= 5),
+                              effectUpgraded=not is_new, boxName=box["name"], reel=reel, winningIndex=34)
         self._refresh()
         self._persist()
         self.revealRequested.emit(result)
         return result
+
+    @Slot()
+    def finishOpening(self):
+        if self._opening:
+            self._opening = False
+            self._refresh()
+
+    def _repair_equipped(self):
+        # Zero is an explicit sale tombstone. Only legacy discoveries without
+        # an inventory entry need restoring; sold cats must stay at zero.
+        if self._economy_epoch < ECONOMY_EPOCH:
+            for cat_id in self._unlocked:
+                self._inventory.setdefault(cat_id, 1 + self._duplicates.get(cat_id, 0))
+        if self._inventory.get(self._equipped_id, 0) <= 0:
+            owned = [key for key, value in self._inventory.items() if value > 0 and key in self._by_id]
+            if not owned:
+                starter = starter_cat(self.catalog)
+                self._inventory[starter.id] = 1
+                self._unlocked.add(starter.id)
+                owned = [starter.id]
+            self._equipped_id = owned[0]
+
+    def _can_sell(self, cat_id):
+        count = self._inventory.get(cat_id, 0)
+        return count > 0 and sum(self._inventory.values()) > 1 and (cat_id != self._equipped_id or count > 1)
+
+    @Slot(str, result=bool)
+    def sellCat(self, cat_id):
+        if self._opening or cat_id not in self._by_id or not self._can_sell(cat_id):
+            return False
+        cat = self._by_id[cat_id]
+        self._inventory[cat_id] -= 1
+        self._wallet += cat.price_cents
+        self._advance_roll_balance_revision()
+        self._refresh()
+        self._persist()
+        self.notificationRequested.emit("success", "Gato vendido", f"{cat.name} · +{money(cat.price_cents)} virtuales")
+        return True
 
     @Slot(str, result="QVariantMap")
     def unlockPromotionalCat(self, cat_name):
@@ -469,6 +609,8 @@ class CatGachaController(QObject):
         is_new = cat.id not in self._unlocked
         if is_new:
             self._unlocked.add(cat.id)
+            self._inventory[cat.id] = self._inventory.get(cat.id, 0) + 1
+            self._advance_roll_balance_revision()
             self._refresh()
             self._persist()
         result = self._result(
@@ -498,10 +640,11 @@ class CatGachaController(QObject):
             return {}
 
         self._claimed_promotions.add(campaign)
-        self._earned_rolls += 10
+        self._wallet += 10 * DOWNLOAD_REWARD_CENTS
         self._advance_roll_balance_revision(10)
         is_new = dog.id not in self._unlocked
         self._unlocked.add(dog.id)
+        self._inventory[dog.id] = self._inventory.get(dog.id, 0) + 1
         self._refresh()
         self._persist()
         return {
@@ -515,7 +658,7 @@ class CatGachaController(QObject):
     @Slot(str)
     def equip(self, cat_id):
         cat_id = str(cat_id)
-        if cat_id not in self._unlocked or cat_id not in self._by_id:
+        if self._inventory.get(cat_id, 0) <= 0 or cat_id not in self._by_id:
             self.notificationRequested.emit("warning", "Gato bloqueado", "Desbloquéalo primero con una tirada.")
             return
         if cat_id == self._equipped_id:

@@ -54,13 +54,13 @@ ApplicationWindow {
             "page": 3, "target": "page", "icon": "◇",
             "title": "Estudio",
             "message": "Prepara imágenes, vectores y fotogramas con una vista previa antes de exportar.",
-            "actions": ["Añade los archivos que quieras procesar.", "Escoge la herramienta y sus ajustes.", "Comprueba la vista previa y abre la salida al terminar."]
+            "actions": ["Añade los archivos que quieras procesar.", "Escoge la herramienta y sus ajustes.", "Al terminar, arrastra el comparador para ver el antes y el después."]
         },
         {
             "page": 4, "target": "page", "icon": "★",
             "title": "Colección gatuna",
-            "message": "Las descargas generan tiradas. Los duplicados mejoran progresivamente el efecto visual de cada gato.",
-            "actions": ["Usa tus tiradas para desbloquear gatos.", "Equipa el que acompañará toda la interfaz.", "Completa la colección y mejora a tus favoritos."]
+            "message": "Cada 10 descargas válidas ganas $1.00 virtual. Elige una caja y descubre tu gato en la ruleta.",
+            "actions": ["Abre Cajas para ver precios y probabilidades.", "Equipa el que acompañará toda la interfaz.", "En Mis gatos puedes vender copias para ahorrar para otras cajas."]
         },
         {
             "page": 5, "target": "page", "icon": "#",
@@ -329,7 +329,7 @@ ApplicationWindow {
                         font.pixelSize: 12
                         font.weight: appController.page === index ? Font.DemiBold : Font.Normal
                         focusPolicy: Qt.StrongFocus
-                        Accessible.name: modelData + (pendingCatRolls > 0 ? ". " + pendingCatRolls + " tirada" + (pendingCatRolls === 1 ? "" : "s") + " disponible" + (pendingCatRolls === 1 ? "" : "s") : "")
+                        Accessible.name: modelData + (index === 4 ? ". Saldo virtual: " + catController.state.wallet : "")
                         onClicked: appController.setPage(index)
                         contentItem: Text { text: parent.text; color: appController.page === index ? "white" : theme.colors.textMuted; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; font: parent.font }
                         background: Rectangle {
@@ -420,7 +420,7 @@ ApplicationWindow {
                             }
 
                             ToolTip.visible: navigationButton.hovered
-                            ToolTip.text: navigationButton.pendingCatRolls + " tirada" + (navigationButton.pendingCatRolls === 1 ? " disponible" : "s disponibles")
+                            ToolTip.text: "Saldo virtual: " + catController.state.wallet + " · " + navigationButton.pendingCatRolls + " caja(s) callejera(s)"
                             ToolTip.delay: 450
                         }
                     }
@@ -1396,7 +1396,7 @@ ApplicationWindow {
             Text {
                 objectName: "socialOnboardingTitle"
                 Layout.fillWidth: true
-                text: socialOnboardingPopup.flow === "create" ? "15 tiradas para empezar"
+                text: socialOnboardingPopup.flow === "create" ? "$15.00 virtuales para empezar"
                       : socialOnboardingPopup.flow === "login" ? "Volver a tu cuenta"
                       : socialOnboardingPopup.flow === "recover-request" ? "Recupera tu contraseña"
                       : "Revisa tu correo"
@@ -1433,7 +1433,7 @@ ApplicationWindow {
                     anchors.fill: parent
                     anchors.margins: 11
                     text: socialOnboardingPopup.flow === "create"
-                          ? "REGALO DE BIENVENIDA  ·  Conecta un correo real y recibe hasta 15 tiradas, una sola vez por cuenta."
+                          ? "REGALO DE BIENVENIDA  ·  Conecta un correo real y recibe hasta $15.00 virtuales, una sola vez por cuenta."
                           : socialOnboardingPopup.flow.indexOf("recover") === 0
                             ? "Te enviaremos un enlace seguro. Al abrirlo podrás crear tu nueva contraseña en el navegador."
                             : "Tu contraseña se valida con Supabase Auth y no se guarda en este equipo."

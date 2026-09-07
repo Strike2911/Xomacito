@@ -109,20 +109,22 @@ if (-not $Compiler) {
 }
 
 New-Item -ItemType Directory -Path (Join-Path $ProjectRoot 'release') -Force | Out-Null
-& $Compiler $InstallerScript
-if ($LASTEXITCODE -ne 0) {
-    throw 'Inno Setup no pudo crear el instalador.'
-}
-& $Compiler $LightInstallerScript
-if ($LASTEXITCODE -ne 0) {
-    throw 'Inno Setup no pudo crear la actualización ligera.'
+foreach ($PackageScript in @($InstallerScript, $LightInstallerScript)) {
+    $PackageName = [IO.Path]::GetFileNameWithoutExtension($PackageScript)
+    $PackageProcess = Start-Process -FilePath $Compiler `
+        -ArgumentList ('"' + $PackageScript + '"') -WindowStyle Hidden -PassThru -Wait `
+        -RedirectStandardOutput (Join-Path $ProjectRoot "release\$PackageName-build.log") `
+        -RedirectStandardError (Join-Path $ProjectRoot "release\$PackageName-build-error.log")
+    if ($PackageProcess.ExitCode -ne 0) {
+        throw "Inno Setup no pudo crear $PackageName. Revisa los registros en release."
+    }
 }
 
-$Installer = Join-Path $ProjectRoot 'release\Xomacito-1.1-Setup.exe'
+$Installer = Join-Path $ProjectRoot 'release\Xomacito-1.2-Setup.exe'
 if (-not (Test-Path -LiteralPath $Installer)) {
     throw "No se generó el instalador esperado: $Installer"
 }
-$LightInstaller = Join-Path $ProjectRoot 'release\Xomacito-1.1-Update-Light.exe'
+$LightInstaller = Join-Path $ProjectRoot 'release\Xomacito-1.2-Update-Light.exe'
 if (-not (Test-Path -LiteralPath $LightInstaller)) {
     throw "No se generó la actualización ligera esperada: $LightInstaller"
 }

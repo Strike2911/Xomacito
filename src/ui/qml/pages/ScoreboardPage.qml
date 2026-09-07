@@ -23,8 +23,8 @@ Item {
             ColumnLayout {
                 spacing: 1
                 Text { text: "COMUNIDAD"; color: theme.colors.primary; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.3 }
-                Text { text: "La Liga de Xomacito"; color: theme.colors.text; font.pixelSize: 22; font.weight: Font.DemiBold }
-                Text { text: "Celebra tu progreso, mantén tu racha y descubre quién domina la colección."; color: theme.colors.textMuted; font.pixelSize: 11 }
+                Text { text: "La Liga de Xomacito · Temporada 1"; color: theme.colors.text; font.pixelSize: 22; font.weight: Font.DemiBold }
+                Text { text: "Cuentan las descargas de esta temporada. Conservas tu historial; las ventas no suman puntos."; color: theme.colors.textMuted; font.pixelSize: 11 }
             }
             Item { Layout.fillWidth: true }
             XButton { text: viewState.busy ? "Actualizando…" : "Actualizar"; kind: "secondary"; enabled: viewState.configured && !viewState.busy; onClicked: socialController.refresh() }
@@ -111,7 +111,7 @@ Item {
                 cardColor: theme.colors.surfaceRaised
                 ColumnLayout {
                     anchors.fill: parent; anchors.margins: 14; spacing: 9
-                    Text { text: "PODIO DE LA SEMANA"; color: theme.colors.primary; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.1 }
+                    Text { text: "PODIO DE DESCARGAS"; color: theme.colors.primary; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.1 }
                     Text { text: "Las leyendas de la comunidad"; color: theme.colors.text; font.pixelSize: 16; font.weight: Font.DemiBold }
                     Repeater {
                         model: Math.min(3, ranking.length)
@@ -145,7 +145,7 @@ Item {
                                         Text { Layout.fillWidth: true; text: player ? player.username : ""; color: theme.colors.text; font.pixelSize: 12; font.weight: Font.DemiBold; elide: Text.ElideRight }
                                         Text { visible: player && player.streak > 0; text: "🔥 " + (player ? player.streak : 0); color: player && player.activeToday ? theme.colors.accent : theme.colors.textMuted; font.pixelSize: 10; font.weight: Font.Bold }
                                     }
-                                    Text { text: player ? player.downloads + " descargas  ·  " + player.cats + " gatos" : ""; color: theme.colors.textMuted; font.pixelSize: 10 }
+                                    Text { text: player ? player.downloads + " descargas  ·  " + player.cats + " descubiertos" : ""; color: theme.colors.textMuted; font.pixelSize: 10 }
                                 }
                             }
                         }
@@ -162,7 +162,7 @@ Item {
                     anchors.fill: parent; anchors.margins: 14; spacing: 7
                     RowLayout {
                         Layout.fillWidth: true
-                        ColumnLayout { spacing: 1; Text { text: "RANKING GLOBAL"; color: theme.colors.primary; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.1 } Text { text: "Top 100 · descargas, colección y constancia"; color: theme.colors.textMuted; font.pixelSize: 10 } }
+                        ColumnLayout { spacing: 1; Text { text: "RANKING GLOBAL"; color: theme.colors.primary; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.1 } Text { text: "Top 100 · descargas acumuladas · empates compartidos"; color: theme.colors.textMuted; font.pixelSize: 10 } }
                         Item { Layout.fillWidth: true }
                         Text { text: "🔥 = racha diaria"; color: theme.colors.textMuted; font.pixelSize: 10 }
                     }

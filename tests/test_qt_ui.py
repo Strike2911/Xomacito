@@ -29,7 +29,7 @@ class QtMigrationTests(unittest.TestCase):
         qml = (ROOT / "src/ui/qml/pages/ScoreboardPage.qml").read_text(encoding="utf-8")
         self.assertIn("La Liga de Xomacito", qml)
         self.assertIn("Tu progreso personal", qml)
-        self.assertIn("PODIO DE LA SEMANA", qml)
+        self.assertIn("PODIO DE DESCARGAS", qml)
         self.assertIn("racha diaria", qml)
         self.assertIn("activeToday", qml)
         self.assertIn("bestStreak", qml)
@@ -195,6 +195,9 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 
 app = QApplication([])
 root = Path.cwd()
@@ -273,6 +276,9 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from src.core.app_updater import release_notice_for_version
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 
 app = QApplication([])
 root = Path.cwd()
@@ -326,6 +332,9 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from src.core.app_updater import release_notice_for_version
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 
 app = QApplication([])
 root = Path.cwd()
@@ -373,6 +382,9 @@ from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 
 app = QApplication([])
 root = Path.cwd()
@@ -432,6 +444,9 @@ from pathlib import Path
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 
 app = QApplication([])
 controller = AppController(app, Path.cwd(), "2.1")
@@ -490,6 +505,9 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 
 app = QApplication([])
 root = Path.cwd()
@@ -556,6 +574,9 @@ from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 
 app = QApplication([])
 root = Path.cwd()
@@ -595,7 +616,15 @@ assert float(nav_row.property("width")) - (
 controller.setPage(4)
 QTest.qWait(650)
 assert window.findChild(QObject, "catCollectionGrid") is not None
-assert window.findChild(QObject, "catRollButton") is not None
+def find_visual(item, name):
+    if item.objectName() == name:
+        return item
+    for child in item.childItems():
+        found = find_visual(child, name)
+        if found is not None:
+            return found
+    return None
+assert find_visual(window.contentItem(), "catRollButton") is not None
 personalization_button = nav_buttons[4]
 assert personalization_button.property("showRollBadge") is False
 controller.cats.recordSuccessfulDownloads(20)
@@ -613,8 +642,8 @@ card = window.findChild(QObject, "catRevealCard")
 assert card is not None
 assert float(card.property("width")) <= float(popup.property("width"))
 assert float(card.property("height")) <= float(popup.property("height"))
-QTest.qWait(1600)
-assert float(popup.property("revealProgress")) > 0.99
+QTest.qWait(4000)
+assert float(popup.property("travel")) > 0.99
 controller.shutdown()
 '''
         with tempfile.TemporaryDirectory() as appdata:
@@ -641,6 +670,9 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 
 app = QApplication([])
 root = Path.cwd()
@@ -702,6 +734,9 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 
 app = QApplication([])
 root = Path.cwd()
@@ -730,7 +765,7 @@ QTest.qWait(2700)
 popup = window.findChild(QObject, "catRevealPopup")
 card = window.findChild(QObject, "catRevealCard")
 assert popup is not None and popup.property("opened") is True
-assert float(popup.property("revealProgress")) >= 0.99
+assert float(popup.property("travel")) >= 0.99
 assert card is not None and abs(float(card.property("rotation"))) < 0.01
 assert window.findChild(QObject, "catThemeRewardBadge") is None
 controller.shutdown()
@@ -753,6 +788,9 @@ from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 
 app = QApplication([])
 root = Path.cwd()
@@ -983,7 +1021,7 @@ controller.shutdown()
         self.assertNotIn('model: ["Fragmento",', download)
         image = (ROOT / "src" / "ui" / "qml" / "pages" / "ImageStudioPage.qml").read_text(encoding="utf-8")
         library = (ROOT / "src" / "ui" / "qml" / "pages" / "MediaLibraryPage.qml").read_text(encoding="utf-8")
-        self.assertIn("Estudio en preparación", image)
+        self.assertIn("ImageComparison", image)
         self.assertIn("Biblioteca en preparación", library)
 
     def test_runtime_no_longer_depends_on_tk(self):
@@ -1131,6 +1169,9 @@ controller.shutdown()
 from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 from src.ui.presets import resolve_recode_parameters
 
 app = QApplication([])
@@ -1167,6 +1208,9 @@ controller.shutdown()
 from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 from src.ui.media_logic import normalize_info
 
 app = QApplication([])
@@ -1212,6 +1256,9 @@ controller.shutdown()
 from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 
 app = QApplication([])
 controller = AppController(app, Path.cwd(), "2.5")
@@ -1253,6 +1300,9 @@ import tempfile
 from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 
 app = QApplication([])
 controller = AppController(app, Path.cwd(), "2.5")
@@ -1289,8 +1339,8 @@ controller.shutdown()
     def test_studio_and_library_pages_explain_their_empty_state(self):
         image_page = (ROOT / "src" / "ui" / "qml" / "pages" / "ImageStudioPage.qml").read_text(encoding="utf-8")
         library_page = (ROOT / "src" / "ui" / "qml" / "pages" / "MediaLibraryPage.qml").read_text(encoding="utf-8")
-        self.assertIn("Estudio en preparación", image_page)
-        self.assertIn("permanecerá vacío", image_page)
+        self.assertIn("Arrastra una imagen para comenzar", image_page)
+        self.assertIn("imageController.start()", image_page)
         self.assertIn("Biblioteca en preparación", library_page)
         self.assertIn("Este espacio está vacío", library_page)
 
@@ -1300,6 +1350,9 @@ import tempfile
 from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 
 app = QApplication([])
 controller = AppController(app, Path.cwd(), "2.5")
@@ -1357,6 +1410,9 @@ import tempfile
 from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 
 app = QApplication([])
 controller = AppController(app, Path.cwd(), "2.5")
@@ -1529,6 +1585,9 @@ from unittest.mock import patch
 from PIL import Image
 from PySide6.QtWidgets import QApplication
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 
 app = QApplication([])
 controller = AppController(app, Path.cwd(), "2.5")
@@ -1565,6 +1624,9 @@ from pathlib import Path
 from unittest.mock import patch
 from PySide6.QtWidgets import QApplication
 from src.ui.application import AppController
+from src.ui.settings_store import SettingsStore
+import os
+SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "test-library"))
 
 app = QApplication([])
 controller = AppController(app, Path.cwd(), "2.5")

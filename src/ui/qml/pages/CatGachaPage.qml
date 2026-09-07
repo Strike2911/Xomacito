@@ -5,753 +5,268 @@ import "../components"
 
 Item {
     id: root
+    property int section: 0
     property bool dense: height <= 520
     readonly property bool revealOpen: revealPopup.opened
     signal revealFinished()
+    readonly property var cats: catController.state
+    property string search: ""
+    property int rarityFilter: 0
+    onSearchChanged: catController.setInventoryFilter(search, rarityFilter)
+    onRarityFilterChanged: catController.setInventoryFilter(search, rarityFilter)
 
     ColumnLayout {
-        anchors.fill: parent
-        spacing: root.dense ? 8 : 12
-
+        anchors.fill: parent; spacing: 12
         RowLayout {
             Layout.fillWidth: true
             ColumnLayout {
-                spacing: 2
-                Text {
-                    text: "COLECCIÓN GATUNA"
-                    color: theme.colors.primary
-                    font.pixelSize: 10
-                    font.weight: Font.Bold
-                    font.letterSpacing: 1.2
-                }
-                Text {
-                    text: catController.state.isPlatinum
-                        ? "Colección completa. Mejora sus auras."
-                        : "Desbloquea. Colecciona. Equipa."
-                    color: theme.colors.text
-                    font.pixelSize: root.dense ? 20 : 24
-                    font.weight: Font.DemiBold
-                }
+                spacing: 3
+                Text { text: "PERSONALIZACIÓN"; color: theme.colors.primary; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1.2 }
+                Text { text: root.section === 0 ? "Una caja. Un nuevo compañero." : "Tu colección, a tu manera."; color: theme.colors.text; font.pixelSize: 24; font.weight: Font.DemiBold }
             }
             Item { Layout.fillWidth: true }
-            Rectangle {
-                implicitWidth: collectionCount.implicitWidth + 24
-                implicitHeight: 30
-                radius: 10
-                color: theme.colors.surfaceSoft
-                border.color: theme.colors.border
-                Text {
-                    id: collectionCount
-                    anchors.centerIn: parent
-                    text: catController.state.unlockedCount + " / " + catController.state.totalCount
-                    color: theme.colors.text
-                    font.pixelSize: 11
-                    font.weight: Font.DemiBold
+            XCard {
+                implicitWidth: 168; implicitHeight: 58; cardColor: theme.colors.surfaceRaised
+                Column {
+                    anchors.centerIn: parent; spacing: 2
+                    Text { text: root.cats.wallet || "$0.00"; color: theme.colors.success; font.pixelSize: 23; font.bold: true }
+                    Text { text: "SALDO VIRTUAL"; color: theme.colors.textMuted; font.pixelSize: 9; font.letterSpacing: 1 }
                 }
             }
         }
-
-        XCard {
-            Layout.fillWidth: true
-            implicitHeight: root.dense ? 112 : 132
-            cardColor: theme.colors.surfaceRaised
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: root.dense ? 13 : 17
-                spacing: root.dense ? 14 : 20
-
-                CatAvatar {
-                    Layout.preferredWidth: root.dense ? 78 : 94
-                    Layout.preferredHeight: Layout.preferredWidth
-                    source: catController.state.equippedSource
-                    rarity: catController.state.equippedRarity
-                    rarityColor: catController.state.equippedColor
-                    animationStyle: catController.state.equippedAnimationStyle
-                    effectLevel: catController.state.equippedEffectLevel
-                    animatedEffects: settingsController.state.animationsEnabled
-                }
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 5
-                    Text {
-                        text: "GATO EQUIPADO"
-                        color: catController.state.equippedColor
-                        font.pixelSize: 9
-                        font.weight: Font.Bold
-                        font.letterSpacing: 1
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        text: catController.state.equippedName
-                        color: theme.colors.text
-                        font.pixelSize: root.dense ? 17 : 20
-                        font.weight: Font.DemiBold
-                        elide: Text.ElideRight
-                    }
-                    Text {
-                        text: catController.state.equippedStars
-                        color: catController.state.equippedColor
-                        font.pixelSize: 15
-                        font.letterSpacing: 2
-                    }
-                    Text {
-                        visible: Number(catController.state.equippedEffectLevel || 0) > 0
-                        text: "AURA " + catController.state.equippedEffectLevel
-                            + " · " + String(catController.state.equippedEffectName || "").toUpperCase()
-                        color: catController.state.equippedColor
-                        font.pixelSize: 9
-                        font.weight: Font.Bold
-                        font.letterSpacing: 1
-                    }
-                }
-
-                Rectangle {
-                    Layout.preferredWidth: Math.min(360, Math.max(260, root.width * 0.29))
-                    Layout.fillHeight: true
-                    radius: 13
-                    color: theme.colors.backgroundAlt
-                    border.color: theme.colors.border
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 12
-                        spacing: 7
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Text { text: "PRÓXIMA TIRADA"; color: theme.colors.textMuted; font.pixelSize: 9; font.weight: Font.Bold; font.letterSpacing: 0.8 }
-                            Item { Layout.fillWidth: true }
-                            Text { text: catController.state.downloadProgress + "/10"; color: theme.colors.accent; font.pixelSize: 10; font.weight: Font.Bold }
-                        }
-                        ProgressBar {
-                            Layout.fillWidth: true
-                            value: catController.state.downloadProgressRatio
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: catController.state.isPlatinum
-                                  ? "Cada gato repetido mejora su aura hasta nivel 5."
-                                  : catController.state.dailyAvailable
-                                  ? "Tu tirada gratis de hoy está lista."
-                                  : catController.state.earnedRolls
-                                    ? "Tienes " + catController.state.earnedRolls + " tirada(s) acumulada(s)."
-                                    : "Cada descarga exitosa suma progreso."
-                            color: theme.colors.textMuted
-                            font.pixelSize: 10
-                            elide: Text.ElideRight
-                        }
-                    }
-                }
-
-                XButton {
-                    objectName: "catRollButton"
-                    Layout.preferredWidth: root.dense ? 172 : 205
-                    text: catController.state.rollButtonText
-                    enabled: catController.state.canRoll
-                    onClicked: catController.roll()
-                }
-            }
-        }
-
         RowLayout {
             Layout.fillWidth: true
-            Text {
-                text: "TU COLECCIÓN"
-                color: theme.colors.text
-                font.pixelSize: 12
-                font.weight: Font.Bold
-                font.letterSpacing: 0.8
-            }
+            XButton { objectName: "catBoxesTab"; text: "Cajas"; kind: root.section === 0 ? "primary" : "secondary"; onClicked: root.section = 0 }
+            XButton { objectName: "catInventoryTab"; text: "Mis gatos · " + root.cats.ownedCount; kind: root.section === 1 ? "primary" : "secondary"; onClicked: root.section = 1 }
             Item { Layout.fillWidth: true }
-            Text {
-                text: "1★ común  ·  2★ peculiar  ·  3★ raro  ·  4★ épico  ·  5★ legendario  ·  6★ mítico"
-                color: theme.colors.textMuted
-                font.pixelSize: 10
+            XButton {
+                objectName: "catSkipAnimationToggle"
+                text: checked ? "✓ Omitir animación" : "Omitir animación"
+                checkable: true; checked: root.cats.skipAnimation || false
+                kind: checked ? "primary" : "ghost"
+                onClicked: catController.setSkipAnimation(checked)
+                Accessible.description: "Conservar esta preferencia para todas las aperturas"
+            }
+            Text { text: "10 descargas válidas = $1.00 virtual"; color: theme.colors.textMuted; font.pixelSize: 11 }
+        }
+        XCard {
+            Layout.fillWidth: true; implicitHeight: 86; cardColor: theme.colors.surfaceRaised
+            RowLayout {
+                anchors.fill: parent; anchors.margins: 12; spacing: 16
+                CatAvatar { Layout.preferredWidth: 60; Layout.preferredHeight: 60; source: root.cats.equippedSource; rarity: root.cats.equippedRarity; rarityColor: root.cats.equippedColor; animationStyle: root.cats.equippedAnimationStyle; effectLevel: root.cats.equippedEffectLevel; animatedEffects: settingsController.state.animationsEnabled }
+                ColumnLayout {
+                    Layout.fillWidth: true; spacing: 3
+                    Text { text: "GATO EQUIPADO"; color: theme.colors.textMuted; font.pixelSize: 9; font.bold: true }
+                    Text { text: root.cats.equippedName; color: theme.colors.text; font.pixelSize: 16; font.bold: true }
+                    Text { text: root.cats.equippedStars; color: root.cats.equippedColor; font.pixelSize: 11 }
+                }
+                ColumnLayout {
+                    Layout.preferredWidth: Math.min(330, root.width * 0.3); spacing: 6
+                    Text { text: "PRÓXIMO $1.00  ·  " + root.cats.downloadProgress + "/10"; color: theme.colors.textMuted; font.pixelSize: 10; font.bold: true }
+                    Rectangle {
+                        Layout.fillWidth: true; height: 6; radius: 3; color: theme.colors.backgroundAlt
+                        Rectangle { width: parent.width * root.cats.downloadProgressRatio; height: parent.height; radius: 3; color: theme.colors.primary }
+                    }
+                    Text { text: "Faltan " + root.cats.downloadsUntilRoll + " descargas válidas"; color: theme.colors.textMuted; font.pixelSize: 10 }
+                }
+                ColumnLayout {
+                    spacing: 3
+                    Text { text: root.cats.ownedUniqueCount + " especies · " + root.cats.ownedCount + " gatos"; color: theme.colors.text; font.pixelSize: 12 }
+                    Text { text: "Valor de colección: " + root.cats.inventoryValue; color: theme.colors.success; font.pixelSize: 11 }
+                }
             }
         }
 
+        ScrollView {
+            id: boxesScroll
+            visible: root.section === 0
+            Layout.fillWidth: true; Layout.fillHeight: true
+            contentWidth: availableWidth; clip: true
+            ColumnLayout {
+                width: boxesScroll.availableWidth; spacing: 14
+                Text { text: "ELIGE TU CAJA"; color: theme.colors.text; font.pixelSize: 12; font.bold: true; font.letterSpacing: 1 }
+                GridLayout {
+                    Layout.fillWidth: true; columns: root.width < 1000 ? 2 : 4; columnSpacing: 12; rowSpacing: 12
+                    Repeater {
+                        model: root.cats.boxes || []
+                        delegate: XCard {
+                            id: boxCard
+                            required property var modelData
+                            Layout.fillWidth: true; Layout.preferredHeight: 300
+                            border.color: boxCard.modelData.color
+                            ColumnLayout {
+                                anchors.fill: parent; anchors.margins: 16; spacing: 10
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text { text: boxCard.modelData.id === "daily" ? "CADA DÍA" : "1 GATO POR CAJA"; color: theme.colors.textMuted; font.pixelSize: 9; font.bold: true }
+                                    Item { Layout.fillWidth: true }
+                                    Text { text: boxCard.modelData.price; color: boxCard.modelData.color; font.pixelSize: 18; font.bold: true }
+                                }
+                                Item {
+                                    Layout.fillWidth: true; Layout.preferredHeight: 78
+                                    Rectangle {
+                                        anchors.centerIn: parent; width: 96; height: 64; radius: 9
+                                        color: Qt.alpha(boxCard.modelData.color, 0.13); border.color: boxCard.modelData.color; border.width: 2
+                                        Rectangle { x: -5; y: -4; width: parent.width + 10; height: 16; radius: 5; color: Qt.darker(boxCard.modelData.color, 1.7); border.color: boxCard.modelData.color }
+                                        Rectangle { anchors.horizontalCenter: parent.horizontalCenter; width: 18; height: parent.height; color: Qt.alpha(boxCard.modelData.color, 0.25) }
+                                        Text { anchors.centerIn: parent; anchors.verticalCenterOffset: 4; text: "✦"; color: boxCard.modelData.color; font.pixelSize: 32 }
+                                    }
+                                }
+                                Text { Layout.fillWidth: true; text: boxCard.modelData.name; color: theme.colors.text; font.pixelSize: 19; font.bold: true; horizontalAlignment: Text.AlignHCenter }
+                                Text { Layout.fillWidth: true; Layout.fillHeight: true; text: boxCard.modelData.odds; color: theme.colors.textMuted; font.pixelSize: 10; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter }
+                                XButton {
+                                    objectName: boxCard.modelData.id === "daily" ? "catRollButton" : "catBox_" + boxCard.modelData.id
+                                    Layout.fillWidth: true
+                                    text: boxCard.modelData.available ? "Abrir · " + boxCard.modelData.price : boxCard.modelData.id === "daily" ? "Vuelve mañana" : "Saldo insuficiente"
+                                    enabled: boxCard.modelData.available
+                                    onClicked: catController.openBox(boxCard.modelData.id)
+                                }
+                            }
+                        }
+                    }
+                }
+                Text { Layout.fillWidth: true; text: "Cada apertura entrega un gato; pueden salir repetidos. Vende copias para ahorrar para otras cajas. Los precios son virtuales, sin compras ni retiros de dinero real."; color: theme.colors.textMuted; font.pixelSize: 11; wrapMode: Text.WordWrap }
+                Text { Layout.fillWidth: true; text: "Nueva temporada: tus gatos anteriores se convirtieron en " + (root.cats.resetCredit || "$0.00") + " virtuales. Conservas tu historial y recibes un compañero inicial gratis."; color: theme.colors.textDim; font.pixelSize: 11; wrapMode: Text.WordWrap }
+            }
+        }
+        RowLayout {
+            visible: root.section === 1; Layout.fillWidth: true
+            XTextField { Layout.fillWidth: true; placeholderText: "Buscar entre mis gatos…"; onTextEdited: root.search = text }
+            XComboBox { Layout.preferredWidth: 190; model: ["Todas las rarezas", "1★ Común", "2★ Peculiar", "3★ Raro", "4★ Épico", "5★ Legendario", "6★ Mítico"]; onActivated: root.rarityFilter = currentIndex }
+            Text { text: collectionGrid.count + " especies"; color: theme.colors.textMuted; font.pixelSize: 11 }
+        }
         GridView {
             id: collectionGrid
             objectName: "catCollectionGrid"
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            clip: true
-            model: catController.model
-            cellWidth: Math.max(150, width / Math.max(1, Math.floor(width / 170)))
-            cellHeight: root.dense ? 166 : 184
-            boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: XScrollBar { }
-
+            visible: root.section === 1
+            Layout.fillWidth: true; Layout.fillHeight: true; clip: true
+            model: catController.inventoryModel
+            cellWidth: width / Math.max(1, Math.floor(width / 190)); cellHeight: 248
+            ScrollBar.vertical: XScrollBar {}
+            Text { anchors.centerIn: parent; visible: collectionGrid.count === 0; text: "No hay gatos que coincidan con tu búsqueda."; color: theme.colors.textMuted }
             delegate: Item {
                 id: catCard
-                required property string catId
-                required property string name
-                required property url source
-                required property int rarity
-                required property color rarityColor
-                required property string stars
-                required property string animationStyle
-                required property bool unlocked
-                required property bool equipped
-                required property int duplicateCount
-                required property int effectLevel
-                required property string effectName
-                width: collectionGrid.cellWidth
-                height: collectionGrid.cellHeight
-
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: 5
-                    radius: 15
-                    color: equipped ? theme.colors.surfaceRaised : theme.colors.surface
-                    border.width: equipped || effectLevel > 0 ? 2 : 1
-                    border.color: equipped || effectLevel > 0 ? rarityColor : theme.colors.border
-
+                required property var model
+                readonly property var modelData: model
+                readonly property bool onScreen: root.visible && root.section === 1 && y + height >= collectionGrid.contentY && y <= collectionGrid.contentY + collectionGrid.height
+                width: collectionGrid.cellWidth; height: collectionGrid.cellHeight
+                XCard {
+                    anchors.fill: parent; anchors.margins: 5; border.color: catCard.modelData.equipped ? catCard.modelData.rarityColor : theme.colors.border
                     ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 10
-                        spacing: 4
-                        Item {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            CatAvatar {
-                                anchors.centerIn: parent
-                                width: Math.min(parent.width, parent.height) - 3
-                                height: width
-                                source: catCard.source
-                                rarity: catCard.rarity
-                                rarityColor: catCard.rarityColor
-                                animationStyle: catCard.animationStyle
-                                effectLevel: catCard.effectLevel
-                                animatedEffects: catCard.unlocked
-                                    && settingsController.state.animationsEnabled
-                                    && catCard.effectLevel > 0
-                                opacity: catCard.unlocked ? 1 : 0.2
-                            }
-                            Rectangle {
-                                anchors.centerIn: parent
-                                visible: !catCard.unlocked
-                                width: 34; height: 34; radius: 17
-                                color: theme.colors.scrim
-                                Text { anchors.centerIn: parent; text: "?"; color: theme.colors.text; font.pixelSize: 18; font.weight: Font.Bold }
-                            }
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: name
-                            color: unlocked ? theme.colors.text : theme.colors.textDim
-                            font.pixelSize: 11
-                            font.weight: Font.DemiBold
-                            horizontalAlignment: Text.AlignHCenter
-                            elide: Text.ElideRight
-                        }
+                        anchors.fill: parent; anchors.margins: 10; spacing: 6
                         RowLayout {
                             Layout.fillWidth: true
-                            Text { text: stars; color: rarityColor; font.pixelSize: 10; font.letterSpacing: 1 }
+                            Text { text: catCard.modelData.stars; color: catCard.modelData.rarityColor; font.pixelSize: 10 }
                             Item { Layout.fillWidth: true }
-                            Rectangle {
-                                visible: effectLevel > 0
-                                implicitWidth: auraLabel.implicitWidth + 12
-                                implicitHeight: 20
-                                radius: 7
-                                color: Qt.rgba(rarityColor.r, rarityColor.g, rarityColor.b, 0.14)
-                                border.width: 1
-                                border.color: rarityColor
-                                Text {
-                                    id: auraLabel
-                                    anchors.centerIn: parent
-                                    text: "AURA " + effectLevel
-                                    color: rarityColor
-                                    font.pixelSize: 8
-                                    font.weight: Font.Bold
-                                    font.letterSpacing: 0.5
-                                }
-                                ToolTip.visible: auraBadgeMouse.containsMouse
-                                ToolTip.text: effectName + " · " + duplicateCount
-                                    + " repetido(s)"
-                                MouseArea {
-                                    id: auraBadgeMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                }
-                            }
+                            Text { text: "×" + catCard.modelData.quantity; color: theme.colors.text; font.pixelSize: 12; font.bold: true }
                         }
-                        XButton {
-                            Layout.fillWidth: true
-                            implicitHeight: 29
-                            compact: true
-                            kind: equipped ? "success" : "secondary"
-                            text: equipped ? "Equipado" : unlocked ? "Equipar" : "Bloqueado"
-                            enabled: unlocked && !equipped
-                            onClicked: catController.equip(catId)
-                        }
+                        CatAvatar { Layout.alignment: Qt.AlignHCenter; Layout.preferredWidth: 80; Layout.preferredHeight: 80; source: catCard.modelData.source; rarity: catCard.modelData.rarity; rarityColor: catCard.modelData.rarityColor; animationStyle: catCard.modelData.animationStyle; effectLevel: catCard.modelData.effectLevel; animatedEffects: catCard.onScreen && !revealPopup.opened && settingsController.state.animationsEnabled }
+                        Text { Layout.fillWidth: true; text: catCard.modelData.name; color: theme.colors.text; font.pixelSize: 11; font.bold: true; elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter }
+                        Text { Layout.alignment: Qt.AlignHCenter; text: catCard.modelData.price + " / gato"; color: theme.colors.success; font.pixelSize: 12 }
+                        XButton { Layout.fillWidth: true; compact: true; implicitHeight: 28; text: catCard.modelData.equipped ? "Equipado" : "Equipar"; kind: "secondary"; enabled: !catCard.modelData.equipped; onClicked: catController.equip(catCard.modelData.catId) }
+                        XButton { Layout.fillWidth: true; compact: true; implicitHeight: 28; text: "Vender 1 · " + catCard.modelData.price; kind: "ghost"; enabled: catCard.modelData.canSell; onClicked: catController.sellCat(catCard.modelData.catId) }
                     }
                 }
             }
         }
+        Text { visible: root.section === 1; Layout.fillWidth: true; text: "La última copia de tu gato equipado se conserva. Equipa otro para venderlo. Las auras y los descubrimientos se mantienen."; color: theme.colors.textMuted; font.pixelSize: 10 }
     }
 
     Popup {
         id: revealPopup
         objectName: "catRevealPopup"
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        // El premio puede abrirse desde cualquier pestaña. La pestaña de
-        // Personalización mide 0x0 mientras está inactiva, pero el overlay global no.
-        readonly property real overlayWidth: parent && parent.width > 0 ? parent.width : 760
-        readonly property real overlayHeight: parent && parent.height > 0 ? parent.height : 640
-        readonly property bool compactLayout: height <= 500
-        width: Math.max(320, Math.min(720, overlayWidth - 32))
-        height: Math.max(390, Math.min(590, overlayHeight - 24))
-        modal: true
-        focus: true
-        padding: 0
+        parent: Overlay.overlay; anchors.centerIn: parent
+        width: Math.min(900, parent ? parent.width - 32 : 850)
+        height: Math.min(530, parent ? parent.height - 32 : 500)
+        modal: true; focus: true; padding: 22
         closePolicy: Popup.NoAutoClose
-        onClosed: root.revealFinished()
         property var result: ({})
-        property real revealProgress: 1
-        readonly property int resultRarity: Math.max(1, Math.min(6, Number(result.rarity || 1)))
-        readonly property color revealColor: result.animationStyle === "strike-apex"
-                                             ? "#8476E8" : result.rarityColor || theme.colors.primary
-        readonly property string animationStyle: result.animationStyle || ""
-        readonly property string rarityTitle: resultRarity < 6
-                                                ? ["", "COMÚN", "PECULIAR", "RARO", "ÉPICO", "LEGENDARIO"][resultRarity]
-                                                : animationStyle === "strike-apex"
-                                                  ? "MÍTICO SUPREMO"
-                                                : animationStyle === "playera-prismatic"
-                                                  ? "MÍTICO PRISMÁTICO"
-                                                  : animationStyle === "zarking-cyber"
-                                                    ? "MÍTICO CIBERNÉTICO"
-                                                    : animationStyle === "blackbull-noir"
-                                                      ? "MÍTICO BLACK BULL"
-                                                    : "MÍTICO ARCANO"
-        readonly property bool arcaneMage: result.animationStyle === "arcane-mage"
-        readonly property bool strikeApex: result.animationStyle === "strike-apex"
-        readonly property bool mythicCat: resultRarity >= 6
-
-        function beginReveal() {
-            revealProgress = settingsController.state.animationsEnabled ? 0 : 1
+        property real travel: 0
+        readonly property bool done: travel >= 0.999
+        readonly property bool resultCanSell: (root.cats.inventoryItems || []).some(function(cat) { return cat.catId === revealPopup.result.catId && cat.canSell })
+        onClosed: { spin.stop(); catController.finishOpening(); root.revealFinished() }
+        background: Rectangle { radius: 22; color: theme.colors.backgroundAlt; border.color: revealPopup.result.rarityColor || theme.colors.primary; border.width: 2 }
+        function reveal(value) {
+            result = value
+            travel = 0
             open()
-            if (settingsController.state.animationsEnabled)
-                revealSequence.restart()
-        }
-
-        enter: Transition {
-            ParallelAnimation {
-                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 180 }
-                NumberAnimation { property: "scale"; from: 0.96; to: 1; duration: 260; easing.type: Easing.OutCubic }
+            if (settingsController.state.animationsEnabled && !root.cats.skipAnimation && value.reel && value.reel.length)
+                spin.restart()
+            else {
+                travel = 1
+                catController.finishOpening()
             }
         }
-        exit: Transition { NumberAnimation { property: "opacity"; to: 0; duration: 160 } }
-
-        Overlay.modal: Rectangle {
-            color: "#D9000710"
-        }
-
-        background: Rectangle {
-            radius: 26
-            color: theme.colors.backgroundAlt
-            border.width: revealPopup.resultRarity >= 6 ? 5 : revealPopup.resultRarity >= 4 ? 3 : 2
-            border.color: revealPopup.revealColor
-        }
-
-        SequentialAnimation {
-            id: revealSequence
-            running: false
-            NumberAnimation {
-                target: revealPopup
-                property: "revealProgress"
-                from: 0
-                to: 0.48
-                duration: revealPopup.strikeApex ? 1450 : revealPopup.mythicCat ? 1650 : revealPopup.resultRarity >= 5 ? 1050 : revealPopup.resultRarity >= 4 ? 860 : 620
-                easing.type: Easing.InCubic
-            }
-            NumberAnimation {
-                target: revealPopup
-                property: "revealProgress"
-                to: 0.66
-                duration: 150
-                easing.type: Easing.OutExpo
-            }
-            PauseAnimation { duration: revealPopup.strikeApex ? 180 : revealPopup.mythicCat ? 220 : revealPopup.resultRarity >= 4 ? 90 : 40 }
-            NumberAnimation {
-                target: revealPopup
-                property: "revealProgress"
-                to: 1
-                duration: revealPopup.strikeApex ? 760 : revealPopup.mythicCat ? 860 : revealPopup.resultRarity >= 4 ? 560 : 420
-                easing.type: Easing.OutBack
-            }
-        }
-
-        Item {
-            id: revealEffects
+        NumberAnimation { id: spin; target: revealPopup; property: "travel"; from: 0; to: 1; duration: 4400; easing.type: Easing.OutQuint; onFinished: catController.finishOpening() }
+        MythicEffectField {
             anchors.fill: parent
-            clip: true
-
-            Rectangle {
-                anchors.fill: parent
-                radius: 24
-                gradient: Gradient {
-                    GradientStop { position: 0; color: theme.colors.backgroundAlt }
-                    GradientStop { position: 0.52; color: Qt.rgba(revealPopup.revealColor.r, revealPopup.revealColor.g, revealPopup.revealColor.b, revealPopup.arcaneMage ? 0.28 : revealPopup.resultRarity >= 4 ? 0.15 : 0.08) }
-                    GradientStop { position: 1; color: theme.colors.surface }
-                }
-            }
-
-            MythicEffectField {
-                anchors.fill: parent
-                animationStyle: revealPopup.animationStyle
-                effectColor: revealPopup.revealColor
-                active: revealPopup.opened && settingsController.state.animationsEnabled
-                progress: revealPopup.revealProgress
-                mode: "reveal"
-            }
-
-            Item {
-                id: rayField
-                anchors.centerIn: parent
-                width: Math.min(parent.width, parent.height) * 0.94
-                height: width
-                visible: !revealPopup.strikeApex
-                scale: 0.56 + revealPopup.revealProgress * 0.58
-                opacity: 0.08 + revealPopup.resultRarity * 0.035
-
-                Repeater {
-                    model: revealPopup.strikeApex ? 24 : revealPopup.resultRarity >= 6 ? 36 : revealPopup.resultRarity >= 5 ? 28 : revealPopup.resultRarity >= 4 ? 22 : 14
-                    Rectangle {
-                        required property int index
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        y: parent.height / 2 - height
-                        width: index % 3 === 0 ? 5 : 3
-                        height: parent.height * (index % 4 === 0 ? 0.48 : 0.39)
-                        radius: width / 2
-                        color: index % 5 === 0 && revealPopup.resultRarity >= 4 ? "white" : revealPopup.revealColor
-                        transformOrigin: Item.Bottom
-                        rotation: index * (360 / (revealPopup.strikeApex ? 24 : revealPopup.resultRarity >= 6 ? 36 : revealPopup.resultRarity >= 5 ? 28 : revealPopup.resultRarity >= 4 ? 22 : 14))
-                    }
-                }
-
-                RotationAnimation on rotation {
-                    running: revealPopup.opened && settingsController.state.animationsEnabled
-                    from: 0
-                    to: 360
-                    duration: revealPopup.arcaneMage ? 5200 : revealPopup.resultRarity >= 5 ? 10000 : 16000
-                    loops: Animation.Infinite
-                }
-            }
-
-            Item {
-                id: strikeRevealCosmos
-                anchors.centerIn: parent
-                width: Math.min(parent.width, parent.height) * 0.96
-                height: width
-                visible: revealPopup.strikeApex
-                opacity: Math.min(1, revealPopup.revealProgress * 2.4)
-                property real phase: 0
-
-                NumberAnimation on phase {
-                    running: revealPopup.opened && settingsController.state.animationsEnabled
-                    from: 0; to: Math.PI * 2; duration: 9000; loops: Animation.Infinite
-                }
-
-                Repeater {
-                    model: 4
-                    Rectangle {
-                        required property int index
-                        anchors.centerIn: parent
-                        width: parent.width * (0.28 + index * 0.18) * (0.72 + revealPopup.revealProgress * 0.28)
-                        height: width
-                        radius: width / 2
-                        color: "transparent"
-                        border.width: index === 0 ? 4 : 2
-                        border.color: index === 0 ? "#F3F1FF" : index === 1 ? "#8C7AE8" : index === 2 ? "#67B3F0" : "#E7CA82"
-                        opacity: Math.max(0.12, 0.7 - index * 0.13)
-                        scale: 1 + Math.sin(strikeRevealCosmos.phase * 2 + index) * 0.018
-                    }
-                }
-
-                Repeater {
-                    model: 30
-                    Text {
-                        required property int index
-                        readonly property real angle: index * Math.PI * 2 / 30 + strikeRevealCosmos.phase * (index % 2 ? -0.18 : 0.25)
-                        readonly property real radiusValue: parent.width * (0.22 + (index % 5) * 0.055) * Math.max(0.3, revealPopup.revealProgress)
-                        text: index % 7 === 0 ? "✦" : index % 4 === 0 ? "✧" : "·"
-                        color: index % 7 === 0 ? "#FFF0B7" : index % 2 ? "#A695FF" : "#78C4FF"
-                        font.pixelSize: index % 7 === 0 ? 16 : index % 4 === 0 ? 11 : 15
-                        font.weight: Font.Bold
-                        x: parent.width / 2 + Math.cos(angle) * radiusValue - width / 2
-                        y: parent.height / 2 + Math.sin(angle) * radiusValue - height / 2
-                        opacity: 0.25 + (Math.sin(strikeRevealCosmos.phase * 3 + index * 0.8) + 1) * 0.34
-                    }
-                }
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "✦"
-                    color: "#FFFFFF"
-                    font.pixelSize: 52 + revealPopup.revealProgress * 30
-                    opacity: Math.max(0, 0.82 - revealPopup.revealProgress)
-                    scale: 0.5 + revealPopup.revealProgress * 0.8
-                }
-            }
-
-            Repeater {
-                model: revealPopup.strikeApex ? 22 : revealPopup.resultRarity >= 6 ? 36 : revealPopup.resultRarity >= 5 ? 30 : revealPopup.resultRarity >= 4 ? 22 : 14
-                Rectangle {
-                    required property int index
-                    property real angle: index * Math.PI * 2 / (revealPopup.strikeApex ? 22 : revealPopup.resultRarity >= 6 ? 36 : revealPopup.resultRarity >= 5 ? 30 : revealPopup.resultRarity >= 4 ? 22 : 14)
-                    property real travel: (70 + (index % 6) * 27) * Math.max(0, (revealPopup.revealProgress - 0.42) / 0.58)
-                    width: 3 + (index % 3) * 2
-                    height: width
-                    radius: width / 2
-                    color: index % 4 === 0 ? "white" : revealPopup.revealColor
-                    opacity: revealPopup.revealProgress < 0.42 ? 0 : Math.max(0.08, 1 - travel / 260)
-                    x: revealPopup.width / 2 + Math.cos(angle) * travel - width / 2
-                    y: revealPopup.height / 2 + Math.sin(angle) * travel - height / 2
-                }
-            }
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: Math.min(parent.width, parent.height) * (0.46 + revealPopup.revealProgress * 0.34)
-                height: width
-                radius: width / 2
-                color: "transparent"
-                border.width: revealPopup.resultRarity >= 6 ? 7 : revealPopup.resultRarity >= 5 ? 5 : revealPopup.resultRarity >= 4 ? 3 : 2
-                border.color: revealPopup.revealColor
-                opacity: revealPopup.revealProgress < 0.58 ? 0.7 : 0.18
-            }
-
-            Rectangle {
-                id: energyCore
-                anchors.centerIn: parent
-                width: 82 + revealPopup.revealProgress * 86
-                height: width
-                radius: width / 2
-                visible: revealPopup.revealProgress < 0.7
-                color: Qt.rgba(revealPopup.revealColor.r, revealPopup.revealColor.g, revealPopup.revealColor.b, 0.28)
-                border.width: revealPopup.resultRarity >= 4 ? 5 : 3
-                border.color: revealPopup.revealProgress > 0.5 ? "white" : revealPopup.revealColor
-                scale: 0.78 + Math.sin(revealPopup.revealProgress * Math.PI * 8) * 0.08
-
-                Text {
-                    anchors.centerIn: parent
-                    text: revealPopup.resultRarity >= 6 ? "✺" : revealPopup.resultRarity >= 5 ? "✦" : "★"
-                    color: "white"
-                    font.pixelSize: parent.width * 0.34
-                    opacity: 0.72
-                }
-            }
-
-            Rectangle {
-                anchors.fill: parent
-                radius: 24
-                color: "white"
-                opacity: Math.max(0, 1 - Math.abs(revealPopup.revealProgress - 0.64) * 18)
-            }
-
-            Item {
-                id: arcanePortal
-                anchors.centerIn: parent
-                width: Math.min(parent.width, parent.height) * 0.88
-                height: width
-                visible: revealPopup.arcaneMage
-                opacity: Math.min(1, revealPopup.revealProgress * 2.2)
-
-                Repeater {
-                    model: 3
-                    Rectangle {
-                        required property int index
-                        anchors.centerIn: parent
-                        width: parent.width - index * 46
-                        height: width
-                        radius: width / 2
-                        color: "transparent"
-                        border.width: index === 0 ? 3 : 2
-                        border.color: index === 1 ? "#FFF2A8" : revealPopup.revealColor
-                        opacity: 0.2 + index * 0.12
-                        RotationAnimation on rotation {
-                            running: revealPopup.opened && settingsController.state.animationsEnabled
-                            from: index % 2 ? 360 : 0
-                            to: index % 2 ? 0 : 360
-                            duration: 3300 + index * 900
-                            loops: Animation.Infinite
-                        }
-                    }
-                }
-
-                Repeater {
-                    model: 12
-                    Text {
-                        required property int index
-                        readonly property var glyphs: ["✦", "◇", "✧", "☾", "✶", "✺"]
-                        text: glyphs[index % glyphs.length]
-                        color: index % 3 === 0 ? "#FFF2A8" : revealPopup.revealColor
-                        font.pixelSize: index % 2 ? 14 : 20
-                        font.weight: Font.Bold
-                        x: parent.width / 2 + Math.cos(index * Math.PI / 6) * (parent.width / 2 - 24) - width / 2
-                        y: parent.height / 2 + Math.sin(index * Math.PI / 6) * (parent.height / 2 - 24) - height / 2
-                        SequentialAnimation on opacity {
-                            running: revealPopup.opened && settingsController.state.animationsEnabled
-                            loops: Animation.Infinite
-                            PauseAnimation { duration: index * 65 }
-                            NumberAnimation { from: 0.18; to: 1; duration: 380 }
-                            NumberAnimation { to: 0.2; duration: 620 }
-                        }
-                    }
-                }
-
-                RotationAnimation on rotation {
-                    running: revealPopup.opened && settingsController.state.animationsEnabled
-                    from: 0
-                    to: 360
-                    duration: 14000
-                    loops: Animation.Infinite
-                }
-            }
+            animationStyle: revealPopup.result.animationStyle || ""
+            effectColor: revealPopup.result.rarityColor || theme.colors.primary
+            active: revealPopup.opened && revealPopup.done
+            progress: revealPopup.travel
+            mode: "reveal"
+            opacity: 0.3
         }
-
         ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: revealPopup.compactLayout ? 14 : 20
-            spacing: 6
-            Text {
-                Layout.alignment: Qt.AlignHCenter
-                text: revealPopup.revealProgress < 0.58
-                      ? (revealPopup.animationStyle === "strike-apex"
-                         ? "EL UNIVERSO SE DETIENE… STRIKE HA LLEGADO"
-                         : revealPopup.animationStyle === "arcane-mage"
-                         ? "EL FIRMAMENTO RESPONDE AL GATO MAGO…"
-                         : revealPopup.animationStyle === "playera-prismatic"
-                           ? "¡EL CAOS PRISMÁTICO ESTÁ DESPERTANDO!"
-                            : revealPopup.animationStyle === "zarking-cyber"
-                              ? "SINCRONIZANDO EL NÚCLEO ZARKING…"
-                              : revealPopup.animationStyle === "blackbull-noir"
-                                ? "LAS LUCES DEL CLUB BLACK BULL SE ENCIENDEN…"
-                              : revealPopup.resultRarity >= 4 ? "UNA PRESENCIA EXTRAORDINARIA…" : "DESCUBRIENDO TU GATO…")
-                      : revealPopup.result.isNew
-                        ? "¡NUEVO GATO DESBLOQUEADO!"
-                        : "¡AURA MEJORADA! · NIVEL " + Number(revealPopup.result.effectLevel || 1)
-                color: revealPopup.revealProgress < 0.58 ? theme.colors.text : revealPopup.revealColor
-                font.pixelSize: 11
-                font.weight: Font.Bold
-                font.letterSpacing: 1.4
-            }
-
-            Item {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-
-                Rectangle {
-                    id: revealCard
-                    objectName: "catRevealCard"
-                    anchors.centerIn: parent
-                    width: Math.min(380, parent.width - 18)
-                    height: Math.min(380, parent.height - 4)
-                    radius: 24
-                    color: theme.colors.surfaceRaised
-                    border.width: revealPopup.resultRarity >= 6 ? 6 : revealPopup.resultRarity >= 5 ? 4 : revealPopup.resultRarity >= 4 ? 3 : 2
-                    border.color: revealPopup.revealColor
-                    opacity: Math.max(0, Math.min(1, (revealPopup.revealProgress - 0.57) / 0.16))
-                    readonly property real entrance: Math.max(0, Math.min(1, (revealPopup.revealProgress - 0.57) / 0.43))
-                    scale: (revealPopup.strikeApex ? 0.82 : 0.66) + entrance * (revealPopup.strikeApex ? 0.18 : 0.34)
-                    rotation: revealPopup.strikeApex ? 0 : -7 + entrance * 7
-                    layer.enabled: revealPopup.strikeApex
-
-                    Rectangle {
-                        anchors.fill: parent
-                        anchors.margins: 7
-                        radius: 18
-                        color: "transparent"
-                        border.width: 1
-                        border.color: Qt.rgba(revealPopup.revealColor.r, revealPopup.revealColor.g, revealPopup.revealColor.b, 0.5)
-                    }
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: revealPopup.compactLayout ? 12 : 16
-                        spacing: revealPopup.compactLayout ? 3 : 6
-                        Text {
-                            Layout.alignment: Qt.AlignHCenter
-                            text: revealPopup.rarityTitle
-                            color: revealPopup.revealColor
-                            font.pixelSize: 10
-                            font.weight: Font.Bold
-                            font.letterSpacing: 2
-                        }
-                        Item {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            CatAvatar {
-                                anchors.centerIn: parent
-                                width: Math.min(revealPopup.compactLayout ? 132 : 176, parent.height - 2)
-                                height: width
-                                source: revealPopup.result.source || ""
-                                rarity: revealPopup.resultRarity
-                                rarityColor: revealPopup.revealColor
-                                animationStyle: revealPopup.result.animationStyle || "standard"
-                                effectLevel: Number(revealPopup.result.effectLevel || 0)
-                                animatedEffects: revealPopup.opened && revealPopup.revealProgress >= 0.66 && settingsController.state.animationsEnabled
-                            }
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: revealPopup.result.name || ""
-                            color: theme.colors.text
-                            font.pixelSize: revealPopup.compactLayout ? 20 : 25
-                            font.weight: Font.Bold
-                            horizontalAlignment: Text.AlignHCenter
-                            elide: Text.ElideRight
-                        }
-                        Text {
-                            Layout.alignment: Qt.AlignHCenter
-                            text: revealPopup.result.stars || ""
-                            color: revealPopup.revealColor
-                            font.pixelSize: revealPopup.compactLayout ? 17 : 21
-                            font.letterSpacing: 5
-                        }
-                        Rectangle {
-                            Layout.alignment: Qt.AlignHCenter
-                            Layout.preferredWidth: auraUpgradeText.implicitWidth + 22
-                            Layout.preferredHeight: revealPopup.result.effectUpgraded === true ? 28 : 0
-                            visible: revealPopup.result.effectUpgraded === true
-                            radius: 10
-                            color: Qt.rgba(revealPopup.revealColor.r, revealPopup.revealColor.g,
-                                           revealPopup.revealColor.b, 0.16)
-                            border.width: 1
-                            border.color: revealPopup.revealColor
-                            Text {
-                                id: auraUpgradeText
-                                anchors.centerIn: parent
-                                text: "✦ AURA " + Number(revealPopup.result.effectLevel || 1)
-                                    + " · " + String(revealPopup.result.effectName || "DESTELLO").toUpperCase()
-                                color: revealPopup.revealColor
-                                font.pixelSize: 10
-                                font.weight: Font.Bold
-                                font.letterSpacing: 0.8
-                            }
-                        }
-                    }
-                }
-            }
-
+            anchors.fill: parent; spacing: 14
             RowLayout {
                 Layout.fillWidth: true
-                opacity: Math.max(0, Math.min(1, (revealPopup.revealProgress - 0.82) / 0.18))
-                enabled: revealPopup.revealProgress >= 0.98
-                Item { Layout.fillWidth: true }
+                Text { Layout.fillWidth: true; text: revealPopup.done ? "Tu nuevo compañero" : "Abriendo " + (revealPopup.result.boxName || "regalo") + "…"; color: theme.colors.text; font.pixelSize: 22; font.bold: true }
                 XButton {
-                    objectName: "catRevealEquipButton"
-                    visible: revealPopup.result.isNew === true
-                    text: "Equipar ahora"
-                    kind: "secondary"
-                    onClicked: { revealPopup.close(); catController.equip(revealPopup.result.catId) }
+                    objectName: "catRevealSkipToggle"
+                    text: checked ? "✓ Omitir animación" : "Omitir animación"
+                    checkable: true; checked: root.cats.skipAnimation || false
+                    kind: checked ? "primary" : "ghost"
+                    onClicked: {
+                        catController.setSkipAnimation(checked)
+                        if (checked) { spin.stop(); revealPopup.travel = 1; catController.finishOpening() }
+                    }
                 }
-                XButton { objectName: "catRevealContinueButton"; text: "Continuar"; onClicked: revealPopup.close() }
+            }
+            Rectangle {
+                id: reelViewport
+                Layout.fillWidth: true; Layout.preferredHeight: 152; visible: (revealPopup.result.reel || []).length > 0; clip: true; radius: 12; color: theme.colors.surface
+                Row {
+                    x: reelViewport.width / 2 - (2 + (Number(revealPopup.result.winningIndex || 34) - 2) * revealPopup.travel) * 146 - 69
+                    y: 9; spacing: 8
+                    Repeater {
+                        model: revealPopup.result.reel || []
+                        Rectangle {
+                            required property var modelData
+                            width: 138; height: 134; radius: 10; color: theme.colors.surfaceRaised
+                            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 4; color: modelData.rarityColor }
+                            Column {
+                                anchors.centerIn: parent; width: parent.width - 12; spacing: 5
+                                Image { anchors.horizontalCenter: parent.horizontalCenter; width: 78; height: 78; source: modelData.source; fillMode: Image.PreserveAspectFit }
+                                Text { width: parent.width; text: modelData.name; color: theme.colors.text; font.pixelSize: 9; elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter }
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: modelData.price; color: modelData.rarityColor; font.pixelSize: 11 }
+                            }
+                        }
+                    }
+                }
+                Rectangle { anchors.horizontalCenter: parent.horizontalCenter; width: 3; height: parent.height; color: "#FFD75E" }
+                Text { anchors.horizontalCenter: parent.horizontalCenter; text: "▼"; color: "#FFD75E"; font.pixelSize: 21 }
+            }
+            RowLayout {
+                objectName: "catRevealCard"
+                Layout.fillWidth: true; Layout.fillHeight: true; opacity: revealPopup.done ? 1 : 0
+                CatAvatar { Layout.preferredWidth: 100; Layout.preferredHeight: 100; source: revealPopup.result.source || ""; rarity: Number(revealPopup.result.rarity || 1); rarityColor: revealPopup.result.rarityColor || theme.colors.primary; animationStyle: revealPopup.result.animationStyle || "standard"; effectLevel: Number(revealPopup.result.effectLevel || 0); animatedEffects: revealPopup.done && settingsController.state.animationsEnabled }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Text { text: revealPopup.result.isNew ? "NUEVO DESCUBRIMIENTO" : "OTRA COPIA PARA TU COLECCIÓN"; color: revealPopup.result.rarityColor || theme.colors.primary; font.pixelSize: 10; font.bold: true }
+                    Text { Layout.fillWidth: true; text: revealPopup.result.name || ""; color: theme.colors.text; font.pixelSize: 24; font.bold: true; elide: Text.ElideRight }
+                    Text { text: (revealPopup.result.stars || "") + "   ·   " + (revealPopup.result.price || ""); color: revealPopup.result.rarityColor || theme.colors.primary; font.pixelSize: 16 }
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true; enabled: revealPopup.done
+                XButton { text: "Vender · " + (revealPopup.result.price || ""); kind: "success"; enabled: revealPopup.resultCanSell; onClicked: { if (catController.sellCat(revealPopup.result.catId)) revealPopup.close() } }
                 Item { Layout.fillWidth: true }
+                XButton { objectName: "catRevealEquipButton"; text: "Equipar ahora"; kind: "secondary"; onClicked: { catController.equip(revealPopup.result.catId); revealPopup.close() } }
+                XButton { objectName: "catRevealContinueButton"; text: "Conservar"; onClicked: revealPopup.close() }
             }
         }
     }
-
     Item {
         id: equipCelebration
         objectName: "catEquipCelebration"
@@ -926,12 +441,7 @@ Item {
 
     Connections {
         target: catController
-        function onRevealRequested(result) {
-            revealPopup.result = result
-            revealPopup.beginReveal()
-        }
-        function onEquippedRequested(result) {
-            equipCelebration.celebrate(result)
-        }
+        function onRevealRequested(result) { revealPopup.reveal(result) }
+        function onEquippedRequested(result) { equipCelebration.celebrate(result) }
     }
 }

@@ -41,6 +41,17 @@ class ObjectListModel(QAbstractListModel):
         self.endInsertRows()
         self.countChanged.emit()
 
+    def reconcile(self, items: list[dict], key: str):
+        """Preserve delegates when only roles change (sales, balances, equipment)."""
+        if [item.get(key) for item in items] != [item.get(key) for item in self._items]:
+            self.replace(items)
+            return
+        for row, item in enumerate(items):
+            changes = {name: value for name, value in item.items()
+                       if self._items[row].get(name) != value}
+            if changes:
+                self.update_item(row, changes)
+
     def update_item(self, row: int, updates: dict):
         if not 0 <= row < len(self._items):
             return

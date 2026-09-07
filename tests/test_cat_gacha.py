@@ -112,6 +112,7 @@ class CatGachaTests(unittest.TestCase):
             self.assertTrue(daily["isNew"])
             self.assertFalse(controller.state["dailyAvailable"])
             self.assertEqual(controller.state["earnedRolls"], 1)
+            controller.finishOpening()
             earned = controller.roll()
             self.assertTrue(earned["isNew"])
             self.assertEqual(controller.state["earnedRolls"], 0)
@@ -221,11 +222,12 @@ class CatGachaTests(unittest.TestCase):
             )
             controller._unlocked = set(controller._by_id)
             controller._last_daily_roll = today.isoformat()
-            controller._earned_rolls = 2
+            controller._wallet = 200
             controller._refresh()
             controller._persist()
 
             first = controller.roll()
+            controller.finishOpening()
             second = controller.roll()
             self.assertFalse(first["isNew"])
             self.assertTrue(first["effectUpgraded"])

@@ -8,36 +8,66 @@ XCard {
     property string status: ""
     property bool busy: false
     property bool compact: false
-    implicitHeight: compact ? 48 : 68
-    RowLayout {
+    readonly property real fraction: Math.max(0, Math.min(1, value))
+    readonly property bool animate: busy && visible && settingsController.state.animationsEnabled
+    property int frame: 0
+    implicitHeight: compact ? 78 : 90
+    Accessible.role: Accessible.ProgressBar
+    Accessible.name: status
+    Accessible.description: value < 0 ? "Preparando" : Math.round(fraction * 100) + "%"
+    Timer { interval: 140; repeat: true; running: root.animate; onTriggered: root.frame = 1 - root.frame }
+
+    ColumnLayout {
         anchors.fill: parent
-        anchors.margins: root.compact ? 9 : 14
-        spacing: root.compact ? 9 : 14
-        Rectangle {
-            width: 8; height: 8; radius: 4
-            color: root.busy ? theme.colors.accent : root.value >= 1 ? theme.colors.success : theme.colors.primary
-            SequentialAnimation on opacity {
-                running: root.busy && settingsController.state.animationsEnabled
-                loops: Animation.Infinite
-                NumberAnimation { to: 0.35; duration: 520 }
-                NumberAnimation { to: 1; duration: 520 }
-            }
-        }
-        ColumnLayout {
+        anchors.margins: 12
+        spacing: 2
+        RowLayout {
             Layout.fillWidth: true
-            spacing: root.compact ? 4 : 8
-            Text { text: root.status; color: theme.colors.text; font.pixelSize: root.compact ? 11 : 12; elide: Text.ElideRight; Layout.fillWidth: true }
-            ProgressBar {
-                Layout.fillWidth: true
-                value: Math.max(0, root.value)
-                indeterminate: root.value < 0
-                background: Rectangle { implicitHeight: 5; radius: 3; color: theme.colors.surfaceSoft }
-                contentItem: Item {
-                    implicitHeight: 5
-                    Rectangle { width: parent.width * Math.max(0, Math.min(1, root.value)); height: parent.height; radius: 3; color: theme.colors.primary; Behavior on width { NumberAnimation { duration: 180 } } }
+            Text { Layout.fillWidth: true; text: root.status; color: theme.colors.text; font.pixelSize: 11; elide: Text.ElideRight }
+            Text { text: root.value < 0 ? "Preparando…" : Math.round(root.fraction * 100) + "%"; color: root.fraction >= 1 ? theme.colors.success : theme.colors.textMuted; font.pixelSize: 11; font.bold: true }
+        }
+        Item {
+            id: track
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            readonly property real runnerX: Math.max(0, width - 58) * root.fraction
+            Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 7; radius: 3; color: theme.colors.surfaceSoft }
+            Item {
+                anchors.left: parent.left
+                anchors.bottom: parent.bottom
+                width: cat.x + (root.fraction > 0 ? 28 : 0)
+                height: 12
+                clip: true
+                Column {
+                    width: parent.width; y: root.animate && root.frame ? 1 : 0
+                    Repeater {
+                        model: ["#FF647C", "#FFB45B", "#FFE779", "#77DFA1", "#64C7FF", "#AD8BFA"]
+                        Rectangle { required property string modelData; width: parent.width; height: 2; color: modelData; opacity: 0.85 }
+                    }
+                }
+            }
+            Item {
+                id: cat
+                objectName: "progressCat"
+                x: track.runnerX
+                anchors.bottom: parent.bottom
+                width: 58; height: 39
+                Behavior on x { enabled: settingsController.state.animationsEnabled; NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+                Image {
+                    anchors.fill: parent
+                    source: "../../../../assets/progress/cat-run-1.png"
+                    sourceClipRect: Qt.rect(410, 430, 830, 550)
+                    fillMode: Image.PreserveAspectFit; smooth: false
+                    visible: !root.animate || root.frame === 0
+                }
+                Image {
+                    anchors.fill: parent
+                    source: "../../../../assets/progress/cat-run-2.png"
+                    sourceClipRect: Qt.rect(200, 340, 1000, 670)
+                    fillMode: Image.PreserveAspectFit; smooth: false
+                    visible: root.animate && root.frame === 1
                 }
             }
         }
-        Text { text: root.value >= 0 ? Math.round(root.value * 100) + "%" : "•••"; color: theme.colors.textMuted; font.pixelSize: 11 }
     }
 }
