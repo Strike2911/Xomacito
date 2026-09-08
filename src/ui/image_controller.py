@@ -486,7 +486,7 @@ class ImageController(QObject):
                 )
         if is_instagram_post_url(url):
             from src.core.browser_cookies import cookie_options as configured_cookies
-            cookie_options = {"quiet": True, **configured_cookies(self.settings)}
+            cookie_options = {"quiet": True, **configured_cookies(self.settings, url)}
             info = extract_instagram_image_post_info(url, ydl_options=cookie_options)
             if info:
                 image_urls = info.get("xomacito_images") or [info.get("url") or info.get("thumbnail")]

@@ -1079,9 +1079,9 @@ class DownloadController(QObject):
             on_error=lambda message, detail: self._operation_error(f"Análisis fallido: {message}", detail),
         )
 
-    def _cookie_options(self):
+    def _cookie_options(self, url=None):
         from src.core.browser_cookies import cookie_options
-        options = cookie_options(self.settings)
+        options = cookie_options(self.settings, url or self._state.get("url", ""))
         return options, bool(options)
 
     def _analyze_url_worker(self, url: str):
@@ -1120,7 +1120,7 @@ class DownloadController(QObject):
             }
         if not instagram_url:
             options["playlist_items"] = "1"
-        cookie, using_cookies = self._cookie_options()
+        cookie, using_cookies = self._cookie_options(url)
         captured = io.StringIO()
         try:
             with redirect_stdout(captured):
@@ -1820,7 +1820,7 @@ class DownloadController(QObject):
             })
             if options.get("cleanSubtitle"):
                 ydl_options["convertsubtitles"] = "srt"
-        cookie, using_cookies = self._cookie_options()
+        cookie, using_cookies = self._cookie_options(options.get("url"))
         partial = (
             options.get("fragmentEnabled")
             and not options.get("fragmentRanges")

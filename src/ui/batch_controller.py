@@ -375,9 +375,9 @@ class BatchController(QObject):
             on_error=lambda message, detail, current=job: self._analysis_failed(current, message, detail),
         )
 
-    def _cookie_options(self):
+    def _cookie_options(self, url=None):
         from src.core.browser_cookies import cookie_options
-        options = cookie_options(self.settings)
+        options = cookie_options(self.settings, url or self._state.get("url", ""))
         return options, bool(options)
 
     def _analyze_worker(self, url):
@@ -390,7 +390,7 @@ class BatchController(QObject):
         try:
             info = extract_info_resilient(url, options, download=False)
         except Exception:
-            cookies, using = self._cookie_options()
+            cookies, using = self._cookie_options(url)
             if not using:
                 raise
             authenticated = dict(options)

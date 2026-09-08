@@ -69,12 +69,12 @@ def playlist_audio_postprocessors(codec: str = "mp3", quality: str = "192") -> l
     }]
 
 
-def _configured_cookie_options(main_app) -> dict:
+def _configured_cookie_options(main_app, url="") -> dict:
     """Devuelve las cookies configuradas sin cargarlas para contenido publico."""
     from .browser_cookies import cookie_options
     owner = getattr(main_app, "owner", None)
     if owner is not None and hasattr(owner, "settings"):
-        return cookie_options(owner.settings)
+        return cookie_options(owner.settings, url)
     mode = getattr(main_app, "cookies_mode_saved", "No usar")
     if mode == "Archivo Manual..." and getattr(main_app, "cookies_path", ""):
         return {"cookiefile": main_app.cookies_path}
@@ -99,7 +99,7 @@ def _extract_public_then_authenticated(main_app, url: str, options: dict, *, dow
             url, dict(options), download=download, progress_callback=progress_callback
         )
     except Exception:
-        cookie_options = _configured_cookie_options(main_app)
+        cookie_options = _configured_cookie_options(main_app, url)
         if not cookie_options:
             raise
         authenticated = dict(options)

@@ -30,6 +30,7 @@ IDEA_CONTRIBUTORS = [
     "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan",
 ]
 PUBLIC_VERSION_BY_INTERNAL = {
+    "4.0.22": "1.2.3",
     "4.0.21": "1.2.2",
     "4.0.20": "1.2.1",
     "4.0.19": "1.2",
@@ -41,6 +42,20 @@ PUBLIC_VERSION_BY_INTERNAL = {
 }
 PUBLIC_BUGFIX_NOTE = "- Arreglo de bugs de la versión 1.0."
 RELEASE_NOTICES = {
+    "4.0.22": {
+        "eyebrow": "XOMACITO 1.2.3", "title": "Más espacio. TikTok conectado.",
+        "subtitle": "ACTUALIZACIÓN LIGERA",
+        "message": "Una caja más cómoda y una conexión local para tus descargas de TikTok.",
+        "highlights": [
+            "Portada y acciones lado a lado; diseño adaptable sin recortes en ventanas bajas.",
+            "Contenido y probabilidades desplegables, con desplazamiento integrado al tema.",
+            "Importa tu sesión de TikTok una vez desde Configuración; se usa automáticamente en Descargar y Cola.",
+            "Solo se conservan cookies de TikTok. Puedes renovar o desconectar la sesión.",
+        ],
+        "contributors": IDEA_CONTRIBUTORS,
+        "closing": "La exportación inicial requiere tu autorización en el navegador.",
+        "platinumCelebration": False, "smoothMotionPromotion": False,
+    },
     "4.0.21": {
         "eyebrow": "XOMACITO 1.2.2", "title": "OG Colección",
         "subtitle": "UNA CAJA, LOS ORIGINALES",

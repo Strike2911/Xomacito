@@ -151,7 +151,21 @@ Item {
         ColumnLayout {
             spacing: 14
             SectionTitle { Layout.fillWidth: true; eyebrow: "ACCESO"; title: "Cookies bajo tu control"; description: "Úsalas sólo en sitios que requieran sesión. Xomacito no las sube a ningún servidor." }
-            LabeledControl { Layout.fillWidth: true; label: "Fuente de cookies"; XComboBox { Layout.fillWidth: true; model: ["No usar", "Chrome", "Edge", "Firefox", "Brave", "Opera", "Vivaldi", "Archivo Manual..."]; currentIndex: Math.max(0, find(viewState.cookiesMode)); onActivated: settingsController.setValue("cookiesMode", currentText) } }
+            XCard {
+                Layout.fillWidth: true; implicitHeight: tiktokSessionControls.implicitHeight + 28
+                ColumnLayout {
+                    id: tiktokSessionControls
+                    anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 14; spacing: 10
+                    Text { text: viewState.tiktokConnected ? "TikTok conectado" : "Conectar TikTok"; color: theme.colors.text; font.pixelSize: 16; font.bold: true }
+                    Text { Layout.fillWidth: true; text: "Importa una vez la sesión exportada desde Brave o Chrome. Después, Xomacito la utiliza automáticamente en TikTok. Si caduca, vuelve a importarla."; color: theme.colors.textMuted; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                    RowLayout {
+                        XButton { text: viewState.tiktokConnected ? "Renovar sesión de TikTok" : "Importar sesión de TikTok"; onClicked: settingsController.importTikTokSession() }
+                        XButton { visible: viewState.tiktokConnected; text: "Desconectar"; kind: "ghost"; onClicked: settingsController.disconnectTikTokSession() }
+                        XButton { text: "Guía de exportación"; kind: "ghost"; onClicked: settingsController.openCookieExportGuide() }
+                    }
+                }
+            }
+            LabeledControl { Layout.fillWidth: true; label: "Cookies para otros sitios"; XComboBox { Layout.fillWidth: true; model: ["No usar", "Chrome", "Edge", "Firefox", "Brave", "Opera", "Vivaldi", "Archivo Manual..."]; currentIndex: Math.max(0, find(viewState.cookiesMode)); onActivated: settingsController.setValue("cookiesMode", currentText) } }
             GridLayout {
                 Layout.fillWidth: true; columns: width > 650 ? 2 : 1; columnSpacing: 12; rowSpacing: 12
                 LabeledControl { Layout.fillWidth: true; label: "Perfil (opcional)"; XTextField { Layout.fillWidth: true; text: viewState.browserProfile; placeholderText: "Default, Profile 1…"; onEditingFinished: settingsController.setValue("browserProfile", text) } }

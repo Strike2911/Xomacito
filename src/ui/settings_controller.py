@@ -66,6 +66,7 @@ class SettingsController(QObject):
             "cleanTitles": settings.get("clean_titles", True),
             "openExplorerAfterDownload": settings.get("open_explorer_after_download", True),
             "keepRunningInBackground": settings.get("keep_running_in_background", False),
+            "tiktokConnected": bool(settings.get("tiktok_cookies_path", "")),
             "cookiesMode": settings.get("cookies_mode", "No usar"),
             "cookiesPath": settings.get("cookies_path", ""),
             "selectedBrowser": settings.get("selected_browser", "chrome"),
@@ -159,6 +160,31 @@ class SettingsController(QObject):
             self.settings.set(mapping[key], value)
 
     @Slot()
+    def importTikTokSession(self):
+        from src.core.browser_cookies import import_tiktok_cookies
+        path, _ = QFileDialog.getOpenFileName(None, "Exportación local de TikTok", str(Path.home() / "Downloads"), "Cookies (*.txt);;Todos (*.*)")
+        if not path:
+            return
+        try:
+            destination = self.settings.directory / "cookies" / "tiktok.txt"
+            import_tiktok_cookies(path, destination)
+            self.settings.set("tiktok_cookies_path", str(destination))
+            self._set_state(tiktokConnected=True, status="Sesión de TikTok importada. Se usará automáticamente al descargar enlaces de TikTok.")
+            self.notificationRequested.emit("success", "TikTok conectado", "Xomacito conservó solo las cookies de TikTok. Vuelve a analizar tu video.")
+        except (OSError, ValueError) as error:
+            self.notificationRequested.emit("error", "No se pudo importar TikTok", str(error))
+
+    @Slot()
+    def disconnectTikTokSession(self):
+        self.settings.set("tiktok_cookies_path", "")
+        (self.settings.directory / "cookies" / "tiktok.txt").unlink(missing_ok=True)
+        self._set_state(tiktokConnected=False, status="Sesión de TikTok desconectada.")
+
+    @Slot()
+    def openCookieExportGuide(self):
+        QDesktopServices.openUrl(QUrl("https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp"))
+
+    @Slot()
     def chooseCookiesFile(self):
         path, _ = QFileDialog.getOpenFileName(None, "Archivo cookies.txt", "", "Netscape cookies (*.txt);;Todos (*.*)")
         if path:
@@ -187,7 +213,7 @@ class SettingsController(QObject):
 
     def _cookie_options(self):
         from src.core.browser_cookies import cookie_options
-        return cookie_options(self.settings)
+        return cookie_options(self.settings, self._state.get("cookieTestUrl", ""))
 
     @Slot()
     def testCookies(self):

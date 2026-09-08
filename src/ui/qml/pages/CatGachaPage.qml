@@ -7,7 +7,8 @@ Item {
     id: root
     property int section: 0
     property bool showContents: false
-    property bool dense: height <= 520
+    property bool dense: height <= 650
+    readonly property bool wide: width >= 900
     readonly property bool revealOpen: revealPopup.opened
     signal revealFinished()
     readonly property var cats: catController.state
@@ -17,17 +18,17 @@ Item {
     onRarityFilterChanged: catController.setInventoryFilter(search, rarityFilter)
 
     ColumnLayout {
-        anchors.fill: parent; spacing: 12
+        anchors.fill: parent; spacing: root.dense ? 8 : 12
         RowLayout {
             Layout.fillWidth: true
             ColumnLayout {
                 spacing: 3
                 Text { text: "PERSONALIZACIÓN"; color: theme.colors.primary; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1.2 }
-                Text { text: root.section === 0 ? "Una caja. Un nuevo compañero." : "Tu colección, a tu manera."; color: theme.colors.text; font.pixelSize: 24; font.weight: Font.DemiBold }
+                Text { text: root.section === 0 ? "Una caja. Un nuevo compañero." : "Tu colección, a tu manera."; color: theme.colors.text; font.pixelSize: root.dense ? 20 : 24; font.weight: Font.DemiBold }
             }
             Item { Layout.fillWidth: true }
             XCard {
-                implicitWidth: 168; implicitHeight: 58; cardColor: theme.colors.surfaceRaised
+                implicitWidth: 144; implicitHeight: root.dense ? 46 : 58; cardColor: theme.colors.surfaceRaised
                 Column {
                     anchors.centerIn: parent; spacing: 2
                     Text { text: root.cats.wallet || "$0.00"; color: theme.colors.success; font.pixelSize: 23; font.bold: true }
@@ -37,21 +38,23 @@ Item {
         }
         RowLayout {
             Layout.fillWidth: true
-            XButton { objectName: "catBoxesTab"; text: "Cajas"; kind: root.section === 0 ? "primary" : "secondary"; onClicked: root.section = 0 }
-            XButton { objectName: "catInventoryTab"; text: "Mis gatos · " + root.cats.ownedCount; kind: root.section === 1 ? "primary" : "secondary"; onClicked: root.section = 1 }
+            XButton { objectName: "catBoxesTab"; compact: root.dense; text: "Cajas"; kind: root.section === 0 ? "primary" : "secondary"; onClicked: root.section = 0 }
+            XButton { objectName: "catInventoryTab"; compact: root.dense; text: "Mis gatos · " + root.cats.ownedCount; kind: root.section === 1 ? "primary" : "secondary"; onClicked: root.section = 1 }
             Item { Layout.fillWidth: true }
             XButton {
                 objectName: "catSkipAnimationToggle"
+                compact: root.dense
                 text: checked ? "✓ Omitir animación" : "Omitir animación"
                 checkable: true; checked: root.cats.skipAnimation || false
                 kind: checked ? "primary" : "ghost"
                 onClicked: catController.setSkipAnimation(checked)
                 Accessible.description: "Conservar esta preferencia para todas las aperturas"
             }
-            Text { text: "10 descargas válidas = $1.00 virtual"; color: theme.colors.textMuted; font.pixelSize: 11 }
+            Text { visible: !root.dense; text: "10 descargas válidas = $1.00 virtual"; color: theme.colors.textMuted; font.pixelSize: 11 }
         }
         XCard {
-            Layout.fillWidth: true; implicitHeight: 86; cardColor: theme.colors.surfaceRaised
+            visible: root.section === 1
+            Layout.fillWidth: true; implicitHeight: root.dense ? 72 : 86; cardColor: theme.colors.surfaceRaised
             RowLayout {
                 anchors.fill: parent; anchors.margins: 12; spacing: 16
                 CatAvatar { Layout.preferredWidth: 60; Layout.preferredHeight: 60; source: root.cats.equippedSource; rarity: root.cats.equippedRarity; rarityColor: root.cats.equippedColor; animationStyle: root.cats.equippedAnimationStyle; effectLevel: root.cats.equippedEffectLevel; animatedEffects: settingsController.state.animationsEnabled }
@@ -83,17 +86,24 @@ Item {
             visible: root.section === 0
             Layout.fillWidth: true; Layout.fillHeight: true
             contentWidth: availableWidth; clip: true
+            ScrollBar.vertical: XScrollBar {}
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
             ColumnLayout {
-                width: boxesScroll.availableWidth; spacing: 14
+                width: boxesScroll.availableWidth - 12; spacing: 14
                 XCard {
-                    Layout.fillWidth: true; implicitHeight: ogLayout.implicitHeight + 36
+                    Layout.fillWidth: true; implicitHeight: ogLayout.implicitHeight + 40
                     border.color: "#9276B8"
-                    ColumnLayout {
+                    GridLayout {
                         id: ogLayout
+                        columns: root.wide ? 2 : 1
+                        columnSpacing: 28; rowSpacing: 20
                         anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
-                        anchors.margins: 18; spacing: 14
+                        anchors.margins: 20
                         Rectangle {
-                            Layout.fillWidth: true; Layout.preferredHeight: root.width < 700 ? 260 : 220
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: root.wide ? root.width * 0.4 : -1
+                            Layout.preferredHeight: root.wide ? 272 : 212
+                            Layout.alignment: Qt.AlignTop
                             radius: 16; clip: true
                             gradient: Gradient {
                                 orientation: Gradient.Horizontal
@@ -104,14 +114,14 @@ Item {
                             Text { anchors.left: parent.left; anchors.top: parent.top; anchors.margins: 18; text: "XOMACITO / COLECCIÓN 001"; color: "#C7B0E5"; font.pixelSize: 10; font.letterSpacing: 2 }
                             Row {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                anchors.top: parent.top; anchors.topMargin: 40; spacing: root.width < 700 ? 12 : 30
+                                anchors.top: parent.top; anchors.topMargin: root.wide ? 66 : 40; spacing: root.wide ? 16 : 24
                                 Repeater {
                                     model: root.cats.ogFeatured || []
                                     Column {
                                         required property var modelData
                                         spacing: 7
                                         Rectangle {
-                                            width: root.width < 700 ? 76 : 100; height: width; radius: 12
+                                            width: root.wide ? Math.max(70, Math.min(98, root.width * 0.072)) : 86; height: width; radius: 12
                                             color: "#202034"; border.width: 2; border.color: "#EDB5FF"
                                             Image { anchors.fill: parent; anchors.margins: 7; source: modelData.source; fillMode: Image.PreserveAspectFit; asynchronous: true }
                                         }
@@ -119,21 +129,30 @@ Item {
                                     }
                                 }
                             }
-                            Text { anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: 13; text: "OG COLECCIÓN"; color: "#FFFFFF"; font.pixelSize: 27; font.bold: true; font.letterSpacing: 3 }
+                            Text { anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: 13; text: "OG COLECCIÓN"; color: "#FFFFFF"; font.pixelSize: root.wide ? 25 : 23; font.bold: true; font.letterSpacing: 2 }
                         }
-                        Text { Layout.fillWidth: true; text: "Los originales. Una sola colección."; color: theme.colors.text; font.pixelSize: 22; font.bold: true; wrapMode: Text.WordWrap }
-                        Text { Layout.fillWidth: true; text: "Strike, Player y Zarking son los únicos míticos. Cada apertura entrega un gato de esta colección; pueden salir repetidos."; color: theme.colors.textMuted; font.pixelSize: 12; wrapMode: Text.WordWrap }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            XButton { objectName: "catBox_og"; text: "Abrir OG · $1.00"; enabled: !root.cats.opening && root.cats.walletCents >= 100; onClicked: catController.openBox("og") }
-                            XButton { objectName: "catRollButton"; text: root.cats.dailyAvailable ? "Regalo diario · Gratis" : "Regalo usado hoy"; kind: "secondary"; enabled: root.cats.dailyAvailable && !root.cats.opening; onClicked: catController.openBox("daily") }
-                            Item { Layout.fillWidth: true }
+                        ColumnLayout {
+                            Layout.fillWidth: true; Layout.alignment: Qt.AlignTop
+                            spacing: 14
+                            Text { text: "OG COLECCIÓN"; color: "#D3ABFF"; font.pixelSize: 11; font.bold: true; font.letterSpacing: 1.5 }
+                            Text { Layout.fillWidth: true; text: "Los originales, juntos."; color: theme.colors.text; font.pixelSize: 25; font.bold: true; wrapMode: Text.WordWrap }
+                            Text { Layout.fillWidth: true; text: "Strike, Player y Zarking son los únicos míticos de esta caja. Cada apertura entrega un gato; pueden salir repetidos."; color: theme.colors.textMuted; font.pixelSize: 13; lineHeight: 1.2; wrapMode: Text.WordWrap }
+                            RowLayout {
+                                Layout.fillWidth: true; spacing: 10
+                                XButton { objectName: "catBox_og"; text: "Abrir OG · $1.00"; enabled: !root.cats.opening && root.cats.walletCents >= 100; onClicked: catController.openBox("og") }
+                                XButton { objectName: "catRollButton"; text: root.cats.dailyAvailable ? "Regalo diario · Gratis" : "Regalo usado hoy"; kind: "secondary"; enabled: root.cats.dailyAvailable && !root.cats.opening; onClicked: catController.openBox("daily") }
+                            }
+                            Text { Layout.fillWidth: true; text: root.cats.downloadProgress + "/10 descargas para tu próximo $1.00 virtual"; color: theme.colors.textMuted; font.pixelSize: 11 }
+                            Rectangle {
+                                Layout.fillWidth: true; height: 5; radius: 3; color: theme.colors.backgroundAlt
+                                Rectangle { height: parent.height; width: parent.width * root.cats.downloadProgressRatio; radius: 3; color: "#B596DD" }
+                            }
+                            XButton { text: root.showContents ? "Ocultar contenido y probabilidades" : "Ver contenido y probabilidades"; compact: true; kind: "ghost"; onClicked: root.showContents = !root.showContents }
                         }
-                        Text { Layout.fillWidth: true; text: root.cats.boxes && root.cats.boxes.length ? root.cats.boxes[0].odds : ""; color: theme.colors.textMuted; font.pixelSize: 11; wrapMode: Text.WordWrap }
-                        Text { Layout.fillWidth: true; text: "Mítico: 0.2% total, repartido por igual entre los tres. Las probabilidades son independientes en cada apertura."; color: theme.colors.textDim; font.pixelSize: 11; wrapMode: Text.WordWrap }
-                        XButton { text: root.showContents ? "Ocultar contenido" : "Ver contenido y probabilidades"; kind: "ghost"; onClicked: root.showContents = !root.showContents }
                     }
                 }
+                Text { visible: root.showContents; Layout.fillWidth: true; text: root.cats.boxes && root.cats.boxes.length ? root.cats.boxes[0].odds : ""; color: theme.colors.textMuted; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                Text { visible: root.showContents; Layout.fillWidth: true; text: "Mítico: 0.2% total, repartido por igual entre los tres. Cada apertura es independiente."; color: theme.colors.textMuted; font.pixelSize: 12; wrapMode: Text.WordWrap }
                 Flow {
                     visible: root.showContents
                     Layout.fillWidth: true; Layout.preferredHeight: visible ? implicitHeight : 0

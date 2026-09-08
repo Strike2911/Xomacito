@@ -12,6 +12,6 @@ from src.ui import run_qt_app
 if __name__ == "__main__":
     raise SystemExit(run_qt_app(
         project_root=ROOT,
-        app_version="1.2.2",
-        update_version="4.0.21",
+        app_version="1.2.3",
+        update_version="4.0.22",
     ))
