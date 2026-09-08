@@ -727,6 +727,8 @@ def get_video_info(url, cookie_opts=None):
         'impersonate': True, 
     }
     
+    from .audio_language import apply_audio_language
+    ydl_opts = apply_audio_language(ydl_opts, ydl_opts.get("audio_language", "Automático"))
     ydl_opts = configure_ytdlp_options(ydl_opts)
     use_cookies = False
     
@@ -762,6 +764,8 @@ def download_media(url, ydl_opts, progress_callback, cancellation_event: threadi
     """
     Descarga y procesa el medio.
     """
+    from .audio_language import apply_audio_language
+    ydl_opts = apply_audio_language(ydl_opts, ydl_opts.get("audio_language", "Automático"))
     ydl_opts = configure_ytdlp_options(ydl_opts)
     
     # 🔧 DETECTAR si hay cookies en ydl_opts

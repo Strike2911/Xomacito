@@ -119,6 +119,7 @@ class BatchController(QObject):
         self.ffmpeg = FFmpegProcessor(app_version=app_version)
         self._state = {
             "url": "", "outputPath": settings.get("batch_download_path", str(Path.home() / "Downloads")),
+            "audioLanguage": settings.get("batch_audio_language", "Automático"),
             "globalMode": "Video+Audio", "globalQuality": "Mejor Calidad (Auto)",
             "autoDownload": False, "playlistAnalysis": settings.get("batch_playlist_analysis", True),
             "fastMode": settings.get("batch_fast_mode", False), "thumbnailMode": "normal",
@@ -210,6 +211,7 @@ class BatchController(QObject):
         if key == "outputPath":
             self.settings.set("batch_download_path", str(value))
             self._refresh_tag_state()
+        elif key == "audioLanguage": self.settings.set("batch_audio_language", str(value))
         elif key == "playlistAnalysis": self.settings.set("batch_playlist_analysis", bool(value))
         elif key == "fastMode": self.settings.set("batch_fast_mode", bool(value))
         elif key == "globalEmbedAudioCover":

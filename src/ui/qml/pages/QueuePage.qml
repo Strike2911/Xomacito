@@ -618,6 +618,19 @@ Item {
                         }
                     }
 
+                    LabeledControl {
+                        Layout.fillWidth: true
+                        label: "Idioma del audio · toda la cola"
+
+                        XComboBox {
+                            Layout.fillWidth: true
+                            compact: page.dense
+                            model: ["Automático", "Español", "Inglés"]
+                            currentIndex: Math.max(0, find(viewState.audioLanguage))
+                            enabled: !viewState.running
+                            onActivated: batchController.setValue("audioLanguage", currentText)
+                        }
+                    }
                     RowLayout {
                         Layout.fillWidth: true
                         visible: !selected.jobId

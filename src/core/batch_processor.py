@@ -85,6 +85,11 @@ def _configured_cookie_options(main_app) -> dict:
 def _extract_public_then_authenticated(main_app, url: str, options: dict, *, download: bool,
                                        progress_callback=None):
     """Evita el coste de abrir/copiar cookies salvo que el sitio las necesite."""
+    if download:
+        from .audio_language import apply_audio_language
+        owner = getattr(main_app, "owner", None)
+        language = getattr(owner, "_state", {}).get("audioLanguage", "Automático")
+        options = apply_audio_language(options, language)
     try:
         return extract_info_resilient(
             url, dict(options), download=download, progress_callback=progress_callback

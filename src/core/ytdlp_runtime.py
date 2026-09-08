@@ -168,15 +168,21 @@ def friendly_ytdlp_error(error: object, log_lines: list[str] | None = None) -> s
         parts.extend(str(line) for line in log_lines)
     raw = " ".join(part.strip() for part in parts if part and part.strip())
     lowered = raw.lower()
+    if any(token in lowered for token in ("log in for access", "login required", "sign in", "private video", "members-only", "not be comfortable", "login_required")):
+        return (
+            "Este contenido requiere una sesión autorizada en la red social. "
+            "Inicia sesión allí y selecciona tu navegador o un archivo cookies.txt en Configuración > Cookies. "
+            "Después vuelve a analizar el enlace."
+        )
     if "429" in lowered or "too many requests" in lowered:
         return (
-            "YouTube limitó temporalmente las solicitudes. Xomacito probó también el cliente alternativo; "
-            "si continúa, espera unos minutos o activa Cookies en Ajustes."
+            "La red social limitó temporalmente las solicitudes (429). "
+            "Espera unos minutos antes de reintentar."
         )
     if "403" in lowered or "forbidden" in lowered:
         return (
-            "YouTube rechazó temporalmente el enlace de descarga (error 403). "
-            "Xomacito probó el cliente alternativo; si continúa, vuelve a analizar o activa Cookies en Ajustes."
+            "La red social rechazó el acceso (403). Vuelve a analizar el enlace; "
+            "si requiere una sesión, configura Cookies en Configuración."
         )
     if "video unavailable" in lowered:
         return (
@@ -188,7 +194,7 @@ def friendly_ytdlp_error(error: object, log_lines: list[str] | None = None) -> s
     if "failed to decrypt with dpapi" in lowered:
         return "Windows no pudo leer las Cookies del navegador. Usa un archivo cookies.txt exportado localmente."
 
-    error_lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    error_lines = [line.strip() for line in str(error).splitlines() if line.strip()]
     message = error_lines[-1] if error_lines else "yt-dlp no pudo analizar la URL."
     message = re.sub(r"^ERROR:\s*", "", message, flags=re.IGNORECASE)
     return message[:600]

@@ -199,6 +199,7 @@ class DownloadController(QObject):
         output = settings.get("default_download_path") or str(Path.home() / "Downloads")
         self._state: dict[str, Any] = {
             "url": "", "outputPath": output, "title": "", "mode": "Video+Audio",
+            "audioLanguage": settings.get("download_audio_language", "Automático"),
             "localFile": "", "thumbnailSource": "", "status": "Pega un enlace o importa un archivo.",
             "progress": 0.0, "busy": False, "analyzed": False, "lastOutput": "",
             "operationMode": "Rápido", "preset": settings.get("quick_preset_saved", "Archivo - H.265 Normal"),
@@ -302,6 +303,8 @@ class DownloadController(QObject):
         if key == "outputPath":
             self.settings.set("default_download_path", str(value))
             self._refresh_tag_state()
+        elif key == "audioLanguage":
+            self.settings.set("download_audio_language", str(value))
         elif key == "preset":
             self.settings.set("quick_preset_saved", str(value))
         elif key == "mode":
@@ -1113,6 +1116,7 @@ class DownloadController(QObject):
         options = configure_ytdlp_options({
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "referer": url, "noplaylist": not instagram_url, "listsubtitles": True,
+            "socket_timeout": 15, "retries": 2, "extractor_retries": 1,
             "logger": Logger(),
             "progress_hooks": [lambda _data: self.cancellation.is_set() and (_ for _ in ()).throw(UserCancelledError("Análisis cancelado."))],
         })
@@ -1555,6 +1559,7 @@ class DownloadController(QObject):
             "url": self._state["url"], "local_file": self._state["localFile"],
             "output_path": self._state["effectiveOutputPath"], "title": safe_filename(self._state["title"]),
             "mode": self._state["mode"], "video_label": self._state["selectedVideo"],
+            "audio_language": self._state["audioLanguage"],
             "audio_label": self._state["selectedAudio"], "subtitle": self._selected_subtitle(),
             "duration": self._state["duration"], "operation_mode": self._state["operationMode"],
             "thumbnail_url": (self._analysis_info or {}).get("thumbnail", ""),
@@ -1790,6 +1795,7 @@ class DownloadController(QObject):
             selector = video_id or "bestvideo+bestaudio/best"
         output_template = str(Path(options["output_path"]) / f"{options['title']}.%(ext)s")
         ydl_options: dict[str, Any] = {
+            "audio_language": options.get("audio_language", "Automático"),
             "outtmpl": output_template, "format": selector, "postprocessors": [], "noplaylist": True,
             "ffmpeg_location": self.ffmpeg.ffmpeg_path, "retries": 4, "fragment_retries": 4,
             "concurrent_fragment_downloads": 6,
@@ -2218,6 +2224,8 @@ class DownloadController(QObject):
         cancelled = self.cancellation.is_set() or "cancel" in message.lower()
         self._current_counts_as_download = False
         self._set_state(busy=False, progress=0.0, status="Proceso cancelado." if cancelled else message)
+        if self._state.get("title") == "Analizando…":
+            self._set_state(title="Análisis cancelado" if cancelled else "No se pudo analizar el enlace")
         if not cancelled:
             safe_console_print(detail)
             self.notificationRequested.emit("error", "No se pudo completar", message)

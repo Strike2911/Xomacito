@@ -30,6 +30,7 @@ IDEA_CONTRIBUTORS = [
     "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan",
 ]
 PUBLIC_VERSION_BY_INTERNAL = {
+    "4.0.20": "1.2.1",
     "4.0.19": "1.2",
     "4.0.18": "1.2",
     "4.0.17": "1.1",
@@ -39,6 +40,20 @@ PUBLIC_VERSION_BY_INTERNAL = {
 }
 PUBLIC_BUGFIX_NOTE = "- Arreglo de bugs de la versión 1.0."
 RELEASE_NOTICES = {
+    "4.0.20": {
+        "eyebrow": "XOMACITO 1.2.1", "title": "Descargas e idioma del audio",
+        "subtitle": "ACTUALIZACIÓN LIGERA",
+        "message": "Elige el idioma disponible de tus videos y utiliza el motor actualizado.",
+        "highlights": [
+            "Selector de audio Automático, Español e Inglés en Descargar y Cola; recuerda tu elección.",
+            "Motor yt-dlp 2026.08.19 con correcciones de compatibilidad para redes sociales.",
+            "Avisos claros cuando un enlace requiere iniciar sesión y configurar Cookies.",
+            "Reutiliza tus modelos y componentes instalados.",
+        ],
+        "contributors": IDEA_CONTRIBUTORS,
+        "closing": "El idioma elegido debe estar disponible en las pistas del video.",
+        "platinumCelebration": False, "smoothMotionPromotion": False,
+    },
     "4.0.19": {
         "eyebrow": "XOMACITO 1.2", "title": "Estudio y nueva temporada gatuna",
         "subtitle": "MÁS CONTROL, MENOS ESPERA",

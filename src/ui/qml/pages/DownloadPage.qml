@@ -339,6 +339,19 @@ Item {
                             }
                         }
                         LabeledControl {
+                            Layout.fillWidth: true
+                            label: "Idioma del audio (si está disponible)"
+                            visible: !viewState.imagePost && !viewState.localFile
+                            XComboBox {
+                                Layout.fillWidth: true
+                                compact: page.denseLayout
+                                model: ["Automático", "Español", "Inglés"]
+                                currentIndex: Math.max(0, find(viewState.audioLanguage))
+                                enabled: !viewState.busy
+                                onActivated: downloadController.setValue("audioLanguage", currentText)
+                            }
+                        }
+                        LabeledControl {
                             visible: !viewState.imagePost
                             Layout.fillWidth: true; compact: page.denseLayout; label: "Preset de conversión"
                             XComboBox { Layout.fillWidth: true; compact: page.denseLayout; model: viewState.mode === "Solo Audio" ? presetStore.audioPresets : presetStore.videoPresets; currentIndex: Math.max(0, find(viewState.preset)); onActivated: downloadController.setValue("preset", currentText) }

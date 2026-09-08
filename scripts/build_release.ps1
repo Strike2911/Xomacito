@@ -1,5 +1,6 @@
 param(
-    [switch]$SkipApplicationBuild
+    [switch]$SkipApplicationBuild,
+    [switch]$LightOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -109,7 +110,8 @@ if (-not $Compiler) {
 }
 
 New-Item -ItemType Directory -Path (Join-Path $ProjectRoot 'release') -Force | Out-Null
-foreach ($PackageScript in @($InstallerScript, $LightInstallerScript)) {
+$PackageScripts = if ($LightOnly) { @($LightInstallerScript) } else { @($InstallerScript, $LightInstallerScript) }
+foreach ($PackageScript in $PackageScripts) {
     $PackageName = [IO.Path]::GetFileNameWithoutExtension($PackageScript)
     $PackageProcess = Start-Process -FilePath $Compiler `
         -ArgumentList ('"' + $PackageScript + '"') -WindowStyle Hidden -PassThru -Wait `
@@ -121,10 +123,10 @@ foreach ($PackageScript in @($InstallerScript, $LightInstallerScript)) {
 }
 
 $Installer = Join-Path $ProjectRoot 'release\Xomacito-1.2-Setup.exe'
-if (-not (Test-Path -LiteralPath $Installer)) {
+if (-not $LightOnly -and -not (Test-Path -LiteralPath $Installer)) {
     throw "No se generó el instalador esperado: $Installer"
 }
-$LightInstaller = Join-Path $ProjectRoot 'release\Xomacito-1.2-Update-Light.exe'
+$LightInstaller = Join-Path $ProjectRoot 'release\Xomacito-1.2.1-Update-Light.exe'
 if (-not (Test-Path -LiteralPath $LightInstaller)) {
     throw "No se generó la actualización ligera esperada: $LightInstaller"
 }
@@ -132,5 +134,7 @@ if (-not (Test-Path -LiteralPath $LightInstaller)) {
 $UninstallerLauncher = Join-Path $ProjectRoot 'release\Desinstalar Xomacito.cmd'
 Copy-Item -LiteralPath $UninstallerLauncherSource -Destination $UninstallerLauncher -Force
 
-Get-Item -LiteralPath $Launcher, $Application, $Installer, $LightInstaller, $UninstallerLauncher |
+$Artifacts = @($Launcher, $Application, $LightInstaller, $UninstallerLauncher)
+if (-not $LightOnly) { $Artifacts += $Installer }
+Get-Item -LiteralPath $Artifacts |
     Select-Object FullName, Length, LastWriteTime
