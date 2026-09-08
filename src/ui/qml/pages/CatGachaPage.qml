@@ -6,6 +6,7 @@ import "../components"
 Item {
     id: root
     property int section: 0
+    property bool showContents: false
     property bool dense: height <= 520
     readonly property bool revealOpen: revealPopup.opened
     signal revealFinished()
@@ -84,49 +85,76 @@ Item {
             contentWidth: availableWidth; clip: true
             ColumnLayout {
                 width: boxesScroll.availableWidth; spacing: 14
-                Text { text: "ELIGE TU CAJA"; color: theme.colors.text; font.pixelSize: 12; font.bold: true; font.letterSpacing: 1 }
-                GridLayout {
-                    Layout.fillWidth: true; columns: root.width < 1000 ? 2 : 4; columnSpacing: 12; rowSpacing: 12
-                    Repeater {
-                        model: root.cats.boxes || []
-                        delegate: XCard {
-                            id: boxCard
-                            required property var modelData
-                            Layout.fillWidth: true; Layout.preferredHeight: 300
-                            border.color: boxCard.modelData.color
-                            ColumnLayout {
-                                anchors.fill: parent; anchors.margins: 16; spacing: 10
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Text { text: boxCard.modelData.id === "daily" ? "CADA DÍA" : "1 GATO POR CAJA"; color: theme.colors.textMuted; font.pixelSize: 9; font.bold: true }
-                                    Item { Layout.fillWidth: true }
-                                    Text { text: boxCard.modelData.price; color: boxCard.modelData.color; font.pixelSize: 18; font.bold: true }
-                                }
-                                Item {
-                                    Layout.fillWidth: true; Layout.preferredHeight: 78
-                                    Rectangle {
-                                        anchors.centerIn: parent; width: 96; height: 64; radius: 9
-                                        color: Qt.alpha(boxCard.modelData.color, 0.13); border.color: boxCard.modelData.color; border.width: 2
-                                        Rectangle { x: -5; y: -4; width: parent.width + 10; height: 16; radius: 5; color: Qt.darker(boxCard.modelData.color, 1.7); border.color: boxCard.modelData.color }
-                                        Rectangle { anchors.horizontalCenter: parent.horizontalCenter; width: 18; height: parent.height; color: Qt.alpha(boxCard.modelData.color, 0.25) }
-                                        Text { anchors.centerIn: parent; anchors.verticalCenterOffset: 4; text: "✦"; color: boxCard.modelData.color; font.pixelSize: 32 }
+                XCard {
+                    Layout.fillWidth: true; implicitHeight: ogLayout.implicitHeight + 36
+                    border.color: "#9276B8"
+                    ColumnLayout {
+                        id: ogLayout
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.margins: 18; spacing: 14
+                        Rectangle {
+                            Layout.fillWidth: true; Layout.preferredHeight: root.width < 700 ? 260 : 220
+                            radius: 16; clip: true
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: "#151C34" }
+                                GradientStop { position: 0.6; color: "#33244C" }
+                                GradientStop { position: 1; color: "#101924" }
+                            }
+                            Text { anchors.left: parent.left; anchors.top: parent.top; anchors.margins: 18; text: "XOMACITO / COLECCIÓN 001"; color: "#C7B0E5"; font.pixelSize: 10; font.letterSpacing: 2 }
+                            Row {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.top: parent.top; anchors.topMargin: 40; spacing: root.width < 700 ? 12 : 30
+                                Repeater {
+                                    model: root.cats.ogFeatured || []
+                                    Column {
+                                        required property var modelData
+                                        spacing: 7
+                                        Rectangle {
+                                            width: root.width < 700 ? 76 : 100; height: width; radius: 12
+                                            color: "#202034"; border.width: 2; border.color: "#EDB5FF"
+                                            Image { anchors.fill: parent; anchors.margins: 7; source: modelData.source; fillMode: Image.PreserveAspectFit; asynchronous: true }
+                                        }
+                                        Text { width: parent.width; text: modelData.name.replace("GATO ", ""); color: "#FFF3FC"; font.pixelSize: 11; font.bold: true; horizontalAlignment: Text.AlignHCenter }
                                     }
                                 }
-                                Text { Layout.fillWidth: true; text: boxCard.modelData.name; color: theme.colors.text; font.pixelSize: 19; font.bold: true; horizontalAlignment: Text.AlignHCenter }
-                                Text { Layout.fillWidth: true; Layout.fillHeight: true; text: boxCard.modelData.odds; color: theme.colors.textMuted; font.pixelSize: 10; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter }
-                                XButton {
-                                    objectName: boxCard.modelData.id === "daily" ? "catRollButton" : "catBox_" + boxCard.modelData.id
-                                    Layout.fillWidth: true
-                                    text: boxCard.modelData.available ? "Abrir · " + boxCard.modelData.price : boxCard.modelData.id === "daily" ? "Vuelve mañana" : "Saldo insuficiente"
-                                    enabled: boxCard.modelData.available
-                                    onClicked: catController.openBox(boxCard.modelData.id)
-                                }
+                            }
+                            Text { anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: 13; text: "OG COLECCIÓN"; color: "#FFFFFF"; font.pixelSize: 27; font.bold: true; font.letterSpacing: 3 }
+                        }
+                        Text { Layout.fillWidth: true; text: "Los originales. Una sola colección."; color: theme.colors.text; font.pixelSize: 22; font.bold: true; wrapMode: Text.WordWrap }
+                        Text { Layout.fillWidth: true; text: "Strike, Player y Zarking son los únicos míticos. Cada apertura entrega un gato de esta colección; pueden salir repetidos."; color: theme.colors.textMuted; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            XButton { objectName: "catBox_og"; text: "Abrir OG · $1.00"; enabled: !root.cats.opening && root.cats.walletCents >= 100; onClicked: catController.openBox("og") }
+                            XButton { objectName: "catRollButton"; text: root.cats.dailyAvailable ? "Regalo diario · Gratis" : "Regalo usado hoy"; kind: "secondary"; enabled: root.cats.dailyAvailable && !root.cats.opening; onClicked: catController.openBox("daily") }
+                            Item { Layout.fillWidth: true }
+                        }
+                        Text { Layout.fillWidth: true; text: root.cats.boxes && root.cats.boxes.length ? root.cats.boxes[0].odds : ""; color: theme.colors.textMuted; font.pixelSize: 11; wrapMode: Text.WordWrap }
+                        Text { Layout.fillWidth: true; text: "Mítico: 0.2% total, repartido por igual entre los tres. Las probabilidades son independientes en cada apertura."; color: theme.colors.textDim; font.pixelSize: 11; wrapMode: Text.WordWrap }
+                        XButton { text: root.showContents ? "Ocultar contenido" : "Ver contenido y probabilidades"; kind: "ghost"; onClicked: root.showContents = !root.showContents }
+                    }
+                }
+                Flow {
+                    visible: root.showContents
+                    Layout.fillWidth: true; Layout.preferredHeight: visible ? implicitHeight : 0
+                    spacing: 8
+                    Repeater {
+                        model: root.showContents ? (root.cats.ogContents || []) : []
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: 146; height: 148; radius: 12
+                            color: theme.colors.surfaceRaised; border.color: modelData.rarityColor
+                            Column {
+                                anchors.fill: parent; anchors.margins: 9; spacing: 4
+                                Image { width: parent.width; height: 67; source: modelData.source; fillMode: Image.PreserveAspectFit; asynchronous: true }
+                                Text { width: parent.width; text: modelData.name; color: theme.colors.text; font.pixelSize: 10; elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter }
+                                Text { width: parent.width; text: modelData.stars; color: modelData.rarityColor; font.pixelSize: 10; horizontalAlignment: Text.AlignHCenter }
+                                Text { width: parent.width; text: modelData.odds + " · " + modelData.price; color: theme.colors.textMuted; font.pixelSize: 10; horizontalAlignment: Text.AlignHCenter }
                             }
                         }
                     }
                 }
-                Text { Layout.fillWidth: true; text: "Cada apertura entrega un gato; pueden salir repetidos. Vende copias para ahorrar para otras cajas. Los precios son virtuales, sin compras ni retiros de dinero real."; color: theme.colors.textMuted; font.pixelSize: 11; wrapMode: Text.WordWrap }
-                Text { Layout.fillWidth: true; text: "Nueva temporada: tus gatos anteriores se convirtieron en " + (root.cats.resetCredit || "$0.00") + " virtuales. Conservas tu historial y recibes un compañero inicial gratis."; color: theme.colors.textDim; font.pixelSize: 11; wrapMode: Text.WordWrap }
+                Text { Layout.fillWidth: true; text: "10 descargas válidas = $1.00 virtual. Conservas tus gatos, saldo y descargas. Los precios son virtuales, sin compras ni retiros de dinero real."; color: theme.colors.textMuted; font.pixelSize: 11; wrapMode: Text.WordWrap }
             }
         }
         RowLayout {

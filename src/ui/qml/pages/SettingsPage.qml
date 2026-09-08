@@ -154,11 +154,11 @@ Item {
             LabeledControl { Layout.fillWidth: true; label: "Fuente de cookies"; XComboBox { Layout.fillWidth: true; model: ["No usar", "Chrome", "Edge", "Firefox", "Brave", "Opera", "Vivaldi", "Archivo Manual..."]; currentIndex: Math.max(0, find(viewState.cookiesMode)); onActivated: settingsController.setValue("cookiesMode", currentText) } }
             GridLayout {
                 Layout.fillWidth: true; columns: width > 650 ? 2 : 1; columnSpacing: 12; rowSpacing: 12
-                LabeledControl { Layout.fillWidth: true; label: "Navegador interno"; XComboBox { Layout.fillWidth: true; model: ["chrome", "edge", "firefox", "brave", "opera", "vivaldi"]; currentIndex: Math.max(0, find(viewState.selectedBrowser)); onActivated: settingsController.setValue("selectedBrowser", currentText) } }
                 LabeledControl { Layout.fillWidth: true; label: "Perfil (opcional)"; XTextField { Layout.fillWidth: true; text: viewState.browserProfile; placeholderText: "Default, Profile 1…"; onEditingFinished: settingsController.setValue("browserProfile", text) } }
                 XTextField { Layout.fillWidth: true; text: viewState.cookiesPath; placeholderText: "Ruta de cookies.txt"; onEditingFinished: settingsController.setValue("cookiesPath", text) }
                 XButton { text: "Elegir cookies.txt"; kind: "secondary"; onClicked: settingsController.chooseCookiesFile() }
             }
+            Text { Layout.fillWidth: true; text: "Si Windows no permite leer las cookies de Brave o Chrome, usa Archivo Manual con una exportación local de la sesión del sitio. No compartas ese archivo. El navegador debe poder reproducir el video."; color: theme.colors.textMuted; wrapMode: Text.WordWrap; font.pixelSize: 12 }
             LabeledControl { Layout.fillWidth: true; label: "Enlace para probar"; XTextField { Layout.fillWidth: true; text: viewState.cookieTestUrl; onEditingFinished: settingsController.setValue("cookieTestUrl", text) } }
             RowLayout {
                 Layout.fillWidth: true

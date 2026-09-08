@@ -30,6 +30,7 @@ IDEA_CONTRIBUTORS = [
     "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan",
 ]
 PUBLIC_VERSION_BY_INTERNAL = {
+    "4.0.21": "1.2.2",
     "4.0.20": "1.2.1",
     "4.0.19": "1.2",
     "4.0.18": "1.2",
@@ -40,6 +41,21 @@ PUBLIC_VERSION_BY_INTERNAL = {
 }
 PUBLIC_BUGFIX_NOTE = "- Arreglo de bugs de la versión 1.0."
 RELEASE_NOTICES = {
+    "4.0.21": {
+        "eyebrow": "XOMACITO 1.2.2", "title": "OG Colección",
+        "subtitle": "UNA CAJA, LOS ORIGINALES",
+        "message": "Strike, Player y Zarking protagonizan la colección OG.",
+        "highlights": [
+            "Una caja temática con miniportada y contenido con probabilidades visibles.",
+            "Strike, Player y Zarking son sus únicos gatos míticos.",
+            "Cada apertura cuesta $1 virtual; el regalo diario usa la misma colección.",
+            "Brave y Chrome se seleccionan correctamente al configurar cookies.",
+            "Avisos específicos para cookies bloqueadas o que Windows no puede descifrar.",
+        ],
+        "contributors": IDEA_CONTRIBUTORS,
+        "closing": "Se conservan tu colección, saldo y descargas. Actualización ligera.",
+        "platinumCelebration": False, "smoothMotionPromotion": False,
+    },
     "4.0.20": {
         "eyebrow": "XOMACITO 1.2.1", "title": "Descargas e idioma del audio",
         "subtitle": "ACTUALIZACIÓN LIGERA",

@@ -20,11 +20,20 @@ ROLL_WEIGHTS = {1: 48, 2: 28, 3: 15, 4: 7, 5: 1.8, 6: 0.2}
 RARITY_NAMES = {1: "Común", 2: "Peculiar", 3: "Raro", 4: "Épico", 5: "Legendario", 6: "Mítico"}
 DOWNLOAD_REWARD_CENTS = 100
 ECONOMY_EPOCH = 1
+OG_MYTHIC_IDS = ("cat-3645f4659a5e", "cat-3fbb2a6fdb2e", "cat-40eaa59f7dbf")
+
+
+def box_candidates(catalog, box):
+    """Use the same collection membership for rewards and the visual roulette."""
+    allowed_mythics = box.get("mythicIds")
+    return [cat for cat in catalog
+            if not cat.exclusive and box["weights"].get(cat.rarity, 0) > 0
+            and (cat.rarity != 6 or allowed_mythics is None or cat.id in allowed_mythics)]
+
+
 BOXES = (
-    {"id": "daily", "name": "Regalo diario", "priceCents": 0, "color": "#65DD91", "weights": ROLL_WEIGHTS},
-    {"id": "basic", "name": "Caja callejera", "priceCents": 100, "color": "#50BFFF", "weights": ROLL_WEIGHTS},
-    {"id": "rare", "name": "Caja estelar", "priceCents": 500, "color": "#B06CFF", "weights": {2: 15, 3: 35, 4: 30, 5: 17, 6: 3}},
-    {"id": "mythic", "name": "Caja celestial", "priceCents": 1500, "color": "#FFD75E", "weights": {3: 10, 4: 25, 5: 45, 6: 20}},
+    {"id": "og", "name": "OG Colección", "priceCents": 100, "color": "#D3ABFF",
+     "weights": ROLL_WEIGHTS, "mythicIds": OG_MYTHIC_IDS, "series": "COLECCIÓN 001"},
 )
 
 

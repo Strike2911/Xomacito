@@ -1079,18 +1079,10 @@ class DownloadController(QObject):
             on_error=lambda message, detail: self._operation_error(f"Análisis fallido: {message}", detail),
         )
 
-    def _cookie_options(self) -> tuple[dict, bool]:
-        mode = self.settings.get("cookies_mode", "No usar")
-        options: dict[str, Any] = {}
-        if mode == "Archivo Manual..." and self.settings.get("cookies_path"):
-            options["cookiefile"] = self.settings.get("cookies_path")
-            return options, True
-        if mode != "No usar":
-            browser = self.settings.get("selected_browser", "chrome")
-            profile = self.settings.get("browser_profile", "")
-            options["cookiesfrombrowser"] = ((browser, profile) if profile else (browser,))
-            return options, True
-        return options, False
+    def _cookie_options(self):
+        from src.core.browser_cookies import cookie_options
+        options = cookie_options(self.settings)
+        return options, bool(options)
 
     def _analyze_url_worker(self, url: str):
         logs: list[str] = []
@@ -1148,7 +1140,10 @@ class DownloadController(QObject):
                     if image_info:
                         info = image_info
                 except Exception as cookie_error:
+                    # The authenticated attempt is the actionable error; do not
+                    # hide unreadable browser cookies behind the public login wall.
                     logs.append(str(cookie_error))
+                    exc = cookie_error
                     info = None
                 if info:
                     exc = None

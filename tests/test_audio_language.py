@@ -33,3 +33,15 @@ def test_social_login_errors(message):
 
 def test_social_403_not_youtube_specific():
     assert "YouTube" not in friendly_ytdlp_error("[Facebook] HTTP Error 403")
+
+
+def test_cookie_decryption_error_takes_precedence_over_public_login_wall():
+    result = friendly_ytdlp_error("ERROR: Failed to decrypt with DPAPI", ["[TikTok] Log in for access"])
+    assert "descifrar" in result
+    assert "Archivo Manual" in result
+
+
+def test_locked_browser_cookies_have_specific_remedy():
+    result = friendly_ytdlp_error("Could not copy Chrome cookie database", ["[TikTok] Log in for access"])
+    assert "bloqueado" in result
+    assert "Ciérralo" in result

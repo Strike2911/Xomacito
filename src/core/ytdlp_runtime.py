@@ -163,6 +163,20 @@ def youtube_access_fallback_options(options: dict) -> dict:
 
 
 def friendly_ytdlp_error(error: object, log_lines: list[str] | None = None) -> str:
+    primary = str(error).lower()
+    if any(token in primary for token in ("failed to decrypt with dpapi", "could not decrypt", "failed to decrypt")):
+        return (
+            "Windows no pudo descifrar las cookies del navegador. "
+            "Usa un archivo cookies.txt exportado localmente desde tu sesión de la red social "
+            "en Configuración > Cookies > Archivo Manual... No compartas ese archivo."
+        )
+    if any(token in primary for token in ("could not copy", "database is locked", "permission denied")) and "cookie" in primary:
+        return (
+            "El navegador mantiene bloqueado el archivo de cookies. "
+            "Ciérralo completamente y vuelve a analizar el enlace, o selecciona un archivo cookies.txt local."
+        )
+    if "could not find" in primary and "cookie" in primary:
+        return "No se encontraron las cookies. Selecciona el navegador y perfil donde puedes reproducir este video."
     parts = [str(error)]
     if log_lines:
         parts.extend(str(line) for line in log_lines)

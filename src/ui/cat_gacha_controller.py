@@ -9,7 +9,7 @@ from typing import Callable
 
 from PySide6.QtCore import QCoreApplication, QObject, Property, QTimer, QUrl, Signal, Slot, QSortFilterProxyModel
 
-from src.core.cat_gacha import (BOXES, DOWNLOAD_REWARD_CENTS, RARITY_NAMES, ROLL_WEIGHTS,
+from src.core.cat_gacha import (box_candidates, BOXES, DOWNLOAD_REWARD_CENTS, RARITY_NAMES, ROLL_WEIGHTS,
                                 CatDefinition, economy_snapshot, merge_economy, money,
                                 load_cat_catalog, starter_cat, reset_economy, ECONOMY_EPOCH)
 
@@ -258,6 +258,8 @@ class CatGachaController(QObject):
         ]
         completion_catalog = [cat for cat in self.catalog if not cat.exclusive]
         completion_unlocked = sum(cat.id in self._unlocked for cat in completion_catalog)
+        og_pool = box_candidates(self.catalog, BOXES[0])
+        og_counts = {rarity: sum(cat.rarity == rarity for cat in og_pool) for rarity in RARITY_NAMES}
         self._state = {
             "skipAnimation": self._skip_animation,
             "resetCredit": money(self._reset_credit),
@@ -268,6 +270,8 @@ class CatGachaController(QObject):
             "ownedUniqueCount": sum(value > 0 for value in self._inventory.values()),
             "inventoryValue": money(sum(self._by_id[key].price_cents * value for key, value in self._inventory.items() if key in self._by_id)),
             "opening": self._opening,
+            "ogFeatured": [self._result(cat) for cat in og_pool if cat.rarity == 6],
+            "ogContents": [self._result(cat, odds=f"{BOXES[0]['weights'][cat.rarity] / og_counts[cat.rarity]:.4f}%") for cat in og_pool],
             "boxes": [{**{key: value for key, value in box.items() if key != "weights"},
                        "price": "Gratis" if not box["priceCents"] else money(box["priceCents"]),
                        "available": not self._opening and (daily_available if box["id"] == "daily" else self._wallet >= box["priceCents"]),
@@ -465,9 +469,9 @@ class CatGachaController(QObject):
         self._refresh()
         self._persist()
 
-    def _choose_cat(self, weights=None) -> CatDefinition:
+    def _choose_cat(self, weights=None, box=None) -> CatDefinition:
         weights = weights or ROLL_WEIGHTS
-        candidates = [cat for cat in self.catalog if not cat.exclusive and weights.get(cat.rarity, 0) > 0]
+        candidates = box_candidates(self.catalog, box or {"weights": weights})
         by_rarity: dict[int, list[CatDefinition]] = {}
         for cat in candidates:
             by_rarity.setdefault(cat.rarity, []).append(cat)
@@ -524,18 +528,21 @@ class CatGachaController(QObject):
 
     @Slot(result="QVariantMap")
     def roll(self):
-        return self.openBox("daily" if self._daily_available() else "basic")
+        return self.openBox("daily" if self._daily_available() else "og")
 
     @Slot(str, result="QVariantMap")
     def openBox(self, box_id):
-        box = next((item for item in BOXES if item["id"] == box_id), None)
+        free_daily = box_id == "daily"
+        # Old buttons/shortcuts resolve to the current themed collection.
+        resolved_id = "og" if box_id in {"daily", "basic"} else box_id
+        box = next((item for item in BOXES if item["id"] == resolved_id), None)
         if not box or self._opening:
             return {}
-        if (box_id == "daily" and not self._daily_available()) or self._wallet < box["priceCents"]:
+        if (free_daily and not self._daily_available()) or (not free_daily and self._wallet < box["priceCents"]):
             self.notificationRequested.emit("warning", "Caja no disponible", "Completa descargas, vende gatos o vuelve mañana por tu regalo diario.")
             return {}
-        cat = self._choose_cat(box["weights"])
-        if box_id == "daily":
+        cat = self._choose_cat(box["weights"], box)
+        if free_daily:
             self._last_daily_roll = self._today().isoformat()
         else:
             self._wallet -= box["priceCents"]
@@ -547,7 +554,7 @@ class CatGachaController(QObject):
             self._duplicates[cat.id] = self._duplicates.get(cat.id, 0) + 1
         self._total_rolls += 1
         self._opening = True
-        reel = [] if self._skip_animation else [self._result(self._choose_cat(box["weights"])) for _ in range(40)]
+        reel = [] if self._skip_animation else [self._result(self._choose_cat(box["weights"], box)) for _ in range(40)]
         if reel:
             reel[34] = self._result(cat)
         result = self._result(cat, isNew=is_new, themeUnlocked=bool(is_new and cat.rarity >= 5),

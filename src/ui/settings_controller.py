@@ -131,6 +131,12 @@ class SettingsController(QObject):
             self._set_state(theme=self.theme.themeName)
             return
         self._set_state(**{key: value})
+        if key == "cookiesMode":
+            from src.core.browser_cookies import BROWSERS
+            if str(value) in BROWSERS:
+                browser = BROWSERS[str(value)]
+                self._set_state(selectedBrowser=browser)
+                self.settings.set("selected_browser", browser)
         mapping = {
             "animationsEnabled": "animations_enabled",
             "compactMode": "compact_mode",
@@ -180,14 +186,8 @@ class SettingsController(QObject):
             )
 
     def _cookie_options(self):
-        mode = str(self._state["cookiesMode"])
-        if mode == "Archivo Manual..." and self._state["cookiesPath"]:
-            return {"cookiefile": self._state["cookiesPath"]}
-        if mode != "No usar":
-            browser = str(self._state["selectedBrowser"] or "chrome")
-            profile = str(self._state["browserProfile"] or "")
-            return {"cookiesfrombrowser": ((browser, profile) if profile else (browser,))}
-        return {}
+        from src.core.browser_cookies import cookie_options
+        return cookie_options(self.settings)
 
     @Slot()
     def testCookies(self):
@@ -213,6 +213,8 @@ class SettingsController(QObject):
         self.notificationRequested.emit("success", "Cookies verificadas", str(title))
 
     def _cookies_error(self, message, detail):
+        from src.core.ytdlp_runtime import friendly_ytdlp_error
+        message = friendly_ytdlp_error(message)
         print(detail)
         self._set_state(busy=False, progress=0.0, status=f"No se pudieron usar las cookies: {message}")
         self.notificationRequested.emit("error", "Prueba de cookies", str(message))

@@ -485,15 +485,8 @@ class ImageController(QObject):
                     "La publicación de X contiene un GIF o video. Descárgala desde la pestaña Descargar."
                 )
         if is_instagram_post_url(url):
-            cookie_options = {"quiet": True}
-            if cookie_mode == "Archivo Manual..." and self.settings.get("cookies_path"):
-                cookie_options["cookiefile"] = self.settings.get("cookies_path")
-            elif cookie_mode != "No usar":
-                browser = self.settings.get("selected_browser", "chrome")
-                profile = self.settings.get("browser_profile", "")
-                cookie_options["cookiesfrombrowser"] = (
-                    (browser, profile) if profile else (browser,)
-                )
+            from src.core.browser_cookies import cookie_options as configured_cookies
+            cookie_options = {"quiet": True, **configured_cookies(self.settings)}
             info = extract_instagram_image_post_info(url, ydl_options=cookie_options)
             if info:
                 image_urls = info.get("xomacito_images") or [info.get("url") or info.get("thumbnail")]

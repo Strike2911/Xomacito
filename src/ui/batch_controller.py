@@ -376,14 +376,9 @@ class BatchController(QObject):
         )
 
     def _cookie_options(self):
-        mode = self.settings.get("cookies_mode", "No usar")
-        if mode == "Archivo Manual..." and self.settings.get("cookies_path"):
-            return {"cookiefile": self.settings.get("cookies_path")}, True
-        if mode != "No usar":
-            browser = self.settings.get("selected_browser", "chrome")
-            profile = self.settings.get("browser_profile", "")
-            return {"cookiesfrombrowser": ((browser, profile) if profile else (browser,))}, True
-        return {}, False
+        from src.core.browser_cookies import cookie_options
+        options = cookie_options(self.settings)
+        return options, bool(options)
 
     def _analyze_worker(self, url):
         playlist = bool(self._state["playlistAnalysis"])
