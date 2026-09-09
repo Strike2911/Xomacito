@@ -41,7 +41,7 @@ class SettingsController(QObject):
     consoleChunk = Signal(str)
     consoleFinished = Signal()
 
-    DEPENDENCY_ROLES = ["key", "name", "installed", "localVersion", "latestVersion", "detail", "action"]
+    DEPENDENCY_ROLES = ["key", "name", "installed", "localVersion", "latestVersion", "detail", "action", "updateAvailable"]
     MODEL_ROLES = ["key", "name", "family", "path", "installed", "size"]
 
     def __init__(self, project_root: str | Path, settings: SettingsStore, theme: ThemeController, pool: TaskPool, parent=None):
@@ -254,6 +254,7 @@ class SettingsController(QObject):
             ("ytdlp", "yt-dlp", bin_dir / "ytdlp" / "yt-dlp.zip", bin_dir / "ytdlp" / "ytdlp_version.txt"),
             ("inkscape", "Inkscape", bin_dir / "inkscape" / "inkscape.exe", bin_dir / "inkscape" / "inkscape_version.txt"),
             ("ghostscript", "Ghostscript", bin_dir / "ghostscript" / "gswin64c.exe", None),
+            ("upscayl", "Upscayl · mejora de resolución", MODELS_PATH / "upscaling/upscayl/upscayl-bin.exe", None),
         ]
         result = []
         for key, name, executable, version_path in rows:
@@ -267,8 +268,9 @@ class SettingsController(QObject):
             result.append({
                 "key": key, "name": name, "installed": installed,
                 "localVersion": version or ("Instalado" if installed else "—"),
-                "latestVersion": "", "detail": "Listo" if installed else "No instalado",
-                "action": "Actualizar" if installed else "Instalar",
+                "latestVersion": "", "detail": "Instalado · sin comprobar versión" if installed else "No instalado",
+                "action": ("Reparar" if key == "upscayl" else "Reinstalar") if installed else "Instalar",
+                "updateAvailable": False,
             })
         self.dependencies.replace(result)
 
@@ -284,6 +286,9 @@ class SettingsController(QObject):
         )
 
     def _environment_done(self, result):
+        if isinstance(result, dict) and result.get("status") == "error":
+            self._dependency_error(result.get("message", "No se pudo comprobar"), "")
+            return
         self._environment = result if isinstance(result, dict) else {}
         self._refresh_local_dependencies()
         latest_map = {
@@ -295,7 +300,8 @@ class SettingsController(QObject):
         for index, item in enumerate(self.dependencies.items()):
             latest = latest_map.get(item["key"]) or ""
             if latest:
-                self.dependencies.update_item(index, {"latestVersion": latest, "detail": "Versión más reciente consultada"})
+                from src.core.dependency_status import dependency_status
+                self.dependencies.update_item(index, dependency_status(item["localVersion"], latest, item["installed"]))
         self._set_state(busy=False, progress=1.0, status="Componentes revisados.")
 
     @Slot(str)
@@ -306,6 +312,8 @@ class SettingsController(QObject):
         self.pool.submit(self._install_dependency_worker, key, on_result=lambda ok: self._dependency_installed(key, ok), on_error=self._dependency_error)
 
     def _install_dependency_worker(self, key):
+        if key == "upscayl":
+            return check_and_download_upscaling_tools(self._setup_progress, "Upscayl")
         status = check_environment_status(self._setup_progress, check_updates=True)
         installers = {
             "ffmpeg": (download_and_install_ffmpeg, status.get("latest_version"), status.get("download_url")),

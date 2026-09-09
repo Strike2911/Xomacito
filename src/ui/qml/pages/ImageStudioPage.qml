@@ -76,9 +76,10 @@ Item {
                         id: controlsScroll
                         Layout.fillWidth: true; Layout.fillHeight: true
                         contentWidth: availableWidth; clip: true
+                        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                         ScrollBar.vertical: XScrollBar {}
                         ColumnLayout {
-                            width: controlsScroll.availableWidth; spacing: 8
+                            width: Math.max(0, controlsScroll.availableWidth - 12); spacing: 8
                             Text { text: "02  ·  HERRAMIENTA Y MODO"; color: theme.colors.primary; font.pixelSize: 10; font.bold: true }
                             XComboBox { Layout.fillWidth: true; compact: true; model: ["Removedor de fondo", "Mejorar resolución", "Convertir formato"]; currentIndex: Math.max(0, root.tasks.indexOf(root.studio.task)); enabled: !root.locked; onActivated: imageController.setTask(root.tasks[currentIndex]) }
                             XComboBox { Layout.fillWidth: true; compact: true; visible: root.studio.task === "removeBackground"; model: imageController.rembgModels("BiRefNet"); currentIndex: Math.max(0, model.indexOf(root.options.rembgModel)); enabled: !root.locked; onValueSelected: function(value) { imageController.setOption("rembgModel", value) } }

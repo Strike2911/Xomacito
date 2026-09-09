@@ -583,6 +583,10 @@ def run_qt_app(
     app_version: str,
     update_version: str | None = None,
 ) -> int:
+    from PySide6.QtQuickControls2 import QQuickStyle
+    # Our QML supplies its own colors and control delegates. The native Windows
+    # style does not support these overrides and can draw white scroll tracks.
+    QQuickStyle.setStyle("Basic")
     root = Path(project_root)
     resource_root = Path(getattr(sys, "_MEIPASS", root))
     QApplication.setApplicationName("Xomacito")

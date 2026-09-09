@@ -343,7 +343,7 @@ class VideoUpscaler:
         if not os.path.exists(exe):
             raise Exception(
                 f"El motor '{engine}' no está instalado.\n\n"
-                f"Búscalo en 'Herramientas de Imagen' y descárgalo desde allí "
+                f"Abre Configuración > Dependencias > Upscayl > Instalar "
                 "antes de usar el reescalador de video."
             )
 

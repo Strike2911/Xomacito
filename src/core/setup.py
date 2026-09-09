@@ -929,6 +929,42 @@ CURATED_REALESRGAN_URL = (
 )
 
 
+def download_upscaler_archive(url, destination, progress_callback, label):
+    """Retry interrupted transfers; publish only a complete, validated ZIP."""
+    partial = destination + ".part"
+    try:
+        for attempt in range(3):
+            try:
+                with requests.get(url, stream=True, timeout=(20, 120)) as response:
+                    response.raise_for_status()
+                    total = int(response.headers.get("content-length", 0))
+                    downloaded, last_percent = 0, -1
+                    with open(partial, "wb") as output:
+                        for chunk in response.iter_content(chunk_size=65536):
+                            if not chunk:
+                                continue
+                            output.write(chunk)
+                            downloaded += len(chunk)
+                            percent = int(downloaded * 100 / total) if total else -1
+                            if percent != last_percent or last_percent == -1:
+                                progress_callback(f"{label}: {downloaded / 1048576:.1f} MB", percent)
+                                last_percent = percent
+                    if total and downloaded != total:
+                        raise requests.ConnectionError("La descarga quedó incompleta.")
+                with zipfile.ZipFile(partial) as archive:
+                    if archive.testzip():
+                        raise zipfile.BadZipFile("El paquete está dañado.")
+                os.replace(partial, destination)
+                return
+            except (requests.RequestException, zipfile.BadZipFile):
+                if attempt == 2:
+                    raise
+                progress_callback(f"Reintentando {label} ({attempt + 2}/3)…", -1)
+    finally:
+        if os.path.exists(partial):
+            os.remove(partial)
+
+
 def ensure_curated_upscayl_models(progress_callback):
     """Instala sólo los tres modelos mantenidos por Estudio y conserva los personalizados."""
     models_target = os.path.join(UPSCALING_DIR, "upscayl", "models")
@@ -936,7 +972,7 @@ def ensure_curated_upscayl_models(progress_callback):
     sanitize_upscayl_models(models_target)
     missing = [
         name for name in CURATED_UPSCAYL_MODELS
-        if not all(os.path.isfile(os.path.join(models_target, name + ext)) for ext in (".bin", ".param"))
+        if not all(os.path.isfile(os.path.join(models_target, name + ext)) and os.path.getsize(os.path.join(models_target, name + ext)) > 0 for ext in (".bin", ".param"))
     ]
     if not missing:
         return True
@@ -945,21 +981,7 @@ def ensure_curated_upscayl_models(progress_callback):
     extract_path = os.path.join(UPSCALING_DIR, "curated_realesrgan_extract")
     try:
         progress_callback("Descargando los modelos esenciales de mejora…", -1)
-        with requests.get(CURATED_REALESRGAN_URL, stream=True, timeout=120) as response:
-            response.raise_for_status()
-            total = int(response.headers.get("content-length", 0))
-            downloaded = 0
-            with open(archive_path, "wb") as output:
-                for chunk in response.iter_content(chunk_size=65536):
-                    if not chunk:
-                        continue
-                    output.write(chunk)
-                    downloaded += len(chunk)
-                    if total:
-                        progress_callback(
-                            f"Modelos esenciales: {downloaded / 1048576:.1f}/{total / 1048576:.1f} MB",
-                            int(downloaded * 100 / total),
-                        )
+        download_upscaler_archive(CURATED_REALESRGAN_URL, archive_path, progress_callback, "Modelos esenciales")
 
         if os.path.isdir(extract_path):
             shutil.rmtree(extract_path)
@@ -1073,7 +1095,7 @@ def check_and_download_upscaling_tools(progress_callback, target_tool=None):
             target_exe = os.path.join(target_folder, exe_name)
             
             # Verificar si ya existe
-            if os.path.exists(target_exe):
+            if os.path.isfile(target_exe) and os.path.getsize(target_exe) > 0:
                 print(f"INFO: {tool_name} encontrado en {target_folder}")
                 if folder_name == "upscayl" and not ensure_curated_upscayl_models(progress_callback):
                     return False
@@ -1088,36 +1110,8 @@ def check_and_download_upscaling_tools(progress_callback, target_tool=None):
             zip_path = os.path.join(UPSCALING_DIR, zip_filename)
             
             try:
-                with requests.get(url, stream=True, timeout=120) as r:
-                    r.raise_for_status()
-                    total_size = int(r.headers.get('content-length', 0))
-                    downloaded_size = 0
-                    last_reported_pct = -1
-                    
-                    with open(zip_path, 'wb') as f:
-                        # Chunk de 64KB para velocidad
-                        for chunk in r.iter_content(chunk_size=65536):
-                            if chunk: 
-                                f.write(chunk)
-                                downloaded_size += len(chunk)
-                                
-                                # Calcular porcentaje
-                                if total_size > 0:
-                                    percent = int(downloaded_size * 100 / total_size)
-                                    
-                                    # Actualizar UI solo si cambió el porcentaje (para no saturar)
-                                    if percent > last_reported_pct:
-                                        last_reported_pct = percent
-                                        
-                                        dl_mb = downloaded_size / (1024 * 1024)
-                                        tot_mb = total_size / (1024 * 1024)
-                                        
-                                        # Mensaje estilo: "⬇️ Real-ESRGAN: 45% (15.2/30.5 MB)"
-                                        status_text = f"⬇️ {tool_name}: {percent}% ({dl_mb:.1f}/{tot_mb:.1f} MB)"
-                                        
-                                        # Valor numérico para barra de progreso global (opcional)
-                                        progress_callback(status_text, percent)
-                
+                download_upscaler_archive(url, zip_path, progress_callback, tool_name)
+
                 # --- EXTRACCIÓN ---
                 progress_callback(f"Extrayendo {tool_name}...", 100)
                 
@@ -1137,21 +1131,17 @@ def check_and_download_upscaling_tools(progress_callback, target_tool=None):
                 if len(extracted_items) == 1 and os.path.isdir(os.path.join(temp_extract_dir, extracted_items[0])):
                     source_path = os.path.join(temp_extract_dir, extracted_items[0])
                 
+                if not os.path.isfile(os.path.join(source_path, exe_name)):
+                    raise RuntimeError(f"El paquete no contiene {exe_name}.")
+
                 # Mover al almacenamiento persistente de motores de reescalado.
                 # --- OPTIMIZACIÓN: Fusión segura en lugar de borrar todo ---
                 # Esto evita borrar los modelos que el usuario ya migró manualmente.
-                try:
-                    os.makedirs(target_folder, exist_ok=True)
-                    # Fusionar contenidos (sobrescribe archivos del binario, pero respeta otros como 'models')
-                    shutil.copytree(source_path, target_folder, dirs_exist_ok=True)
-                    # Limpiar carpeta temporal
-                    shutil.rmtree(source_path)
-                except Exception as e:
-                    print(f"ADVERTENCIA: Falló la fusión, intentando reemplazo total: {e}")
-                    if os.path.exists(target_folder):
-                        shutil.rmtree(target_folder)
-                    shutil.move(source_path, target_folder)
-                
+                os.makedirs(target_folder, exist_ok=True)
+                shutil.copytree(source_path, target_folder, dirs_exist_ok=True)
+                if not os.path.isfile(target_exe) or os.path.getsize(target_exe) == 0:
+                    raise RuntimeError(f"No se encontró {exe_name} después de instalar. Revisa el historial de protección de Windows.")
+
                 if folder_name == "upscayl" and not ensure_curated_upscayl_models(progress_callback):
                     return False
 
@@ -1173,6 +1163,7 @@ def check_and_download_upscaling_tools(progress_callback, target_tool=None):
                     
             except Exception as e:
                 print(f"ERROR descargando {tool_name}: {e}")
+                progress_callback(f"No se pudo instalar {tool_name}: {e}", -1)
                 # Limpiar en caso de error
                 if os.path.exists(zip_path): 
                     try: os.remove(zip_path)

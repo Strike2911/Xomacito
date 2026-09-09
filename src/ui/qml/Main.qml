@@ -1771,6 +1771,7 @@ ApplicationWindow {
                     model: window.dialogOptions.length ? window.dialogOptions : [dialogPopup.defaultValue || "Aceptar"]
                     XButton {
                         required property string modelData
+                        required property int index
                         text: modelData
                         kind: index === 0 ? "primary" : "secondary"
                         onClicked: { var answer = dialogPopup.dialogKind === "input" ? dialogInput.text : modelData; dialogBroker.respond(window.dialogRequestId, answer); dialogPopup.close() }

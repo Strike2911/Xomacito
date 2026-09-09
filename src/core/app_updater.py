@@ -31,6 +31,7 @@ IDEA_CONTRIBUTORS = [
 ]
 PUBLIC_VERSION_BY_INTERNAL = {
     "4.0.22": "1.2.3",
+    "4.0.23": "1.2.4",
     "4.0.21": "1.2.2",
     "4.0.20": "1.2.1",
     "4.0.19": "1.2",
@@ -42,6 +43,14 @@ PUBLIC_VERSION_BY_INTERNAL = {
 }
 PUBLIC_BUGFIX_NOTE = "- Arreglo de bugs de la versión 1.0."
 RELEASE_NOTICES = {
+    "4.0.23": {
+        "eyebrow": "XOMACITO 1.2.4", "title": "Mejora lista. Estado claro.",
+        "subtitle": "ACTUALIZACIÓN LIGERA",
+        "message": "Instala o repara Upscayl desde Dependencias y comprueba qué componentes necesitan actualizarse.",
+        "highlights": ["Upscayl con reintentos y validación de descarga", "Dependencias con estado de actualización", "Estudio sin barra horizontal blanca"],
+        "contributors": IDEA_CONTRIBUTORS, "closing": "Conserva tus modelos y preferencias.",
+        "platinumCelebration": False, "smoothMotionPromotion": False,
+    },
     "4.0.22": {
         "eyebrow": "XOMACITO 1.2.3", "title": "Más espacio. TikTok conectado.",
         "subtitle": "ACTUALIZACIÓN LIGERA",

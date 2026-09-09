@@ -126,7 +126,7 @@ $Installer = Join-Path $ProjectRoot 'release\Xomacito-1.2-Setup.exe'
 if (-not $LightOnly -and -not (Test-Path -LiteralPath $Installer)) {
     throw "No se generó el instalador esperado: $Installer"
 }
-$LightInstaller = Join-Path $ProjectRoot 'release\Xomacito-1.2.3-Update-Light.exe'
+$LightInstaller = Join-Path $ProjectRoot 'release\Xomacito-1.2.4-Update-Light.exe'
 if (-not (Test-Path -LiteralPath $LightInstaller)) {
     throw "No se generó la actualización ligera esperada: $LightInstaller"
 }

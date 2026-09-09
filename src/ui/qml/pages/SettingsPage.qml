@@ -44,12 +44,12 @@ Item {
                 StackLayout {
                     anchors.fill: parent; anchors.margins: 18; clip: true
                     currentIndex: Math.max(0, page.sections.indexOf(viewState.section))
-                    ScrollView { ScrollBar.horizontal.policy: ScrollBar.AlwaysOff; ScrollBar.vertical: XScrollBar {} Loader { width: parent.width; sourceComponent: generalPage } }
-                    ScrollView { ScrollBar.horizontal.policy: ScrollBar.AlwaysOff; ScrollBar.vertical: XScrollBar {} Loader { width: parent.width; sourceComponent: cookiesPage } }
-                    ScrollView { ScrollBar.horizontal.policy: ScrollBar.AlwaysOff; ScrollBar.vertical: XScrollBar {} Loader { width: parent.width; sourceComponent: dependenciesPage } }
-                    ScrollView { ScrollBar.horizontal.policy: ScrollBar.AlwaysOff; ScrollBar.vertical: XScrollBar {} Loader { width: parent.width; sourceComponent: modelsPage } }
-                    ScrollView { ScrollBar.horizontal.policy: ScrollBar.AlwaysOff; ScrollBar.vertical: XScrollBar {} Loader { width: parent.width; sourceComponent: consolePage } }
-                    ScrollView { ScrollBar.horizontal.policy: ScrollBar.AlwaysOff; ScrollBar.vertical: XScrollBar {} Loader { width: parent.width; sourceComponent: aboutPage } }
+                    ScrollView { id: generalScroll; contentWidth: availableWidth; background: Item {} ScrollBar.horizontal.policy: ScrollBar.AlwaysOff; ScrollBar.vertical: XScrollBar {} Loader { width: Math.max(0, generalScroll.availableWidth - 14); sourceComponent: generalPage } }
+                    ScrollView { id: cookiesScroll; contentWidth: availableWidth; background: Item {} ScrollBar.horizontal.policy: ScrollBar.AlwaysOff; ScrollBar.vertical: XScrollBar {} Loader { width: Math.max(0, cookiesScroll.availableWidth - 14); sourceComponent: cookiesPage } }
+                    ScrollView { id: dependenciesScroll; contentWidth: availableWidth; background: Item {} ScrollBar.horizontal.policy: ScrollBar.AlwaysOff; ScrollBar.vertical: XScrollBar {} Loader { width: Math.max(0, dependenciesScroll.availableWidth - 14); sourceComponent: dependenciesPage } }
+                    ScrollView { id: modelsScroll; contentWidth: availableWidth; background: Item {} ScrollBar.horizontal.policy: ScrollBar.AlwaysOff; ScrollBar.vertical: XScrollBar {} Loader { width: Math.max(0, modelsScroll.availableWidth - 14); sourceComponent: modelsPage } }
+                    ScrollView { id: consoleScroll; contentWidth: availableWidth; background: Item {} ScrollBar.horizontal.policy: ScrollBar.AlwaysOff; ScrollBar.vertical: XScrollBar {} Loader { width: Math.max(0, consoleScroll.availableWidth - 14); sourceComponent: consolePage } }
+                    ScrollView { id: aboutScroll; contentWidth: availableWidth; background: Item {} ScrollBar.horizontal.policy: ScrollBar.AlwaysOff; ScrollBar.vertical: XScrollBar {} Loader { width: Math.max(0, aboutScroll.availableWidth - 14); sourceComponent: aboutPage } }
                 }
             }
         }
@@ -198,6 +198,7 @@ Item {
             ListView {
                 Layout.fillWidth: true; Layout.preferredHeight: Math.max(330, contentHeight); model: settingsController.dependencyModel; spacing: 8; interactive: false
                 delegate: Rectangle {
+                    id: dependencyRow
                     required property string key
                     required property string name
                     required property bool installed
@@ -205,17 +206,18 @@ Item {
                     required property string latestVersion
                     required property string detail
                     required property string action
+                    required property bool updateAvailable
                     width: ListView.view.width; height: 67; radius: 11; color: theme.colors.surfaceSoft; border.color: theme.colors.border; border.width: 1
                     RowLayout {
                         anchors.fill: parent; anchors.margins: 11; spacing: 10
-                        Rectangle { width: 10; height: 10; radius: 5; color: installed ? theme.colors.success : theme.colors.warning }
+                        Rectangle { width: 10; height: 10; radius: 5; color: updateAvailable || !installed ? theme.colors.warning : theme.colors.success }
                         ColumnLayout {
                             Layout.fillWidth: true; spacing: 3
                             Text { text: name; color: theme.colors.text; font.weight: Font.DemiBold }
-                            Text { text: "Local: " + localVersion + (latestVersion ? "  ·  Nueva: " + latestVersion : ""); color: theme.colors.textMuted; font.pixelSize: 10 }
+                            Text { text: "Local: " + localVersion + (latestVersion ? "  ·  Disponible: " + latestVersion : ""); color: theme.colors.textMuted; font.pixelSize: 10 }
                         }
                         Text { text: detail; color: theme.colors.textMuted; font.pixelSize: 10 }
-                        XButton { compact: true; text: action; enabled: ["ffmpeg", "deno", "poppler", "ytdlp"].indexOf(key) >= 0; onClicked: settingsController.installDependency(key) }
+                        XButton { compact: true; kind: "secondary"; text: dependencyRow.action; enabled: !page.viewState.busy && ["ffmpeg", "deno", "poppler", "ytdlp", "upscayl"].indexOf(key) >= 0; onClicked: settingsController.installDependency(key) }
                     }
                 }
             }
