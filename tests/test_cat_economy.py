@@ -51,8 +51,8 @@ def test_unique_downloads_credit_once_across_restart():
 
 def test_box_charge_winner_and_reentrant_guard_are_atomic():
     controller = make()
-    controller.grantBonusRolls(5)
-    result = controller.openBox("rare")
+    controller.grantBonusRolls(1)
+    result = controller.openBox("og")
     assert result
     assert controller.state["walletCents"] == 0
     assert result["reel"][result["winningIndex"]]["catId"] == result["catId"]
@@ -137,7 +137,7 @@ def test_paid_draws_can_repeat_before_collection_is_complete():
     controller = make()
     controller.grantBonusRolls(2)
     cat = next(cat for cat in controller.catalog if not cat.exclusive)
-    controller._choose_cat = lambda weights=None: cat
+    controller._choose_cat = lambda weights=None, box=None: cat
     first = controller.openBox("basic")
     controller.finishOpening()
     second = controller.openBox("basic")

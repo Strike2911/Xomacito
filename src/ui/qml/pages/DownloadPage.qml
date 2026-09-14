@@ -302,9 +302,23 @@ Item {
                     implicitHeight: 0
                     Layout.preferredWidth: 660
                     ColumnLayout {
-                        id: outputContent
                         anchors.fill: parent
                         anchors.margins: page.denseLayout ? 10 : 14
+                        spacing: 10
+                    ScrollView {
+                        id: outputScroll
+                        objectName: "downloadOutputScroll"
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.minimumHeight: 0
+                        contentWidth: availableWidth
+                        clip: true
+                        background: Item {}
+                        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                        ScrollBar.vertical: XScrollBar {}
+                    ColumnLayout {
+                        id: outputContent
+                        width: Math.max(0, outputScroll.availableWidth - 12)
                         spacing: page.denseLayout ? 7 : 10
                         SectionTitle { Layout.fillWidth: true; compact: true; eyebrow: "SALIDA"; title: viewState.localFile ? "Prepara tu archivo" : "Elige cómo descargar"; description: viewState.imagePost ? "Publicación detectada como imagen." : "El motor selecciona combinaciones compatibles y conserva la calidad." }
                         LabeledControl {
@@ -376,25 +390,7 @@ Item {
                                 }
                             }
                         }
-                        RowLayout {
-                            visible: !viewState.imagePost
-                            Layout.fillWidth: true
-                            spacing: 12
-                            XSwitch { text: "Aplicar preset"; checked: options.applyPreset; onToggled: downloadController.setOption("applyPreset", checked) }
-                            XSwitch { text: "Mantener original"; checked: options.keepOriginal; enabled: options.applyPreset; onToggled: downloadController.setOption("keepOriginal", checked) }
-                            XSwitch {
-                                objectName: "embedAudioCoverSwitch"
-                                visible: viewState.mode === "Solo Audio" && !viewState.localFile
-                                text: "Incluir portada"
-                                enabled: options.applyPreset && (viewState.preset.indexOf("MP3") >= 0 || viewState.preset.indexOf("AAC") >= 0)
-                                checked: options.embedThumbnail
-                                onToggled: downloadController.setOption("embedThumbnail", checked)
-                                ToolTip.visible: hovered && !enabled
-                                ToolTip.text: "Activa un preset MP3 o AAC para incluir la portada."
-                            }
-                            Item { Layout.fillWidth: true }
-                            XButton { objectName: "advancedToolsButton"; compact: true; text: "Ajustes avanzados"; kind: "secondary"; onClicked: advanced.open() }
-                        }
+
                         Text {
                             visible: viewState.imagePost
                             Layout.fillWidth: true
@@ -404,6 +400,29 @@ Item {
                             color: theme.colors.success
                             font.pixelSize: 12
                             font.weight: Font.DemiBold
+                        }
+                    }
+                }
+                        GridLayout {
+                            objectName: "downloadPresetOptions"
+                            visible: !viewState.imagePost
+                            Layout.fillWidth: true
+                            columns: width >= 710 ? 4 : 2
+                            columnSpacing: 12; rowSpacing: 10
+                            XSwitch { Layout.fillWidth: true; text: "Aplicar preset"; checked: options.applyPreset; onToggled: downloadController.setOption("applyPreset", checked) }
+                            XSwitch { Layout.fillWidth: true; text: "Mantener original"; checked: options.keepOriginal; enabled: options.applyPreset; onToggled: downloadController.setOption("keepOriginal", checked) }
+                            XSwitch {
+                                objectName: "embedAudioCoverSwitch"
+                                Layout.fillWidth: true
+                                visible: viewState.mode === "Solo Audio" && !viewState.localFile
+                                text: "Incluir portada"
+                                enabled: options.applyPreset && (viewState.preset.indexOf("MP3") >= 0 || viewState.preset.indexOf("AAC") >= 0)
+                                checked: options.embedThumbnail
+                                onToggled: downloadController.setOption("embedThumbnail", checked)
+                                ToolTip.visible: hovered && !enabled
+                                ToolTip.text: "Activa un preset MP3 o AAC para incluir la portada."
+                            }
+                            XButton { Layout.fillWidth: true; objectName: "advancedToolsButton"; compact: true; text: "Ajustes avanzados"; kind: "secondary"; onClicked: advanced.open() }
                         }
                     }
                 }

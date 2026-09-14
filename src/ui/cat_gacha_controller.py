@@ -547,7 +547,8 @@ class CatGachaController(QObject):
         else:
             self._wallet -= box["priceCents"]
         self._advance_roll_balance_revision()
-        self._inventory[cat.id] = self._inventory.get(cat.id, 0) + 1
+        quantity_before = self._inventory.get(cat.id, 0)
+        self._inventory[cat.id] = quantity_before + 1
         is_new = cat.id not in self._unlocked
         self._unlocked.add(cat.id)
         if not is_new:
@@ -557,7 +558,10 @@ class CatGachaController(QObject):
         reel = [] if self._skip_animation else [self._result(self._choose_cat(box["weights"], box)) for _ in range(40)]
         if reel:
             reel[34] = self._result(cat)
-        result = self._result(cat, isNew=is_new, themeUnlocked=bool(is_new and cat.rarity >= 5),
+        collection = box_candidates(self.catalog, box)
+        result = self._result(cat, isNew=is_new, quantityBefore=quantity_before, isDuplicate=quantity_before > 0,
+                              collectionDiscovered=sum(item.id in self._unlocked for item in collection),
+                              collectionTotal=len(collection), themeUnlocked=bool(is_new and cat.rarity >= 5),
                               effectUpgraded=not is_new, boxName=box["name"], reel=reel, winningIndex=34)
         self._refresh()
         self._persist()

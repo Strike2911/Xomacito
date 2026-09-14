@@ -229,9 +229,12 @@ Item {
         closePolicy: Popup.NoAutoClose
         property var result: ({})
         property real travel: 0
+        property real presentation: 1
+        onDoneChanged: { if (done) { presentation = settingsController.state.animationsEnabled ? 0 : 1; if (settingsController.state.animationsEnabled) resultEntrance.restart() } }
+        NumberAnimation { id: resultEntrance; target: revealPopup; property: "presentation"; from: 0; to: 1; duration: 240; easing.type: Easing.OutCubic }
         readonly property bool done: travel >= 0.999
         readonly property bool resultCanSell: (root.cats.inventoryItems || []).some(function(cat) { return cat.catId === revealPopup.result.catId && cat.canSell })
-        onClosed: { spin.stop(); catController.finishOpening(); root.revealFinished() }
+        onClosed: { spin.stop(); resultEntrance.stop(); catController.finishOpening(); root.revealFinished() }
         background: Rectangle { radius: 22; color: theme.colors.backgroundAlt; border.color: revealPopup.result.rarityColor || theme.colors.primary; border.width: 2 }
         function reveal(value) {
             result = value
@@ -258,7 +261,7 @@ Item {
             anchors.fill: parent; spacing: 14
             RowLayout {
                 Layout.fillWidth: true
-                Text { Layout.fillWidth: true; text: revealPopup.done ? "Tu nuevo compañero" : "Abriendo " + (revealPopup.result.boxName || "regalo") + "…"; color: theme.colors.text; font.pixelSize: 22; font.bold: true }
+                Text { Layout.fillWidth: true; text: revealPopup.done ? "Resultado de tu caja" : "Abriendo " + (revealPopup.result.boxName || "regalo") + "…"; color: theme.colors.text; font.pixelSize: 22; font.bold: true }
                 XButton {
                     objectName: "catRevealSkipToggle"
                     text: checked ? "✓ Omitir animación" : "Omitir animación"
@@ -272,7 +275,7 @@ Item {
             }
             Rectangle {
                 id: reelViewport
-                Layout.fillWidth: true; Layout.preferredHeight: 152; visible: (revealPopup.result.reel || []).length > 0; clip: true; radius: 12; color: theme.colors.surface
+                Layout.fillWidth: true; Layout.preferredHeight: 152; visible: !revealPopup.done && (revealPopup.result.reel || []).length > 0; clip: true; radius: 12; color: theme.colors.surface
                 Row {
                     x: reelViewport.width / 2 - (2 + (Number(revealPopup.result.winningIndex || 34) - 2) * revealPopup.travel) * 146 - 69
                     y: 9; spacing: 8
@@ -294,15 +297,64 @@ Item {
                 Rectangle { anchors.horizontalCenter: parent.horizontalCenter; width: 3; height: parent.height; color: "#FFD75E" }
                 Text { anchors.horizontalCenter: parent.horizontalCenter; text: "▼"; color: "#FFD75E"; font.pixelSize: 21 }
             }
-            RowLayout {
+            Rectangle {
                 objectName: "catRevealCard"
-                Layout.fillWidth: true; Layout.fillHeight: true; opacity: revealPopup.done ? 1 : 0
-                CatAvatar { Layout.preferredWidth: 100; Layout.preferredHeight: 100; source: revealPopup.result.source || ""; rarity: Number(revealPopup.result.rarity || 1); rarityColor: revealPopup.result.rarityColor || theme.colors.primary; animationStyle: revealPopup.result.animationStyle || "standard"; effectLevel: Number(revealPopup.result.effectLevel || 0); animatedEffects: revealPopup.done && settingsController.state.animationsEnabled }
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    Text { text: revealPopup.result.isNew ? "NUEVO DESCUBRIMIENTO" : "OTRA COPIA PARA TU COLECCIÓN"; color: revealPopup.result.rarityColor || theme.colors.primary; font.pixelSize: 10; font.bold: true }
-                    Text { Layout.fillWidth: true; text: revealPopup.result.name || ""; color: theme.colors.text; font.pixelSize: 24; font.bold: true; elide: Text.ElideRight }
-                    Text { text: (revealPopup.result.stars || "") + "   ·   " + (revealPopup.result.price || ""); color: revealPopup.result.rarityColor || theme.colors.primary; font.pixelSize: 16 }
+                Layout.fillWidth: true; Layout.fillHeight: true
+                visible: revealPopup.done
+                radius: 18; border.color: Qt.alpha(revealPopup.result.rarityColor || theme.colors.primary, 0.5)
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0; color: Qt.tint(theme.colors.surface, Qt.alpha(revealPopup.result.rarityColor || theme.colors.primary, 0.16)) }
+                    GradientStop { position: 1; color: theme.colors.surface }
+                }
+                opacity: revealPopup.presentation
+                scale: 0.97 + revealPopup.presentation * 0.03
+                RowLayout {
+                    anchors.fill: parent; anchors.margins: 22; spacing: 24
+                    CatAvatar {
+                        Layout.preferredWidth: Math.min(150, Math.max(70, parent.height - 20)); Layout.preferredHeight: Layout.preferredWidth
+                        source: revealPopup.result.source || ""; rarity: Number(revealPopup.result.rarity || 1)
+                        rarityColor: revealPopup.result.rarityColor || theme.colors.primary
+                        animationStyle: revealPopup.result.animationStyle || "standard"
+                        effectLevel: Number(revealPopup.result.effectLevel || 0)
+                        animatedEffects: revealPopup.opened && revealPopup.done && settingsController.state.animationsEnabled
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true; spacing: 9
+                        Text {
+                            objectName: "catRevealOwnership"
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap
+                            text: revealPopup.result.isNew ? "NUEVO · PRIMER DESCUBRIMIENTO" : revealPopup.result.isDuplicate ? "REPETIDO · +1 COPIA" : "DE VUELTA EN TU COLECCIÓN"
+                            color: revealPopup.result.rarityColor || theme.colors.primary; font.pixelSize: 12; font.bold: true
+                        }
+                        Text { Layout.fillWidth: true; text: revealPopup.result.name || ""; color: theme.colors.text; font.pixelSize: 26; font.bold: true; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight }
+                        Text { text: (revealPopup.result.stars || "") + "   ·   " + (revealPopup.result.price || "") + " virtual"; color: revealPopup.result.rarityColor || theme.colors.primary; font.pixelSize: 16 }
+                        Text {
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 12; color: theme.colors.textMuted
+                            text: revealPopup.result.isNew ? "Un nuevo rostro para tu álbum OG." : revealPopup.result.isDuplicate ? "Puedes conservar esta copia, equiparla o vender una." : "Ya lo habías descubierto. Ahora vuelve a acompañarte."
+                        }
+                    }
+                }
+            }
+            RowLayout {
+                visible: revealPopup.done; Layout.fillWidth: true; spacing: 10
+                Repeater {
+                    model: [
+                        { label: "COPIAS EN TU INVENTARIO", value: String(revealPopup.result.quantity || 1), detail: String(revealPopup.result.quantityBefore || 0) + " antes · +1 recibida" },
+                        { label: "AURA", value: String(revealPopup.result.effectLevel || 0) + " / 5", detail: revealPopup.result.effectName || "Inicial" },
+                        { label: "ÁLBUM OG", value: String(revealPopup.result.collectionDiscovered || 0) + " / " + String(revealPopup.result.collectionTotal || 0), detail: revealPopup.result.isNew ? "+1 descubrimiento" : "Descubrimientos conservados" }
+                    ]
+                    Rectangle {
+                        required property var modelData
+                        Layout.fillWidth: true; Layout.preferredHeight: 76
+                        radius: 12; color: theme.colors.surface; border.color: theme.colors.border
+                        ColumnLayout {
+                            anchors.fill: parent; anchors.margins: 10; spacing: 3
+                            Text { Layout.fillWidth: true; text: modelData.label; color: theme.colors.textMuted; font.pixelSize: 9; elide: Text.ElideRight }
+                            Text { text: modelData.value; color: theme.colors.text; font.pixelSize: 20; font.bold: true }
+                            Text { Layout.fillWidth: true; text: modelData.detail; color: theme.colors.textMuted; font.pixelSize: 10; elide: Text.ElideRight }
+                        }
+                    }
                 }
             }
             RowLayout {

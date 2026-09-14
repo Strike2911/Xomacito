@@ -68,7 +68,16 @@ assert 0 <= location.y() and location.y() + start.height() <= 680
 assert start.property("enabled") is False
 
 controller.setPage(0)
+controller.download.setValue("mode", "Solo Audio")
 QTest.qWait(100)
+footer = find(window.contentItem(), "downloadFooterCard")
+cover = find(window.contentItem(), "embedAudioCoverSwitch")
+advanced = find(window.contentItem(), "advancedToolsButton")
+for control in (cover, advanced):
+    assert control.isVisible()
+    bottom = control.mapToScene(QPointF(0, control.height())).y()
+    assert bottom < footer.mapToScene(QPointF(0, 0)).y()
+assert cover.mapToScene(QPointF(cover.width(), 0)).x() <= window.width()
 strip = find(window.contentItem(), "downloadProgress")
 cat = find(strip, "progressCat")
 assert strip and cat

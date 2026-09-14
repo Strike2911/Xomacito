@@ -26,13 +26,26 @@ def test_paid_daily_and_roulette_obey_collection_without_reset():
     before=controller.sync_snapshot()
     paid=controller.openBox("og")
     assert paid["catId"] in OG_MYTHIC_IDS
+    assert paid["quantityBefore"] == 0 and paid["quantity"] == 1
+    assert paid["isNew"] and not paid["isDuplicate"]
+    assert 0 < paid["collectionDiscovered"] <= paid["collectionTotal"]
     assert all(item["catId"] in OG_MYTHIC_IDS for item in paid["reel"])
     assert controller.sync_snapshot()["walletCents"] == before["walletCents"]-100
     controller._opening=False
     daily=controller.openBox("daily")
     assert daily["catId"] in OG_MYTHIC_IDS
+    assert daily["quantityBefore"] == 1 and daily["quantity"] == 2
+    assert daily["isDuplicate"] and not daily["isNew"]
+    assert daily["collectionDiscovered"] == paid["collectionDiscovered"]
     assert controller.sync_snapshot()["walletCents"] == before["walletCents"]-100
     controller._opening=False
     assert controller.openBox("daily") == {}
     assert controller.sync_snapshot()["inventory"]["cat-cf837ae651c8"] == 1
     assert controller.sync_snapshot()["totalDownloads"] == 31
+    # A previously discovered cat can return after every copy has been sold.
+    controller._inventory.pop(paid["catId"])
+    controller.setSkipAnimation(True)
+    returned = controller.openBox("og")
+    assert returned["quantity"] == 1 and returned["quantityBefore"] == 0
+    assert not returned["isNew"] and not returned["isDuplicate"]
+    assert returned["reel"] == []
