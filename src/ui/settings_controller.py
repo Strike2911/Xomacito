@@ -62,6 +62,7 @@ class SettingsController(QObject):
             "appearance": settings.get("appearance_mode", "Dark"),
             "theme": theme.themeName,
             "animationsEnabled": settings.get("animations_enabled", True),
+            "progressCat": settings.get("progress_cat") if settings.get("progress_cat") in ("orange", "siamese") else "classic",
             "compactMode": settings.get("compact_mode", False),
             "cleanTitles": settings.get("clean_titles", True),
             "openExplorerAfterDownload": settings.get("open_explorer_after_download", True),
@@ -123,6 +124,8 @@ class SettingsController(QObject):
     def setValue(self, key: str, value):
         if key not in self._state:
             return
+        if key == "progressCat" and value not in ("classic", "orange", "siamese"):
+            return
         if key == "appearance":
             self.theme.setAppearance(str(value))
             self._set_state(appearance=self.theme.appearance)
@@ -140,6 +143,7 @@ class SettingsController(QObject):
                 self.settings.set("selected_browser", browser)
         mapping = {
             "animationsEnabled": "animations_enabled",
+            "progressCat": "progress_cat",
             "compactMode": "compact_mode",
             "cleanTitles": "clean_titles",
             "openExplorerAfterDownload": "open_explorer_after_download",

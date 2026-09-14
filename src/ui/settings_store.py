@@ -41,6 +41,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "selected_theme_accent": "Strike",
     "theme_selection_explicit": False,
     "appearance_mode": "Dark",
+    "progress_cat": "classic",
     "clean_titles": True,
     "open_explorer_after_download": True,
     "keep_running_in_background": False,

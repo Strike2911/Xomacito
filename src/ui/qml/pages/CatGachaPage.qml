@@ -24,7 +24,6 @@ Item {
             ColumnLayout {
                 spacing: 3
                 Text { text: "PERSONALIZACIÓN"; color: theme.colors.primary; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1.2 }
-                Text { text: root.section === 0 ? "Una caja. Un nuevo compañero." : "Tu colección, a tu manera."; color: theme.colors.text; font.pixelSize: root.dense ? 20 : 24; font.weight: Font.DemiBold }
             }
             Item { Layout.fillWidth: true }
             XCard {
@@ -51,6 +50,28 @@ Item {
                 Accessible.description: "Conservar esta preferencia para todas las aperturas"
             }
             Text { visible: !root.dense; text: "10 descargas válidas = $1.00 virtual"; color: theme.colors.textMuted; font.pixelSize: 11 }
+        }
+        XCard {
+            objectName: "progressCatSettings"
+            Layout.fillWidth: true
+            implicitHeight: 62
+            RowLayout {
+                anchors.fill: parent; anchors.margins: 10; spacing: 12
+                ProgressCat { Layout.preferredWidth: 58; Layout.preferredHeight: 39; animated: true }
+                ColumnLayout {
+                    Layout.fillWidth: true; spacing: 3
+                    Text { text: "Gatito de descarga"; color: theme.colors.text; font.pixelSize: 12; font.bold: true }
+                    Text { text: "Tu compañero en la barra de progreso"; color: theme.colors.textMuted; font.pixelSize: 10 }
+                }
+                XComboBox {
+                    objectName: "progressCatSelector"
+                    Layout.preferredWidth: 180
+                    compact: true
+                    model: ["Gris · Clásico", "Naranja", "Siamés"]
+                    currentIndex: ["classic", "orange", "siamese"].indexOf(settingsController.state.progressCat || "classic")
+                    onActivated: settingsController.setValue("progressCat", ["classic", "orange", "siamese"][currentIndex])
+                }
+            }
         }
         XCard {
             visible: root.section === 1

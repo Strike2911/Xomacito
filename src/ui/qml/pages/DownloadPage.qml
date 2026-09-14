@@ -304,23 +304,12 @@ Item {
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: page.denseLayout ? 10 : 14
-                        spacing: 10
-                    ScrollView {
-                        id: outputScroll
-                        objectName: "downloadOutputScroll"
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        Layout.minimumHeight: 0
-                        contentWidth: availableWidth
-                        clip: true
-                        background: Item {}
-                        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                        ScrollBar.vertical: XScrollBar {}
+                        spacing: page.denseLayout ? 4 : 8
                     ColumnLayout {
                         id: outputContent
-                        width: Math.max(0, outputScroll.availableWidth - 12)
-                        spacing: page.denseLayout ? 7 : 10
-                        SectionTitle { Layout.fillWidth: true; compact: true; eyebrow: "SALIDA"; title: viewState.localFile ? "Prepara tu archivo" : "Elige cómo descargar"; description: viewState.imagePost ? "Publicación detectada como imagen." : "El motor selecciona combinaciones compatibles y conserva la calidad." }
+                        objectName: "downloadOutputFields"
+                        Layout.fillWidth: true
+                        spacing: page.denseLayout ? 5 : 7
                         LabeledControl {
                             Layout.fillWidth: true; compact: page.denseLayout; label: "Título de salida"
                             XTextField { Layout.fillWidth: true; compact: page.denseLayout; text: viewState.title; onEditingFinished: downloadController.setValue("title", text) }
@@ -352,9 +341,14 @@ Item {
                                 XComboBox { Layout.fillWidth: true; compact: page.denseLayout; model: viewState.mode === "Solo Audio" ? downloadController.audioChoices : downloadController.videoChoices; currentIndex: Math.max(0, find(viewState.mode === "Solo Audio" ? viewState.selectedAudio : viewState.selectedVideo)); onActivated: downloadController.setValue(viewState.mode === "Solo Audio" ? "selectedAudio" : "selectedVideo", currentText) }
                             }
                         }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 12
                         LabeledControl {
                             Layout.fillWidth: true
-                            label: "Idioma del audio (si está disponible)"
+                            Layout.preferredWidth: 180
+                            compact: page.denseLayout
+                            label: "Idioma del audio"
                             visible: !viewState.imagePost && !viewState.localFile
                             XComboBox {
                                 Layout.fillWidth: true
@@ -367,8 +361,10 @@ Item {
                         }
                         LabeledControl {
                             visible: !viewState.imagePost
+                            Layout.preferredWidth: 340
                             Layout.fillWidth: true; compact: page.denseLayout; label: "Preset de conversión"
                             XComboBox { Layout.fillWidth: true; compact: page.denseLayout; model: viewState.mode === "Solo Audio" ? presetStore.audioPresets : presetStore.videoPresets; currentIndex: Math.max(0, find(viewState.preset)); onActivated: downloadController.setValue("preset", currentText) }
+                        }
                         }
                         LabeledControl {
                             visible: viewState.imagePost
@@ -402,17 +398,18 @@ Item {
                             font.weight: Font.DemiBold
                         }
                     }
-                }
+                        Item { Layout.fillHeight: true; Layout.minimumHeight: 0 }
                         GridLayout {
                             objectName: "downloadPresetOptions"
                             visible: !viewState.imagePost
                             Layout.fillWidth: true
-                            columns: width >= 710 ? 4 : 2
-                            columnSpacing: 12; rowSpacing: 10
-                            XSwitch { Layout.fillWidth: true; text: "Aplicar preset"; checked: options.applyPreset; onToggled: downloadController.setOption("applyPreset", checked) }
-                            XSwitch { Layout.fillWidth: true; text: "Mantener original"; checked: options.keepOriginal; enabled: options.applyPreset; onToggled: downloadController.setOption("keepOriginal", checked) }
+                            columns: viewState.mode === "Solo Audio" ? 2 : 3
+                            columnSpacing: 12; rowSpacing: page.denseLayout ? 4 : 10
+                            XSwitch { Layout.fillWidth: true; compact: page.denseLayout; text: "Aplicar preset"; checked: options.applyPreset; onToggled: downloadController.setOption("applyPreset", checked) }
+                            XSwitch { Layout.fillWidth: true; compact: page.denseLayout; text: "Mantener original"; checked: options.keepOriginal; enabled: options.applyPreset; onToggled: downloadController.setOption("keepOriginal", checked) }
                             XSwitch {
                                 objectName: "embedAudioCoverSwitch"
+                                compact: page.denseLayout
                                 Layout.fillWidth: true
                                 visible: viewState.mode === "Solo Audio" && !viewState.localFile
                                 text: "Incluir portada"
@@ -422,7 +419,7 @@ Item {
                                 ToolTip.visible: hovered && !enabled
                                 ToolTip.text: "Activa un preset MP3 o AAC para incluir la portada."
                             }
-                            XButton { Layout.fillWidth: true; objectName: "advancedToolsButton"; compact: true; text: "Ajustes avanzados"; kind: "secondary"; onClicked: advanced.open() }
+                            XButton { Layout.fillWidth: true; objectName: "advancedToolsButton"; compact: true; implicitHeight: page.denseLayout ? 32 : 36; text: "Ajustes avanzados"; kind: "secondary"; onClicked: advanced.open() }
                         }
                     }
                 }

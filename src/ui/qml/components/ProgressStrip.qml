@@ -10,12 +10,10 @@ XCard {
     property bool compact: false
     readonly property real fraction: Math.max(0, Math.min(1, value))
     readonly property bool animate: busy && visible && settingsController.state.animationsEnabled
-    property int frame: 0
     implicitHeight: compact ? 78 : 90
     Accessible.role: Accessible.ProgressBar
     Accessible.name: status
     Accessible.description: value < 0 ? "Preparando" : Math.round(fraction * 100) + "%"
-    Timer { interval: 140; repeat: true; running: root.animate; onTriggered: root.frame = 1 - root.frame }
 
     ColumnLayout {
         anchors.fill: parent
@@ -39,34 +37,21 @@ XCard {
                 height: 12
                 clip: true
                 Column {
-                    width: parent.width; y: root.animate && root.frame ? 1 : 0
+                    width: parent.width; y: root.animate && cat.frame ? 1 : 0
                     Repeater {
                         model: ["#FF647C", "#FFB45B", "#FFE779", "#77DFA1", "#64C7FF", "#AD8BFA"]
                         Rectangle { required property string modelData; width: parent.width; height: 2; color: modelData; opacity: 0.85 }
                     }
                 }
             }
-            Item {
+            ProgressCat {
                 id: cat
                 objectName: "progressCat"
                 x: track.runnerX
                 anchors.bottom: parent.bottom
                 width: 58; height: 39
+                animated: root.animate
                 Behavior on x { enabled: settingsController.state.animationsEnabled; NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
-                Image {
-                    anchors.fill: parent
-                    source: "../../../../assets/progress/cat-run-1.png"
-                    sourceClipRect: Qt.rect(410, 430, 830, 550)
-                    fillMode: Image.PreserveAspectFit; smooth: false
-                    visible: !root.animate || root.frame === 0
-                }
-                Image {
-                    anchors.fill: parent
-                    source: "../../../../assets/progress/cat-run-2.png"
-                    sourceClipRect: Qt.rect(200, 340, 1000, 670)
-                    fillMode: Image.PreserveAspectFit; smooth: false
-                    visible: root.animate && root.frame === 1
-                }
             }
         }
     }

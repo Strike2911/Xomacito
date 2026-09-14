@@ -95,11 +95,6 @@ class AppController(QObject):
         self.media_library = MediaLibraryController(
             self.project_root, self.settings, self.pool, self.download.ffmpeg, self
         )
-        self.media_library.libraryPathChanged.connect(self._use_premiere_library)
-        if bool(self.settings.get("premiere_library_enabled", True)):
-            library_path = str(self.media_library.root)
-            self.download.setValue("outputPath", library_path)
-            self.batch.setValue("outputPath", library_path)
         self.image_studio = ImageController(self.project_root, self.settings, self.pool, self.update_version, self)
         self.config = SettingsController(self.project_root, self.settings, self.theme, self.pool, self)
         self.cats = CatGachaController(self.project_root, self.settings, self)
@@ -496,13 +491,6 @@ class AppController(QObject):
         self.batch.setValue("url", url)
         self.setPage(1)
         self.batch.analyze()
-
-    @Slot(str)
-    def _use_premiere_library(self, path):
-        if not bool(self.settings.get("premiere_library_enabled", True)):
-            return
-        self.download.setValue("outputPath", str(path))
-        self.batch.setValue("outputPath", str(path))
 
     def _send_files_to_image(self, paths):
         self.image_studio.addPaths(list(paths))

@@ -30,6 +30,7 @@ IDEA_CONTRIBUTORS = [
     "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan",
 ]
 PUBLIC_VERSION_BY_INTERNAL = {
+    "4.0.25": "1.2.6",
     "4.0.22": "1.2.3",
     "4.0.23": "1.2.4",
     "4.0.24": "1.2.5",
@@ -44,6 +45,14 @@ PUBLIC_VERSION_BY_INTERNAL = {
 }
 PUBLIC_BUGFIX_NOTE = "- Arreglo de bugs de la versión 1.0."
 RELEASE_NOTICES = {
+    "4.0.25": {
+        "eyebrow": "XOMACITO 1.2.6", "title": "Tus descargas, a tu manera.",
+        "subtitle": "ACTUALIZACIÓN LIGERA",
+        "message": "Ajustes compactos y carpetas que se conservan al reiniciar.",
+        "highlights": ["Descarga sin scroll en los ajustes", "Carpetas de Descargar y Cola persistentes", "Gatito de descarga gris, naranja o siamés"],
+        "contributors": IDEA_CONTRIBUTORS, "closing": "Elige tu gatito en Personalización.",
+        "platinumCelebration": False, "smoothMotionPromotion": False,
+    },
     "4.0.24": {
         "eyebrow": "XOMACITO 1.2.5", "title": "Cada gato cuenta.",
         "subtitle": "ACTUALIZACIÓN LIGERA",
