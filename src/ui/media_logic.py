@@ -193,9 +193,9 @@ def build_media_choices(info: dict) -> dict[str, Any]:
             audio.append(common)
 
     video.sort(key=lambda item: (
-        0 if is_editor_mp4_video(item) else 1,
         -item["height"],
         -item["fps"],
+        0 if is_editor_mp4_video(item) else 1,
         -item["tbr"],
     ))
     audio.sort(key=lambda item: (

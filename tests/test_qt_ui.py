@@ -1073,7 +1073,7 @@ controller.shutdown()
         self.assertEqual(preferred_merge_container(choices["video"][0], choices["audio"][0]), "mp4")
         self.assertEqual(preferred_merge_container(choices["video"][0], choices["audio"][1]), "")
 
-    def test_editor_mp4_is_selected_before_a_higher_resolution_webm(self):
+    def test_highest_resolution_is_selected_before_container_preference(self):
         info = normalize_info({
             "id": "premiere-default", "title": "Premiere", "duration": 12,
             "formats": [
@@ -1084,11 +1084,11 @@ controller.shutdown()
             ],
         })
         choices = build_media_choices(info)
-        self.assertEqual(choices["video"][0]["formatId"], "mp4-1080")
+        self.assertEqual(choices["video"][0]["formatId"], "webm-4k")
         self.assertEqual(choices["audio"][0]["formatId"], "aac")
-        self.assertTrue(is_editor_mp4_selection(choices["video"][0], choices["audio"][0]))
-        self.assertEqual(preferred_merge_container(choices["video"][0], choices["audio"][0]), "mp4")
-        self.assertEqual(choices["video"][1]["formatId"], "webm-4k")
+        self.assertTrue(is_editor_mp4_selection(choices["video"][1], choices["audio"][0]))
+        self.assertEqual(preferred_merge_container(choices["video"][1], choices["audio"][0]), "mp4")
+        self.assertEqual(choices["video"][1]["formatId"], "mp4-1080")
 
     def test_webm_fallback_is_transcoded_to_h264_aac_mp4(self):
         options = editor_mp4_fallback_options({"title": "WEBM", "mode": "Video+Audio"})
@@ -1652,6 +1652,7 @@ with tempfile.TemporaryDirectory() as directory:
     with patch("src.ui.download_controller.download_media", side_effect=fake_download):
         result = Path(download._download_worker(options))
     assert len(calls) == 2, calls
+    assert calls[1]["format"] == calls[0]["format"] == "137+140", calls
     assert "xomacito-" in calls[1]["outtmpl"], calls[1]["outtmpl"]
     assert result.name == "Título visible.mp4", result
     assert result.read_bytes() == b"xomacito"

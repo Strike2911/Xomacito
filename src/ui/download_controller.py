@@ -34,6 +34,7 @@ from src.core.downloader import (
     is_x_status_url,
 )
 from src.core.exceptions import UserCancelledError
+from src.core.video_quality import quality_preserving_selector, validate_download_resolution
 from src.core.file_naming import next_available_media_stem, next_available_path
 from src.core.processor import FFmpegProcessor, clean_and_convert_vtt_to_srt, pixel_format_has_alpha
 from src.core.thumbnail_export import (
@@ -146,10 +147,12 @@ def reveal_in_file_manager(target: str | Path) -> bool:
 
 def editor_mp4_fallback_options(options: dict) -> dict:
     """Fuerza un resultado H.264/AAC MP4 si el sitio sólo entregó WEBM/MKV."""
-    compatible = {**options, **BUILT_IN_PRESETS["Web/Móvil - H.264 Normal"]}
+    compatible = {**options, **BUILT_IN_PRESETS["Web/Móvil - H.264 Máxima"]}
     compatible.update({
         "mode": "Video+Audio",
         "keep_original_file": False,
+        "resolution_change_enabled": False,
+        "fps_force_enabled": False,
     })
     return compatible
 
@@ -1600,6 +1603,10 @@ class DownloadController(QObject):
         if not input_file:
             input_file = self._download_worker(options)
             downloaded = True
+            if options.get("mode") == "Video+Audio":
+                selected = self._video_map.get(options.get("video_label"), {})
+                if selected.get("height") or selected.get("width"):
+                    validate_download_resolution(self.ffmpeg.get_local_media_info(input_file), selected)
         if self.cancellation.is_set():
             raise UserCancelledError("Proceso cancelado.")
 
@@ -1873,15 +1880,14 @@ class DownloadController(QObject):
             fallback["format"] = (
                 "bestaudio[ext=m4a]/bestaudio/best"
                 if options["mode"] == "Solo Audio"
-                else (
-                    "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/"
-                    "best[ext=mp4][vcodec^=avc1]/"
-                    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/"
-                    "bestvideo+bestaudio/best"
-                )
+                else quality_preserving_selector(video)
             )
             invalid_argument_retry = self._is_invalid_argument_error(first_error)
             if invalid_argument_retry:
+                # A filesystem error must not change the chosen media streams.
+                fallback["format"] = ydl_options["format"]
+                if merge_container:
+                    fallback["merge_output_format"] = merge_container
                 # Algunos volúmenes sincronizados de Windows rechazan temporalmente
                 # el nombre final aunque la carpeta sea válida. Un nombre ASCII corto
                 # evita EINVAL; al terminar restauramos el título elegido.
@@ -1890,7 +1896,8 @@ class DownloadController(QObject):
                 self.progressReported.emit(0.02, "Reintentando con una ruta compatible con Windows…")
             else:
                 alternative_result = (
-                    "La mejor alternativa se entregará como MP4 compatible."
+                    "Se buscará otra opción que conserve la resolución y los FPS seleccionados. "
+                    "Si no está disponible, la descarga se detendrá sin bajar la calidad."
                     if options["mode"] == "Video+Audio"
                     else "Se priorizará M4A; si el sitio no lo ofrece, se mostrará el formato de audio disponible."
                 )
