@@ -1730,7 +1730,7 @@ class DownloadController(QObject):
         return str(source)
 
     def _download_x_video_as_mp4(self, direct_url: str, target: Path) -> str:
-        """Descarga un stream de X y entrega un MP4 H.264/AAC reproducible."""
+        """Copia los streams MP4 de X sin pérdida por una segunda compresión."""
         ffmpeg_path = str(self.ffmpeg.ffmpeg_path or "")
         if not ffmpeg_path or not Path(ffmpeg_path).is_file():
             raise RuntimeError("No se encontró FFmpeg para preparar el video de X en MP4.")
@@ -1739,8 +1739,7 @@ class DownloadController(QObject):
             ffmpeg_path, "-y", "-nostdin", "-hide_banner", "-loglevel", "error",
             "-i", direct_url,
             "-map", "0:v:0", "-map", "0:a?",
-            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-movflags", "+faststart", str(target),
+            "-c", "copy", "-movflags", "+faststart", str(target),
         ]
         creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         completed = subprocess.run(

@@ -203,6 +203,15 @@ def build_media_choices(info: dict) -> dict[str, Any]:
         0 if is_editor_mp4_audio(item) else 1 if item["compatible"] else 2,
         -(item["abr"] or item["tbr"]),
     ))
+    # Display labels are selection keys in the controllers. Keep every stream
+    # distinct even when dimensions, codec and file-size metadata are identical.
+    for entries in (video, audio):
+        counts = defaultdict(int)
+        for entry in entries:
+            counts[entry["label"]] += 1
+        for index, entry in enumerate(entries):
+            if counts[entry["label"]] > 1:
+                entry["label"] += f" · pista {index + 1} ({entry['formatId']})"
     subtitles: dict[str, list[dict]] = defaultdict(list)
     for automatic, source in ((False, info.get("subtitles", {})), (True, info.get("automatic_captions", {}))):
         for language, entries in source.items():

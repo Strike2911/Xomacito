@@ -1,6 +1,6 @@
 #define MyAppName "Xomacito"
-#define MyAppVersion "4.0.26"
-#define MyAppDisplayVersion "1.2.7"
+#define MyAppVersion "4.0.27"
+#define MyAppDisplayVersion "1.2.8"
 #define MyAppExeName "Xomacito.exe"
 #define ProjectRoot ".."
 #define UninstallKey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{8B474FFD-6C60-4B82-889E-7DD12563E7E5}_is1"
@@ -18,7 +18,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#ProjectRoot}\release
-OutputBaseFilename=Xomacito-1.2.7-Update-Light
+OutputBaseFilename=Xomacito-1.2.8-Update-Light
 SetupIconFile={#ProjectRoot}\Xomacito-icon.ico
 Compression=lzma2/max
 SolidCompression=yes
@@ -29,10 +29,10 @@ RestartApplications=no
 CreateUninstallRegKey=no
 Uninstallable=no
 MinVersion=10.0.17763
-VersionInfoVersion=4.0.26.0
+VersionInfoVersion=4.0.27.0
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppDisplayVersion}
-VersionInfoDescription=Xomacito 1.2.7 - Actualización ligera
+VersionInfoDescription=Xomacito 1.2.8 - Actualización ligera
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"

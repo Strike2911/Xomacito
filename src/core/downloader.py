@@ -186,8 +186,11 @@ def extract_x_media_post_info(url, timeout=25, session=None):
         ):
             continue
         try:
-            width = int(variant.get("width") or variant.get("w") or selected.get("width") or 0)
-            height = int(variant.get("height") or variant.get("h") or selected.get("height") or 0)
+            dimensions = re.search(r"/(\d{2,5})x(\d{2,5})/", source_path)
+            # Post-level dimensions describe the original, not every rendition.
+            original = selected if direct_url == selected.get("url") else {}
+            width = int(dimensions.group(1) if dimensions else variant.get("width") or variant.get("w") or original.get("width") or 0)
+            height = int(dimensions.group(2) if dimensions else variant.get("height") or variant.get("h") or original.get("height") or 0)
             bitrate = float(
                 variant.get("bit_rate") or variant.get("bitrate")
                 or variant.get("bitrate_bps") or 0
@@ -203,8 +206,8 @@ def extract_x_media_post_info(url, timeout=25, session=None):
             "vcodec": variant.get("codec") or "h264",
             "acodec": "none" if selected.get("type") == "gif" else "aac",
             "tbr": (bitrate / 1000.0) or None,
-            "width": width or selected.get("width"),
-            "height": height or selected.get("height"),
+            "width": width or None,
+            "height": height or None,
             # yt-dlp uses this while resolving "best". Prefer pixels first,
             # then the higher bitrate version of the same resolution.
             "preference": int(width * height + bitrate),

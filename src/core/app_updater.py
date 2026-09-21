@@ -30,6 +30,7 @@ IDEA_CONTRIBUTORS = [
     "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan",
 ]
 PUBLIC_VERSION_BY_INTERNAL = {
+    "4.0.27": "1.2.8",
     "4.0.26": "1.2.7",
     "4.0.25": "1.2.6",
     "4.0.22": "1.2.3",
@@ -46,6 +47,14 @@ PUBLIC_VERSION_BY_INTERNAL = {
 }
 PUBLIC_BUGFIX_NOTE = "- Arreglo de bugs de la versión 1.0."
 RELEASE_NOTICES = {
+    "4.0.27": {
+        "eyebrow": "XOMACITO 1.2.8", "title": "Descargas de X corregidas.",
+        "subtitle": "ACTUALIZACIÓN LIGERA",
+        "message": "Cada versión del video muestra su resolución real y descarga el archivo correspondiente.",
+        "highlights": ["Calidades de X correctamente identificadas", "Selección sin colisiones entre formatos", "MP4 de X sin recompresión"],
+        "contributors": IDEA_CONTRIBUTORS, "closing": "Vuelve a analizar el enlace después de actualizar.",
+        "platinumCelebration": False, "smoothMotionPromotion": False,
+    },
     "4.0.26": {
         "eyebrow": "XOMACITO 1.2.7", "title": "Conserva la calidad elegida.",
         "subtitle": "ACTUALIZACIÓN LIGERA",
