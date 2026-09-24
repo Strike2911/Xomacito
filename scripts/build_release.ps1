@@ -56,7 +56,7 @@ Assert-ReadableApplicationSource
 if (-not $SkipApplicationBuild) {
     try {
         New-Item -ItemType Directory -Path (Join-Path $BuildWork 'XomacitoInstaller') -Force | Out-Null
-        & $Python -m PyInstaller --noconfirm --clean --workpath $BuildWork $Spec
+        & $Python -m PyInstaller --noconfirm --clean --workpath $BuildWork --distpath (Join-Path $ProjectRoot 'dist') $Spec
         if ($LASTEXITCODE -ne 0) {
             throw 'PyInstaller no pudo crear la distribución instalada.'
         }

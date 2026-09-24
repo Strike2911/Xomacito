@@ -67,9 +67,9 @@ Item {
                     objectName: "progressCatSelector"
                     Layout.preferredWidth: 180
                     compact: true
-                    model: ["Gris · Clásico", "Naranja", "Siamés"]
-                    currentIndex: ["classic", "orange", "siamese"].indexOf(settingsController.state.progressCat || "classic")
-                    onActivated: settingsController.setValue("progressCat", ["classic", "orange", "siamese"][currentIndex])
+                    model: ["Gris · Clásico", "Naranja"]
+                    currentIndex: ["classic", "orange"].indexOf(settingsController.state.progressCat || "classic")
+                    onActivated: settingsController.setValue("progressCat", ["classic", "orange"][currentIndex])
                 }
             }
         }

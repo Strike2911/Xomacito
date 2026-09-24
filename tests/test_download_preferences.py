@@ -43,7 +43,7 @@ assert controller.download.state["effectiveOutputPath"] == str(home / "Download 
 assert controller.batch.state["effectiveOutputPath"] == str(home / "Queue destination")
 controller.download.setValue("outputPath", str(home / "Chosen download"))
 controller.batch.setValue("outputPath", str(home / "Chosen queue"))
-controller.config.setValue("progressCat", "siamese")
+controller.settings.set("progress_cat", "siamese")
 controller.media_library.libraryPathChanged.emit(str(home / "Other library"))
 assert controller.download.state["effectiveOutputPath"] == str(home / "Chosen download")
 assert controller.batch.state["effectiveOutputPath"] == str(home / "Chosen queue")
@@ -52,7 +52,8 @@ controller.shutdown()
 controller = AppController(app, root, "1.2.5")
 assert controller.download.state["effectiveOutputPath"] == str(home / "Chosen download")
 assert controller.batch.state["effectiveOutputPath"] == str(home / "Chosen queue")
-assert controller.config.state["progressCat"] == "siamese"
+assert controller.config.state["progressCat"] == "classic"
+assert controller.settings.get("progress_cat") == "classic"
 controller.settings.update({
     "download_tags": [{"name": "Music", "folder": str(home / "Tagged"), "color": "#84CC16"}],
     "selected_download_tag": "Music",
@@ -100,7 +101,7 @@ for width, height in ((960, 680), (1280, 720), (1440, 900)):
 controller.setPage(4)
 QTest.qWait(200)
 selector = window.findChild(QObject, "progressCatSelector")
-assert selector is not None and selector.property("currentIndex") == 2
+assert selector is not None and selector.property("currentIndex") == 0
 controller.config.setValue("progressCat", "classic")
 QTest.qWait(50)
 assert selector.property("currentIndex") == 0
@@ -109,7 +110,7 @@ QTest.qWait(50)
 assert selector.property("currentIndex") == 1
 controller.config.setValue("progressCat", "siamese")
 controller.config.setValue("progressCat", "invalid")
-assert controller.config.state["progressCat"] == "siamese"
+assert controller.config.state["progressCat"] == "orange"
 if os.environ.get("XOMACITO_REVIEW_DIR"):
     window.grabWindow().save(str(Path(os.environ["XOMACITO_REVIEW_DIR"]) / "personalization.png"))
 window.setWidth(960)

@@ -54,6 +54,8 @@ class SettingsController(QObject):
         self.models = ObjectListModel(self.MODEL_ROLES, self)
         self._environment: dict[str, Any] = {}
         self._console_text = "Xomacito Console\nEscribe xomacito help para ver los comandos disponibles.\n"
+        if settings.get("progress_cat") == "siamese":
+            settings.set("progress_cat", "classic")
         self._state = {
             "section": "General",
             "busy": False,
@@ -62,7 +64,7 @@ class SettingsController(QObject):
             "appearance": settings.get("appearance_mode", "Dark"),
             "theme": theme.themeName,
             "animationsEnabled": settings.get("animations_enabled", True),
-            "progressCat": settings.get("progress_cat") if settings.get("progress_cat") in ("orange", "siamese") else "classic",
+            "progressCat": settings.get("progress_cat") if settings.get("progress_cat") == "orange" else "classic",
             "compactMode": settings.get("compact_mode", False),
             "cleanTitles": settings.get("clean_titles", True),
             "openExplorerAfterDownload": settings.get("open_explorer_after_download", True),
@@ -124,7 +126,7 @@ class SettingsController(QObject):
     def setValue(self, key: str, value):
         if key not in self._state:
             return
-        if key == "progressCat" and value not in ("classic", "orange", "siamese"):
+        if key == "progressCat" and value not in ("classic", "orange"):
             return
         if key == "appearance":
             self.theme.setAppearance(str(value))
