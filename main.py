@@ -17,6 +17,8 @@ UPDATE_VERSION = "4.0.27"
 FROZEN = bool(getattr(sys, "frozen", False))
 PROJECT_ROOT = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
 INTERNAL_DIR = Path(getattr(sys, "_MEIPASS", PROJECT_ROOT / "_internal")) if FROZEN else PROJECT_ROOT / "_internal"
+if sys.platform == "darwin" and FROZEN:
+    PROJECT_ROOT = INTERNAL_DIR
 SRC_DIR = INTERNAL_DIR / "src" if FROZEN else (
     PROJECT_ROOT / "src" if (PROJECT_ROOT / "src").exists() else INTERNAL_DIR / "src"
 )
@@ -34,6 +36,10 @@ if os.name == "nt" and hasattr(os, "add_dll_directory"):
             os.environ["PATH"] = str(dll_dir) + os.pathsep + os.environ.get("PATH", "")
 
 BIN_PATH = INTERNAL_DIR / "bin" if FROZEN and (INTERNAL_DIR / "bin").is_dir() else PROJECT_ROOT / "bin"
+if sys.platform == "darwin":
+    from src.core.macos_runtime import prepare_runtime
+
+    BIN_PATH = prepare_runtime(INTERNAL_DIR if FROZEN else PROJECT_ROOT)
 BIN_DIR = str(BIN_PATH)
 FFMPEG_BIN_DIR = os.environ.get("XOMACITO_FFMPEG_BIN_DIR", str(BIN_PATH / "ffmpeg"))
 DENO_BIN_DIR = str(BIN_PATH / "deno")
@@ -45,6 +51,10 @@ def _persistent_models_path() -> Path:
     override = str(os.environ.get("XOMACITO_MODELS_DIR") or "").strip()
     if override:
         return Path(override).expanduser().resolve()
+    if sys.platform == "darwin":
+        from src.core.macos_runtime import support_path
+
+        return support_path() / "models"
     if not FROZEN:
         return BIN_PATH / "models"
     local_data = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
@@ -257,6 +267,10 @@ def _configure_responsive_qt_scale() -> None:
 
 def _run_self_test() -> int:
     """Comprueba el runtime instalado sin crear una ventana gráfica."""
+    if sys.platform == "darwin":
+        from src.core.macos_runtime import self_test
+
+        return self_test(INTERNAL_DIR if FROZEN else PROJECT_ROOT)
     if not FROZEN:
         return 0
     try:
@@ -308,6 +322,9 @@ def _run_safely() -> int:
         return main()
     except Exception:
         error_log = PROJECT_ROOT / "Xomacito-startup-error.log"
+        if sys.platform == "darwin":
+            error_log = Path.home() / "Library" / "Logs" / "Xomacito-startup-error.log"
+            error_log.parent.mkdir(parents=True, exist_ok=True)
         details = traceback.format_exc()
         try:
             error_log.write_text(details, encoding="utf-8")
@@ -327,4 +344,8 @@ def _run_safely() -> int:
 
 
 if __name__ == "__main__":
+    if sys.platform == "darwin":
+        import multiprocessing
+
+        multiprocessing.freeze_support()
     raise SystemExit(_run_safely())

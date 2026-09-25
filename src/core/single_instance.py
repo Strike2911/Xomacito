@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -102,6 +103,16 @@ class SingleInstanceGuard:
 
 def focus_existing_window(title_prefix: str) -> bool:
     """Muestra y enfoca la ventana existente, aunque esté oculta en la bandeja."""
+    if sys.platform == "darwin":
+        import subprocess
+
+        if not getattr(sys, "frozen", False):
+            return False
+        try:
+            result = subprocess.run(["/usr/bin/open", "-b", "com.strike2911.xomacito"], check=False)
+            return result.returncode == 0
+        except OSError:
+            return False
     if os.name != "nt":
         return False
 

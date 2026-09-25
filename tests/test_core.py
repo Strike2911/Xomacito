@@ -1158,7 +1158,7 @@ class XomacitoWrapperTests(unittest.TestCase):
         build_entries = {path.name for path in (ROOT / ".build").iterdir() if path.is_file()}
         self.assertEqual(
             build_entries,
-            {"XomacitoInstaller.spec", "XomacitoLauncher.spec", "XomacitoPublic.spec"},
+            {"XomacitoInstaller.spec", "XomacitoLauncher.spec", "XomacitoPublic.spec", "XomacitoMac.spec"},
         )
 
 

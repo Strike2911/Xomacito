@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import os
 import sys
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -77,6 +78,12 @@ def platinum_sound_path() -> Path | None:
 
 
 def _play_with_mci(path: Path, volume: int = 1000) -> None:
+    if sys.platform == "darwin":
+        try:
+            subprocess.run(["/usr/bin/afplay", "-v", str(max(0, min(1000, int(volume))) / 1000), str(path)], check=False)
+        except OSError:
+            pass
+        return
     if os.name != "nt":
         return
     if path.suffix.casefold() == ".wav":

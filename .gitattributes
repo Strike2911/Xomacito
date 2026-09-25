@@ -1,0 +1,2 @@
+scripts/build_mac.sh text eol=lf
+scripts/make_mac_icon.sh text eol=lf

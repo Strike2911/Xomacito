@@ -131,6 +131,13 @@ def reveal_in_file_manager(target: str | Path) -> bool:
     except OSError:
         resolved = path
 
+    if sys.platform == "darwin":
+        try:
+            command = ["/usr/bin/open", "-R", str(resolved)] if resolved.is_file() else ["/usr/bin/open", str(resolved)]
+            subprocess.Popen(command)
+            return True
+        except OSError:
+            pass
     if sys.platform == "win32":
         try:
             if resolved.is_file():

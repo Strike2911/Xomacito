@@ -644,6 +644,10 @@ def extract_instagram_reel_info(url, timeout=30, session=None, ydl_options=None)
 
 def get_deno_path():
     """Obtiene la ruta absoluta de la carpeta donde está deno.exe."""
+    if sys.platform == "darwin":
+        from main import DENO_BIN_DIR
+
+        return DENO_BIN_DIR
     if getattr(sys, 'frozen', False):
         root = os.path.dirname(sys.executable)
     else:
@@ -664,6 +668,8 @@ def apply_yt_patch(ydl_opts):
         deno_executable = "deno"
     
     deno_path = os.path.join(root, "bin", "deno", deno_executable)
+    if sys.platform == "darwin":
+        deno_path = os.path.join(get_deno_path(), "deno")
     
     # Verificar Deno
     if not os.path.exists(deno_path):

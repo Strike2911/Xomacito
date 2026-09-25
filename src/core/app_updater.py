@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import sys
 import tempfile
 import uuid
 from pathlib import Path
@@ -898,6 +899,16 @@ def has_existing_installation() -> bool:
 
 
 def _select_installer_asset(assets: list[dict], prefer_light: bool = False) -> dict | None:
+    if sys.platform == "darwin":
+        import platform
+
+        architecture = platform.machine().lower()
+        for asset in assets:
+            name = str(asset.get("name", "")).casefold()
+            if (asset.get("state", "uploaded") == "uploaded" and name.startswith("xomacito-")
+                    and name.endswith((f"-{architecture}.dmg", "-universal2.dmg"))):
+                return asset
+        return None
     uploaded = [asset for asset in assets if asset.get("state", "uploaded") == "uploaded"]
     installers = [
         asset for asset in uploaded
@@ -920,6 +931,11 @@ def _select_installer_asset(assets: list[dict], prefer_light: bool = False) -> d
 def _official_installer_url(url: str) -> bool:
     parsed = urlparse(str(url or ""))
     expected_prefix = f"/{REPOSITORY}/releases/download/".casefold()
+    if sys.platform == "darwin":
+        return (parsed.scheme.casefold() == "https"
+                and parsed.hostname == "github.com"
+                and parsed.path.casefold().startswith(expected_prefix)
+                and parsed.path.casefold().endswith(".dmg"))
     return (
         parsed.scheme.casefold() == "https"
         and parsed.hostname is not None
@@ -1035,6 +1051,8 @@ def download_installer(
         # abierto unos segundos y Windows no permite reemplazarlo en ese estado.
         attempt_id = uuid.uuid4().hex[:12]
         destination_path = update_dir / f"Xomacito-{version_text}-Setup-{attempt_id}.exe"
+        if sys.platform == "darwin":
+            destination_path = update_dir / f"Xomacito-{version_text}-{attempt_id}.dmg"
     else:
         destination_path = Path(destination)
     destination_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1070,8 +1088,18 @@ def download_installer(
                 f"La descarga quedó incompleta ({downloaded} de {expected_size} bytes)."
             )
         with partial_path.open("rb") as downloaded_file:
-            if downloaded_file.read(2) != b"MZ":
-                raise AppUpdateError("El archivo descargado no es un instalador válido de Windows.")
+            if sys.platform == "darwin":
+                if downloaded < 512:
+                    raise AppUpdateError("El archivo descargado no es un DMG valido.")
+                downloaded_file.seek(-512, os.SEEK_END)
+                if downloaded_file.read(4) != b"koly":
+                    raise AppUpdateError("El archivo descargado no es un DMG valido.")
+            elif sys.platform == "win32":
+                if downloaded_file.read(2) != b"MZ":
+                    raise AppUpdateError("El archivo descargado no es un instalador válido de Windows.")
+            else:
+                if downloaded_file.read(2) != b"MZ":
+                    raise AppUpdateError("El archivo descargado no es un instalador válido de Windows.")
 
         expected_digest = _expected_sha256(update_info.get("installer_digest", ""))
         if not expected_digest:
@@ -1091,6 +1119,8 @@ def download_installer(
 
 def silent_installer_command(installer_path: str | Path) -> list[str]:
     """Parámetros Inno Setup usados después de que el usuario acepta actualizar."""
+    if sys.platform == "darwin":
+        return ["/usr/bin/open", str(Path(installer_path))]
     return [
         str(Path(installer_path)),
         "/SILENT",
@@ -1151,6 +1181,8 @@ def deferred_installer_command(
     launcher_path: str | Path | None = None,
 ) -> list[str]:
     """Crea un lanzador que espera el cierre real de Xomacito antes de instalar."""
+    if sys.platform == "darwin":
+        return ["/usr/bin/open", str(Path(installer_path).resolve())]
     installer = Path(installer_path).resolve()
     if launcher_path is None:
         launcher = installer.parent / f"xomacito-update-{uuid.uuid4().hex[:12]}.ps1"

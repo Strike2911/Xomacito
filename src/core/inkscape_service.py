@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import shutil
 
 class InkscapeService:
@@ -17,6 +18,16 @@ class InkscapeService:
 
     def _detect_binary(self):
         """Busca el ejecutable en la raíz o en /bin de la ruta proporcionada."""
+        if sys.platform == "darwin":
+            candidates = [self.base_path] if self.base_path else []
+            if self.base_path:
+                candidates.extend(os.path.join(self.base_path, part) for part in ("Contents/MacOS/inkscape", "bin/inkscape", "inkscape"))
+            candidates.extend((shutil.which("inkscape"), "/Applications/Inkscape.app/Contents/MacOS/inkscape"))
+            for candidate in candidates:
+                if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                    self.actual_bin_path = candidate
+                    return True
+            return False
         if not self.base_path:
             return False
             
