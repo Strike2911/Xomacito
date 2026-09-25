@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import threading
 from copy import deepcopy
@@ -79,7 +80,12 @@ class SettingsStore(QObject):
 
     def __init__(self, app_name: str = "Xomacito", parent=None):
         super().__init__(parent)
-        roaming = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming"))
+        if sys.platform == "darwin":
+            roaming = Path.home() / "Library" / "Application Support"
+        elif sys.platform == "win32":
+            roaming = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming"))
+        else:
+            roaming = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming"))
         self.directory = roaming / app_name
         self.path = self.directory / "app_settings.json"
         self.presets_path = self.directory / "presets.json"

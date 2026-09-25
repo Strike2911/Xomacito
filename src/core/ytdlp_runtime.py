@@ -45,6 +45,12 @@ _LAZY_YTDLP = _LazyYtDlpModule()
 
 def _roots() -> list[Path]:
     roots: list[Path] = []
+    if sys.platform == "darwin":
+        from src.core.macos_runtime import support_path
+
+        roots.append(support_path())
+        if getattr(sys, "frozen", False):
+            roots.append(Path(sys._MEIPASS))
     if getattr(sys, "frozen", False):
         executable_root = Path(sys.executable).resolve().parent
         roots.extend((executable_root / "_internal", executable_root, executable_root.parent))

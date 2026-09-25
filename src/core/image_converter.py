@@ -1,5 +1,6 @@
 ﻿import os
 import io
+import sys
 import re
 import tempfile
 import threading
@@ -89,6 +90,11 @@ class ImageConverter:
 
     def _find_local_ghostscript(self):
         """Busca Ghostscript y devuelve (carpeta_bin, ruta_exe)."""
+        if sys.platform == "darwin":
+            from main import BIN_DIR
+
+            executable = os.path.join(BIN_DIR, "ghostscript", "gs")
+            return (os.path.dirname(executable), executable) if os.path.isfile(executable) else (None, None)
         try:
             base_path = os.getcwd()
             possible_dirs = [
@@ -2357,7 +2363,12 @@ class ImageConverter:
             cmd = []
             
             if "SRMD" in engine: # <-- MODIFICADO
-                exe_path = os.path.join(models_root, "srmd", "srmd-ncnn-vulkan.exe")
+                if sys.platform == "darwin":
+                    exe_path = os.path.join(models_root, "srmd", "srmd-ncnn-vulkan")
+                elif sys.platform == "win32":
+                    exe_path = os.path.join(models_root, "srmd", "srmd-ncnn-vulkan.exe")
+                else:
+                    exe_path = os.path.join(models_root, "srmd", "srmd-ncnn-vulkan.exe")
                 full_model_path = os.path.join(models_root, "srmd", internal_model_name)
                 
                 cmd = [
@@ -2374,7 +2385,12 @@ class ImageConverter:
                 if use_tta: cmd.append("-x")
                     
             elif engine == "Waifu2x":
-                exe_path = os.path.join(models_root, "waifu2x", "waifu2x-ncnn-vulkan.exe")
+                if sys.platform == "darwin":
+                    exe_path = os.path.join(models_root, "waifu2x", "waifu2x-ncnn-vulkan")
+                elif sys.platform == "win32":
+                    exe_path = os.path.join(models_root, "waifu2x", "waifu2x-ncnn-vulkan.exe")
+                else:
+                    exe_path = os.path.join(models_root, "waifu2x", "waifu2x-ncnn-vulkan.exe")
                 full_model_path = os.path.join(models_root, "waifu2x", internal_model_name)
                 
                 cmd = [
@@ -2391,7 +2407,12 @@ class ImageConverter:
                 if use_tta: cmd.append("-x")
                 
             elif engine == "Upscayl":
-                exe_path = os.path.join(models_root, "upscayl", "upscayl-bin.exe")
+                if sys.platform == "darwin":
+                    exe_path = os.path.join(models_root, "upscayl", "upscayl-bin")
+                elif sys.platform == "win32":
+                    exe_path = os.path.join(models_root, "upscayl", "upscayl-bin.exe")
+                else:
+                    exe_path = os.path.join(models_root, "upscayl", "upscayl-bin.exe")
                 full_model_path = os.path.join(models_root, "upscayl", "models")
                 
                 cmd = [

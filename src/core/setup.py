@@ -181,6 +181,10 @@ def check_ytdlp_status(progress_callback):
 
 def get_latest_ffmpeg_info(progress_callback):
     """Consulta la API de GitHub para la última versión ESTABLE de FFMPEG (GyanD)."""
+    if sys.platform == "darwin":
+        from src.core.macos_runtime import native_tool_info
+
+        return native_tool_info("ffmpeg", progress_callback)
     progress_callback("Consultando la última versión de FFmpeg (Estable)...", 5)
     try:
         # Se cambia de BtbN (Nightly) a GyanD (Releases estables)
@@ -209,11 +213,17 @@ def get_latest_ffmpeg_info(progress_callback):
 
 def get_safe_ffmpeg_info(progress_callback):
     """Devuelve la información de la versión segura de FFmpeg (8.0.1)."""
+    if sys.platform == "darwin":
+        return get_latest_ffmpeg_info(progress_callback)
     progress_callback("Obteniendo información de la versión de FFmpeg segura...", 10)
     return FFMPEG_SAFE_VERSION, FFMPEG_SAFE_URL
 
 def download_and_install_ffmpeg(tag, url, progress_callback):
     """Descarga e instala FFMPEG, reportando el progreso de forma optimizada."""
+    if sys.platform == "darwin":
+        from src.core.macos_runtime import check_native_tool
+
+        return check_native_tool("ffmpeg", progress_callback)
     try:
         file_name = url.split('/')[-1]
         archive_name = os.path.join(PROJECT_ROOT, file_name)
@@ -290,6 +300,10 @@ def download_and_install_ffmpeg(tag, url, progress_callback):
 
 def get_latest_deno_info(progress_callback):
     """Consulta la API de GitHub para la última versión de Deno."""
+    if sys.platform == "darwin":
+        from src.core.macos_runtime import native_tool_info
+
+        return native_tool_info("deno", progress_callback)
     progress_callback("Consultando la última versión de Deno...", 5)
     try:
         api_url = "https://api.github.com/repos/denoland/deno/releases/latest"
@@ -321,6 +335,10 @@ def get_latest_deno_info(progress_callback):
 
 def download_and_install_deno(tag, url, progress_callback):
     """Descarga e instala Deno en la carpeta bin/deno/."""
+    if sys.platform == "darwin":
+        from src.core.macos_runtime import check_native_tool
+
+        return check_native_tool("deno", progress_callback)
     try:
         file_name = url.split('/')[-1]
         archive_name = os.path.join(PROJECT_ROOT, file_name)
@@ -384,6 +402,10 @@ def download_and_install_deno(tag, url, progress_callback):
     
 def get_latest_poppler_info(progress_callback):
     """Consulta la API de GitHub para la última versión de Poppler."""
+    if sys.platform == "darwin":
+        from src.core.macos_runtime import native_tool_info
+
+        return native_tool_info("poppler", progress_callback)
     progress_callback("Consultando la última versión de Poppler...", 5)
     try:
         # Repositorio específico solicitado
@@ -410,6 +432,10 @@ def get_latest_poppler_info(progress_callback):
 
 def download_and_install_poppler(tag, url, progress_callback):
     """Descarga e instala Poppler en bin/poppler/."""
+    if sys.platform == "darwin":
+        from src.core.macos_runtime import check_native_tool
+
+        return check_native_tool("poppler", progress_callback)
     try:
         file_name = url.split('/')[-1]
         archive_name = os.path.join(PROJECT_ROOT, file_name)
@@ -717,6 +743,10 @@ def check_app_update(current_version_str):
 
 def get_latest_inkscape_info(progress_callback):
     """Consulta la API de GitHub (Mirror oficial) para la última versión de Inkscape."""
+    if sys.platform == "darwin":
+        from src.core.macos_runtime import native_tool_info
+
+        return native_tool_info("inkscape", progress_callback)
     progress_callback("Consultando última versión de Inkscape (GitHub)...", 5)
     try:
         # ✅ CAMBIO: Usamos la API de GitHub en lugar de GitLab. 
@@ -756,6 +786,10 @@ def get_latest_inkscape_info(progress_callback):
 
 def download_and_install_inkscape(tag, url, progress_callback):
     """Descarga e instala Inkscape (formato .7z)."""
+    if sys.platform == "darwin":
+        from src.core.macos_runtime import check_native_tool
+
+        return check_native_tool("inkscape", progress_callback)
     try:
         import py7zr # Importación tardía para asegurar que se instaló
         
@@ -1090,6 +1124,9 @@ def check_and_download_upscaling_tools(progress_callback, target_tool=None):
             folder_name = info["folder"]
             exe_name = info["exe"]
             url = info["url"]
+            if sys.platform == "darwin":
+                exe_name = exe_name.removesuffix(".exe")
+                url = url.replace("-windows.zip", "-macos.zip")
             
             target_folder = os.path.join(UPSCALING_DIR, folder_name)
             target_exe = os.path.join(target_folder, exe_name)
@@ -1139,6 +1176,8 @@ def check_and_download_upscaling_tools(progress_callback, target_tool=None):
                 # Esto evita borrar los modelos que el usuario ya migró manualmente.
                 os.makedirs(target_folder, exist_ok=True)
                 shutil.copytree(source_path, target_folder, dirs_exist_ok=True)
+                if sys.platform == "darwin":
+                    os.chmod(target_exe, os.stat(target_exe).st_mode | 0o111)
                 if not os.path.isfile(target_exe) or os.path.getsize(target_exe) == 0:
                     raise RuntimeError(f"No se encontró {exe_name} después de instalar. Revisa el historial de protección de Windows.")
 

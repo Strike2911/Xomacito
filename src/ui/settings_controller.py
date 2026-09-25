@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -197,7 +198,12 @@ class SettingsController(QObject):
 
     @Slot()
     def chooseInkscape(self):
-        path, _ = QFileDialog.getOpenFileName(None, "Ejecutable de Inkscape", "", "Inkscape (inkscape.exe);;Ejecutables (*.exe);;Todos (*.*)")
+        if sys.platform == "darwin":
+            path, _ = QFileDialog.getOpenFileName(None, "Ejecutable de Inkscape", "/Applications/Inkscape.app/Contents/MacOS", "Todos (*)")
+        elif sys.platform == "win32":
+            path, _ = QFileDialog.getOpenFileName(None, "Ejecutable de Inkscape", "", "Inkscape (inkscape.exe);;Ejecutables (*.exe);;Todos (*.*)")
+        else:
+            path, _ = QFileDialog.getOpenFileName(None, "Ejecutable de Inkscape", "", "Inkscape (inkscape.exe);;Ejecutables (*.exe);;Todos (*.*)")
         if path:
             self.setValue("inkscapePath", path)
 
@@ -262,6 +268,14 @@ class SettingsController(QObject):
         ]
         result = []
         for key, name, executable, version_path in rows:
+            if sys.platform == "darwin":
+                executable = (MODELS_PATH / "upscaling" / "upscayl" / "upscayl-bin") if key == "upscayl" else BIN_PATH / executable.relative_to(bin_dir)
+                if executable.suffix == ".exe":
+                    executable = executable.with_suffix("")
+                if key == "ghostscript":
+                    executable = BIN_PATH / "ghostscript" / "gs"
+                if version_path:
+                    version_path = BIN_PATH / version_path.relative_to(bin_dir)
             version = ""
             if version_path and version_path.is_file():
                 try:
@@ -316,6 +330,10 @@ class SettingsController(QObject):
         self.pool.submit(self._install_dependency_worker, key, on_result=lambda ok: self._dependency_installed(key, ok), on_error=self._dependency_error)
 
     def _install_dependency_worker(self, key):
+        if sys.platform == "darwin" and key in {"ffmpeg", "deno", "poppler", "ghostscript", "inkscape"}:
+            from src.core.macos_runtime import check_native_tool
+
+            return check_native_tool(key, self._setup_progress)
         if key == "upscayl":
             return check_and_download_upscaling_tools(self._setup_progress, "Upscayl")
         status = check_environment_status(self._setup_progress, check_updates=True)

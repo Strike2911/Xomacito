@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 import tempfile
 import threading
 import uuid
@@ -143,7 +144,12 @@ class ImageController(QObject):
         self._engine_lock = threading.Lock()
         self.cancel_event = threading.Event()
         self.items = ObjectListModel(self.ROLES, self)
-        upscayl_exe = Path(UPSCALING_DIR) / "upscayl" / "upscayl-bin.exe"
+        if sys.platform == "darwin":
+            upscayl_exe = Path(UPSCALING_DIR) / "upscayl" / "upscayl-bin"
+        elif sys.platform == "win32":
+            upscayl_exe = Path(UPSCALING_DIR) / "upscayl" / "upscayl-bin.exe"
+        else:
+            upscayl_exe = Path(UPSCALING_DIR) / "upscayl" / "upscayl-bin.exe"
         self._hardware = detect_hardware(upscayl_exe)
         configured_output = Path(str(settings.get("image_output_path") or "")).expanduser()
         if not configured_output.is_absolute():
@@ -232,6 +238,10 @@ class ImageController(QObject):
 
             self.inkscape = InkscapeService(self.settings.get("inkscape_path") or None)
             poppler = self.project_root / "bin" / "poppler"
+            if sys.platform == "darwin":
+                from main import POPPLER_BIN_DIR
+
+                poppler = Path(POPPLER_BIN_DIR)
             self.processor = ImageProcessor(str(poppler), self.inkscape, self.ffmpeg.ffmpeg_path)
             self.converter = ImageConverter(str(poppler), self.inkscape, self.ffmpeg)
 

@@ -6,6 +6,7 @@ Flujo: extraer frames (FFmpeg) -> reescalar carpeta (NCNN) -> reensamblar + audi
 
 import os
 import json
+import sys
 import shutil
 import tempfile
 import subprocess
@@ -52,8 +53,15 @@ class VideoUpscaler:
             progress_callback: callable(pct: float, msg: str)
         """
         self.ffmpeg_dir = ffmpeg_dir
-        self.ffmpeg_exe = os.path.join(ffmpeg_dir, "ffmpeg.exe")
-        self.ffprobe_exe = os.path.join(ffmpeg_dir, "ffprobe.exe")
+        if sys.platform == "darwin":
+            self.ffmpeg_exe = os.path.join(ffmpeg_dir, "ffmpeg")
+            self.ffprobe_exe = os.path.join(ffmpeg_dir, "ffprobe")
+        elif sys.platform == "win32":
+            self.ffmpeg_exe = os.path.join(ffmpeg_dir, "ffmpeg.exe")
+            self.ffprobe_exe = os.path.join(ffmpeg_dir, "ffprobe.exe")
+        else:
+            self.ffmpeg_exe = os.path.join(ffmpeg_dir, "ffmpeg.exe")
+            self.ffprobe_exe = os.path.join(ffmpeg_dir, "ffprobe.exe")
         self.cancellation_event = cancellation_event
         self.progress_callback = progress_callback or (lambda p, m: None)
         
@@ -265,7 +273,12 @@ class VideoUpscaler:
         if engine == "SRMD":
             info = SRMD_MODELS.get(model_friendly, {})
             internal = info.get("model", "models-srmd")
-            exe = os.path.join(self.models_root, "srmd", "srmd-ncnn-vulkan.exe")
+            if sys.platform == "darwin":
+                exe = os.path.join(self.models_root, "srmd", "srmd-ncnn-vulkan")
+            elif sys.platform == "win32":
+                exe = os.path.join(self.models_root, "srmd", "srmd-ncnn-vulkan.exe")
+            else:
+                exe = os.path.join(self.models_root, "srmd", "srmd-ncnn-vulkan.exe")
             model_path = os.path.join(self.models_root, "srmd", internal)
             cmd = [
                 exe,
@@ -285,7 +298,12 @@ class VideoUpscaler:
             rev_map = {v: k for k, v in UPSCAYL_MODELS_MAP.items()}
             internal_model = rev_map.get(model_friendly, model_friendly)
             
-            exe = os.path.join(self.models_root, "upscayl", "upscayl-bin.exe")
+            if sys.platform == "darwin":
+                exe = os.path.join(self.models_root, "upscayl", "upscayl-bin")
+            elif sys.platform == "win32":
+                exe = os.path.join(self.models_root, "upscayl", "upscayl-bin.exe")
+            else:
+                exe = os.path.join(self.models_root, "upscayl", "upscayl-bin.exe")
             model_path = os.path.join(self.models_root, "upscayl", "models")
             cmd = [
                 exe,
@@ -312,7 +330,12 @@ class VideoUpscaler:
         else:  # Waifu2x
             info = WAIFU2X_MODELS.get(model_friendly, {})
             internal = info.get("model", "models-cunet")
-            exe = os.path.join(self.models_root, "waifu2x", "waifu2x-ncnn-vulkan.exe")
+            if sys.platform == "darwin":
+                exe = os.path.join(self.models_root, "waifu2x", "waifu2x-ncnn-vulkan")
+            elif sys.platform == "win32":
+                exe = os.path.join(self.models_root, "waifu2x", "waifu2x-ncnn-vulkan.exe")
+            else:
+                exe = os.path.join(self.models_root, "waifu2x", "waifu2x-ncnn-vulkan.exe")
             model_path = os.path.join(self.models_root, "waifu2x", internal)
             cmd = [
                 exe,
