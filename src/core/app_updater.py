@@ -31,6 +31,7 @@ IDEA_CONTRIBUTORS = [
     "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan",
 ]
 PUBLIC_VERSION_BY_INTERNAL = {
+    "4.0.28": "1.2.9",
     "4.0.27": "1.2.8",
     "4.0.26": "1.2.7",
     "4.0.25": "1.2.6",
@@ -48,6 +49,14 @@ PUBLIC_VERSION_BY_INTERNAL = {
 }
 PUBLIC_BUGFIX_NOTE = "- Arreglo de bugs de la versión 1.0."
 RELEASE_NOTICES = {
+    "4.0.28": {
+        "eyebrow": "XOMACITO 1.2.9", "title": "YouTube vuelve a funcionar.",
+        "subtitle": "ACTUALIZACIÓN LIGERA",
+        "message": "Corrige el falso aviso de video no disponible cuando falla el reproductor incrustado de YouTube.",
+        "highlights": ["Reintento con otro cliente compatible", "Se conserva la calidad seleccionada", "Gatitos de descarga: clásico y naranja"],
+        "contributors": IDEA_CONTRIBUTORS, "closing": "Vuelve a analizar el enlace después de actualizar.",
+        "platinumCelebration": False, "smoothMotionPromotion": False,
+    },
     "4.0.27": {
         "eyebrow": "XOMACITO 1.2.8", "title": "Descargas de X corregidas.",
         "subtitle": "ACTUALIZACIÓN LIGERA",

@@ -124,11 +124,16 @@ def is_youtube_url(url: str) -> bool:
     return any(host in lowered for host in ("youtube.com", "youtu.be", "youtube-nocookie.com"))
 
 
-def is_youtube_access_error(url: str, error: object) -> bool:
+def is_youtube_access_error(url: str, error: object, options: dict | None = None) -> bool:
     """Detecta bloqueos temporales de YouTube que admiten un cliente alternativo."""
     if not is_youtube_url(url):
         return False
     lowered = str(error).lower()
+    clients = (options or {}).get("extractor_args", {}).get("youtube", {}).get("player_client", [])
+    # Some public videos cannot be played by the embedded player. Retry only
+    # that client's generic unavailability, not private/deleted/region errors.
+    if clients == ["web_embedded"] and re.search(r"video unavailable[.\s]*$", lowered):
+        return True
     markers = (
         "http error 403",
         "403: forbidden",
@@ -153,6 +158,10 @@ def youtube_access_fallback_options(options: dict) -> dict:
 
     if fallback.get("cookiefile") or fallback.get("cookiesfrombrowser"):
         youtube_args["player_client"] = ["tv", "default", "-android_sdkless", "-android_vr"]
+    elif youtube_args.get("player_client") == ["web_embedded"]:
+        # Never retry a rejected embedded player with that same player.
+        # Let the installed yt-dlp choose its current supported defaults.
+        youtube_args.pop("player_client", None)
     else:
         youtube_args["player_client"] = ["web_embedded"]
 

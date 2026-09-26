@@ -717,12 +717,12 @@ def extract_info_resilient(url, ydl_opts, download=False, progress_callback=None
     try:
         return run(configured_opts)
     except Exception as error:
-        if not is_youtube_access_error(url, error):
+        if not is_youtube_access_error(url, error, configured_opts):
             raise
 
         if progress_callback:
             progress_callback(-1, "YouTube rechazó el enlace. Reintentando con conexión alternativa...")
-        safe_console_print(f"YouTube bloqueó el primer cliente ({error}). Reintentando con web_embedded.")
+        safe_console_print(f"YouTube rechazó el primer cliente ({error}). Reintentando con otro cliente compatible.")
         fallback_opts = youtube_access_fallback_options(configured_opts)
         return run(fallback_opts)
 

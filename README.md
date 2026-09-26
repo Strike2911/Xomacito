@@ -1,6 +1,6 @@
 # Xomacito
 
-Versión visible actual: **Xomacito 1.2**. Revisión interna de actualización: **4.0.19**.
+Versión visible actual: **Xomacito 1.2.9**. Revisión interna de actualización: **4.0.28**.
 
 Aplicación independiente para Windows que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike** pero principalmente inspirado en Dowp hecho por Marck.
 
@@ -8,7 +8,7 @@ Aplicación independiente para Windows que permite descargar, convertir y prepar
 
 [![Descargar Xomacito](https://img.shields.io/badge/Descargar-Xomacito-2ea44f?style=for-the-badge&logo=windows)](https://github.com/Strike2911/Xomacito/releases/latest)
 
-Para una instalación nueva, descarga `Xomacito-1.2-Setup.exe`. Si ya tienes Xomacito instalado, utiliza `Xomacito-1.2-Update-Light.exe`: conserva los componentes y modelos existentes y reduce la descarga aproximadamente un 81%. Ambos están disponibles en la versión más reciente. El instalador completo incluye FFmpeg y los componentes principales; los modelos de inteligencia artificial se descargan únicamente cuando se solicitan.
+Para una instalación nueva, instala el [paquete completo Xomacito 1.2](https://github.com/Strike2911/Xomacito/releases/download/v4.0.19/Xomacito-1.2-Setup.exe) y aplica después la actualización ligera más reciente. Si ya tienes Xomacito instalado, utiliza `Xomacito-1.2.9-Update-Light.exe`: conserva los componentes y modelos existentes y reduce la descarga aproximadamente un 81%. La actualización ligera está disponible en la versión más reciente. El instalador completo incluye FFmpeg y los componentes principales; los modelos de inteligencia artificial se descargan únicamente cuando se solicitan.
 
 > Windows puede mostrar una advertencia de SmartScreen porque el instalador todavía no utiliza un certificado comercial de firma de código. Comprueba que el archivo provenga de este repositorio antes de ejecutarlo.
 
@@ -64,7 +64,7 @@ Los runtimes de compilación, herramientas externas, modelos, builds y preferenc
 
 El release se genera directamente desde `main.py` y la carpeta `src`, sin PyArmor ni otra etapa de ofuscación. `scripts/build_release.ps1` cancela la compilación si detecta envoltorios de PyArmor o si el spec deja de apuntar al código fuente legible.
 
-La revisión interna 4.0.19 mantiene el nombre público Xomacito 1.2. La numeración 4.x se usa únicamente para comparar actualizaciones y no se muestra como versión pública.
+La revisión interna 4.0.28 corresponde a Xomacito 1.2.9. La numeración 4.x se usa únicamente para comparar actualizaciones y no se muestra como versión pública.
 
 Para volver a importar o ampliar la colección sin cambiar las rarezas ya asignadas:
 
