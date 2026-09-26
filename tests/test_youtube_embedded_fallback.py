@@ -1,4 +1,5 @@
 import unittest
+import sys
 from unittest.mock import patch
 
 from src.core import downloader
@@ -44,6 +45,11 @@ class EmbeddedFallbackTests(unittest.TestCase):
             self.assertFalse(is_youtube_access_error("https://youtu.be/863rTle6CKY", message, self.options))
         self.assertFalse(is_youtube_access_error("https://vimeo.com/123", "Video unavailable", self.options))
         self.assertFalse(is_youtube_access_error("https://youtu.be/863rTle6CKY", "Video unavailable", {}))
+
+    def test_same_recovery_on_windows_and_macos(self):
+        for system in ("win32", "darwin"):
+            with self.subTest(platform=system), patch.object(sys, "platform", system):
+                self.test_embedded_unavailability_retries_once_and_preserves_selection()
 
     def test_failed_retry_propagates_without_looping(self):
         with patch.object(downloader.yt_dlp, "YoutubeDL") as ydl:

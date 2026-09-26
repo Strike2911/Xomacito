@@ -1,6 +1,6 @@
 #define MyAppName "Xomacito"
-#define MyAppVersion "4.0.19"
-#define MyAppDisplayVersion "1.2"
+#define MyAppVersion "4.0.28"
+#define MyAppDisplayVersion "1.2.9"
 #define MyAppPublisher "Xomacito"
 #define MyAppExeName "Xomacito.exe"
 #define ProjectRoot ".."
@@ -18,7 +18,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#ProjectRoot}\release
-OutputBaseFilename=Xomacito-1.2-Setup
+OutputBaseFilename=Xomacito-1.2.9-Setup
 SetupIconFile={#ProjectRoot}\Xomacito-icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName} {#MyAppDisplayVersion}
@@ -35,10 +35,10 @@ RestartApplications=no
 Uninstallable=yes
 CreateUninstallRegKey=yes
 MinVersion=10.0.17763
-VersionInfoVersion=4.0.19.0
+VersionInfoVersion=4.0.28.0
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppDisplayVersion}
-VersionInfoDescription=Xomacito 1.2
+VersionInfoDescription=Xomacito 1.2.9
 VersionInfoCompany={#MyAppPublisher}
 
 [Languages]
@@ -46,6 +46,10 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Crear un acceso directo en el escritorio"; GroupDescription: "Accesos directos:"; Flags: unchecked
+
+[InstallDelete]
+Type: files; Name: "{app}\_internal\assets\progress\cat-siamese-1.png"
+Type: files; Name: "{app}\_internal\assets\progress\cat-siamese-2.png"
 
 [Files]
 Source: "{#ProjectRoot}\dist\Xomacito\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

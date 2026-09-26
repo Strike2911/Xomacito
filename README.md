@@ -8,7 +8,7 @@ Aplicación independiente para Windows y macOS que permite descargar, convertir 
 
 [![Descargar Xomacito](https://img.shields.io/badge/Descargar-Xomacito-2ea44f?style=for-the-badge&logo=windows)](https://github.com/Strike2911/Xomacito/releases/latest)
 
-Para una instalación nueva, instala el [paquete completo Xomacito 1.2](https://github.com/Strike2911/Xomacito/releases/download/v4.0.19/Xomacito-1.2-Setup.exe) y aplica después la actualización ligera más reciente. Si ya tienes Xomacito instalado, utiliza `Xomacito-1.2.9-Update-Light.exe`: conserva los componentes y modelos existentes y reduce la descarga aproximadamente un 81%. La actualización ligera está disponible en la versión más reciente. El instalador completo incluye FFmpeg y los componentes principales; los modelos de inteligencia artificial se descargan únicamente cuando se solicitan.
+Para una instalación nueva o una actualización desde versiones antiguas (incluida 1.0.1), utiliza el [instalador completo Xomacito 1.2.9](https://github.com/Strike2911/Xomacito/releases/download/v4.0.28/Xomacito-1.2.9-Setup.exe). Incluye la corrección de YouTube y no requiere instalar primero la versión 1.2. Si ya tienes una instalación reciente, puedes utilizar `Xomacito-1.2.9-Update-Light.exe`, que conserva los componentes y modelos existentes. El instalador completo incluye FFmpeg y los componentes principales; los modelos de inteligencia artificial se descargan únicamente cuando se solicitan.
 
 > Windows puede mostrar una advertencia de SmartScreen porque el instalador todavía no utiliza un certificado comercial de firma de código. Comprueba que el archivo provenga de este repositorio antes de ejecutarlo.
 
@@ -19,10 +19,10 @@ Para una instalación nueva, instala el [paquete completo Xomacito 1.2](https://
 **Xomacito 1.2.9 para Mac** incluye un instalador DMG completo para **Apple Silicon
 (M1 o posterior) y macOS 26 o posterior**. No es compatible con Mac Intel.
 
-La distribución conjunta ofrece dos archivos: el DMG completo de Mac y
-`Xomacito-1.2.9-Update-Light.exe` para Windows, conservado sin modificaciones
-de la release `v4.0.28`. El `.exe` es una **actualización ligera**: para instalar
-por primera vez en Windows, usa antes el paquete completo enlazado arriba.
+La distribución conjunta ofrece el DMG completo de Mac, el instalador completo
+`Xomacito-1.2.9-Setup.exe` y la actualización ligera
+`Xomacito-1.2.9-Update-Light.exe` para Windows. El instalador completo permite
+actualizar desde versiones antiguas que no reconocen paquetes ligeros.
 
 El instalador de macOS es un DMG: ábrelo, arrastra **Xomacito** a **Applications**
 y abre la aplicación desde Aplicaciones. El paquete incluye Python y las
