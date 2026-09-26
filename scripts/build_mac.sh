@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 command -v brew >/dev/null || { echo "Falta Homebrew." >&2; exit 1; }
 export PATH="$(brew --prefix)/bin:$PATH"
-for formula in python@3.11 ffmpeg deno poppler ghostscript cairo create-dmg; do
+for formula in python@3.11 ffmpeg deno poppler ghostscript cairo harfbuzz create-dmg; do
     brew list --versions "$formula" >/dev/null || { echo "Falta: brew install $formula" >&2; exit 1; }
 done
 PYTHON="${XOMACITO_PYTHON:-$(brew --prefix python@3.11)/bin/python3.11}"

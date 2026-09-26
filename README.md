@@ -2,7 +2,7 @@
 
 Versión visible actual: **Xomacito 1.2.9**. Revisión interna de actualización: **4.0.28**.
 
-Aplicación independiente para Windows que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike** pero principalmente inspirado en Dowp hecho por Marck.
+Aplicación independiente para Windows y macOS que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike** pero principalmente inspirado en Dowp hecho por Marck.
 
 ## Descargar para Windows
 
@@ -11,6 +11,56 @@ Aplicación independiente para Windows que permite descargar, convertir y prepar
 Para una instalación nueva, instala el [paquete completo Xomacito 1.2](https://github.com/Strike2911/Xomacito/releases/download/v4.0.19/Xomacito-1.2-Setup.exe) y aplica después la actualización ligera más reciente. Si ya tienes Xomacito instalado, utiliza `Xomacito-1.2.9-Update-Light.exe`: conserva los componentes y modelos existentes y reduce la descarga aproximadamente un 81%. La actualización ligera está disponible en la versión más reciente. El instalador completo incluye FFmpeg y los componentes principales; los modelos de inteligencia artificial se descargan únicamente cuando se solicitan.
 
 > Windows puede mostrar una advertencia de SmartScreen porque el instalador todavía no utiliza un certificado comercial de firma de código. Comprueba que el archivo provenga de este repositorio antes de ejecutarlo.
+
+## Descargar para Mac — Mac Version DMG
+
+[**Descargar DMG para Mac**](https://github.com/Strike2911/Xomacito/releases/download/v4.0.28/Xomacito-1.2.9-arm64.dmg) · [**Descargar actualización .exe para Windows**](https://github.com/Strike2911/Xomacito/releases/download/v4.0.28/Xomacito-1.2.9-Update-Light.exe)
+
+**Xomacito 1.2.9 para Mac** incluye un instalador DMG completo para **Apple Silicon
+(M1 o posterior) y macOS 26 o posterior**. No es compatible con Mac Intel.
+
+La distribución conjunta ofrece dos archivos: el DMG completo de Mac y
+`Xomacito-1.2.9-Update-Light.exe` para Windows, conservado sin modificaciones
+de la release `v4.0.28`. El `.exe` es una **actualización ligera**: para instalar
+por primera vez en Windows, usa antes el paquete completo enlazado arriba.
+
+El instalador de macOS es un DMG: ábrelo, arrastra **Xomacito** a **Applications**
+y abre la aplicación desde Aplicaciones. El paquete incluye Python y las
+herramientas multimedia; no necesitas instalar Homebrew para usarlo.
+Los modelos de IA opcionales se descargan al solicitarlos.
+
+El DMG tiene firma local y **no está notarizado por Apple**. Al descargarlo de
+GitHub, macOS puede bloquear su primera apertura. Tras arrastrarlo a Aplicaciones,
+intenta abrirlo y, si se bloquea, autoriza esa aplicación en **Ajustes del Sistema →
+Privacidad y seguridad → Abrir igualmente**. No es necesario desactivar Gatekeeper.
+
+### Trabajo realizado para macOS
+
+- Empaquetado nativo de la interfaz Qt/QML, Python y herramientas multimedia.
+- Corrección del conflicto de HarfBuzz entre las bibliotecas de imágenes y PDF.
+- Comprobaciones de recursos que siguen activas en la aplicación optimizada.
+- Detección del mínimo de macOS requerido por las bibliotecas incluidas.
+- Validación del arranque, firma local, integridad del DMG y conversiones de video/PDF.
+- Incluye las correcciones de YouTube y los cambios de personajes de Xomacito 1.2.9.
+
+### Compilar en macOS
+
+Para generar el instalador en un Mac con Homebrew:
+
+```bash
+brew install python@3.11 ffmpeg deno poppler ghostscript cairo harfbuzz create-dmg
+bash scripts/build_mac.sh
+```
+
+El resultado se guarda en `release/mac/Xomacito-<versión>-<arquitectura>.dmg`.
+La compilación es nativa para el equipo que la genera (`arm64` para Apple Silicon,
+`x86_64` para Intel); no es un binario universal. Esta compilación se prueba
+localmente en el Mac que la genera. El mínimo efectivo también depende de las
+versiones de las herramientas nativas instaladas con Homebrew.
+Sin un certificado Developer ID y notarización, el paquete tiene firma local
+y macOS puede solicitar autorización al distribuirlo a otros equipos.
+Los datos y modelos se guardan en `~/Library/Application Support/Xomacito`;
+los errores de arranque, en `~/Library/Logs/Xomacito-startup-error.log`.
 
 ## Funciones principales
 
@@ -45,7 +95,8 @@ Para una instalación nueva, instala el [paquete completo Xomacito 1.2](https://
 
 ## Requisitos
 
-- Windows 10 versión 1809 o posterior, o Windows 11.
+- Windows: Windows 10 versión 1809 o posterior, o Windows 11.
+- DMG de Mac: Apple Silicon (arm64) y macOS 26 o posterior.
 - Procesador y sistema operativo de 64 bits.
 - Conexión a Internet para las descargas y componentes opcionales.
 

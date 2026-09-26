@@ -94,8 +94,10 @@ def self_test(resource_root):
 
     for package in ("rawpy", "cv2", "pillow_avif", "onnxruntime", "rembg", "yt_dlp", "yt_dlp_ejs"):
         importlib.import_module(package)
-    assert qVersion()
-    assert (Path(resource_root) / "src/ui/qml/Main.qml").is_file()
+    if not qVersion():
+        raise RuntimeError("Qt no pudo inicializarse.")
+    if not (Path(resource_root) / "src/ui/qml/Main.qml").is_file():
+        raise RuntimeError("Falta la interfaz src/ui/qml/Main.qml en el paquete.")
     root = support_path() / "bin"
     for family, name, flag in (("ffmpeg", "ffmpeg", "-version"),
                                ("ffmpeg", "ffprobe", "-version"),
@@ -106,9 +108,11 @@ def self_test(resource_root):
         pdf = Path(directory) / "sample.pdf"
         cairosvg.svg2pdf(bytestring=b'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="red"/></svg>', write_to=str(pdf))
         pages = convert_from_path(str(pdf), poppler_path=str(root / "poppler"))
-        assert len(pages) == 1 and pages[0].width > 0
+        if len(pages) != 1 or pages[0].width <= 0:
+            raise RuntimeError("Poppler no pudo convertir el PDF de prueba.")
         png = Path(directory) / "ghostscript.png"
         subprocess.run([str(root / "ghostscript/gs"), "-dBATCH", "-dNOPAUSE", "-sDEVICE=png16m", f"-sOutputFile={png}", str(pdf)], check=True, capture_output=True, timeout=30)
         with Image.open(png) as result:
-            assert result.width > 0
+            if result.width <= 0:
+                raise RuntimeError("Ghostscript no pudo convertir el PDF de prueba.")
     return 0

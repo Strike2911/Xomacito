@@ -35,6 +35,8 @@ def test_existing_windows_code_is_preserved():
             return node if node.names else None
 
     paths = subprocess.check_output(["git", "diff", "--name-only", "--", "main.py", "src"], cwd=root, text=True).splitlines()
+    # This module is imported exclusively by the Darwin startup branch.
+    paths = [path for path in paths if path != "src/core/macos_runtime.py"]
     if not paths:
         pytest.skip("This acceptance audit compares uncommitted platform changes with HEAD.")
     for path in paths:
@@ -50,6 +52,18 @@ def test_mac_models_are_outside_application_bundle(monkeypatch, tmp_path):
     monkeypatch.setattr(macos_runtime, "support_path", lambda: tmp_path)
     with patch.object(sys, "platform", "darwin"):
         assert main._persistent_models_path() == tmp_path / "models"
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Requires the native macOS dependencies")
+def test_mac_self_test_rejects_missing_ui_with_optimized_python(tmp_path):
+    result = subprocess.run(
+        [sys.executable, "-O", "-c",
+         "import sys; from src.core.macos_runtime import self_test; self_test(sys.argv[1])",
+         str(tmp_path)],
+        cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=90,
+    )
+    assert result.returncode != 0
+    assert "Falta la interfaz src/ui/qml/Main.qml" in result.stderr
 
 
 @pytest.mark.parametrize("system,architecture,ort,rawpy", [

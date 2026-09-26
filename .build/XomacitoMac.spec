@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all
+from macholib.MachO import MachO
+from macholib.mach_o import LC_BUILD_VERSION, LC_VERSION_MIN_MACOSX
 
 if sys.platform != "darwin":
     raise SystemExit("XomacitoMac.spec requires macOS.")
@@ -47,13 +49,15 @@ for formula, names in {
 
 # Native libraries must be binaries so PyInstaller rewrites their Mach-O links.
 binaries.append((str(brew_prefix("cairo") / "lib/libcairo.2.dylib"), "."))
+binaries.append((str(brew_prefix("harfbuzz") / "lib/libharfbuzz.0.dylib"), "."))
+binaries.append((str(brew_prefix("harfbuzz") / "lib/libharfbuzz-subset.0.dylib"), "."))
 hiddenimports = [
     "rawpy", "cv2", "cairosvg", "pdf2image", "img2pdf", "py7zr",
     "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets",
     "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtQuickControls2",
     "PySide6.QtMultimedia",
 ]
-for package in ("Cryptodome", "curl_cffi", "rembg", "onnxruntime",
+for package in ("Cryptodome", "curl_cffi", "rembg", "pymatting", "onnxruntime",
                 "pillow_avif", "yt_dlp_ejs", "yt_dlp"):
     package_data, package_binaries, package_imports = collect_all(package)
     datas += package_data
@@ -73,6 +77,29 @@ a = Analysis(
     runtime_hooks=[], excludes=["tkinter", "customtkinter", "tkinterdnd2"],
     noarchive=False, optimize=1,
 )
+# Pillow also ships HarfBuzz. Keep the Homebrew ABI used by Poppler/Qt at
+# the bundle root instead of PyInstaller's same-name alias to Pillow's copy.
+native_harfbuzz = str(brew_prefix("harfbuzz") / "lib/libharfbuzz.0.dylib")
+a.binaries = [entry for entry in a.binaries if entry[0] != "libharfbuzz.0.dylib"]
+a.binaries.append(("libharfbuzz.0.dylib", native_harfbuzz, "BINARY"))
+a.datas = [entry for entry in a.datas if entry[0] != "libharfbuzz.0.dylib"]
+# Homebrew bottles can require a newer macOS than Python/Qt. Advertise the
+# actual minimum of the collected native code rather than a fixed promise.
+minimum_macos = (14, 0, 0)
+for source in {source for _, source, kind in a.binaries if kind in {"BINARY", "EXTENSION"}}:
+    try:
+        native = MachO(source)
+    except (ValueError, OSError):
+        continue
+    for header in native.headers:
+        for command, data, _ in header.commands:
+            if command.cmd == LC_BUILD_VERSION:
+                version = data.minos
+            elif command.cmd == LC_VERSION_MIN_MACOSX:
+                version = data.version
+            else:
+                continue
+            minimum_macos = max(minimum_macos, (version >> 16, (version >> 8) & 255, version & 255))
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, [], exclude_binaries=True, name="Xomacito",
@@ -91,6 +118,6 @@ app = BUNDLE(
         "CFBundleVersion": versions["UPDATE_VERSION"],
         "NSHighResolutionCapable": True,
         "NSPrincipalClass": "NSApplication",
-        "LSMinimumSystemVersion": "14.0",
+        "LSMinimumSystemVersion": ".".join(map(str, minimum_macos)),
     },
 )
