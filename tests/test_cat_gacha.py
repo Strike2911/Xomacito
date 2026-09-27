@@ -272,14 +272,15 @@ class CatGachaTests(unittest.TestCase):
             controller.equippedRequested.connect(lambda result: equipped.append(dict(result)))
             result = controller.roll()
 
-            self.assertEqual(result["name"], "BLACK BULL")
+            self.assertEqual(result["name"], "GATO PLAYERA")
             self.assertEqual(result["rarity"], 6)
             self.assertEqual(result["stars"], "★★★★★★")
-            self.assertEqual(result["animationStyle"], "blackbull-noir")
+            self.assertEqual(result["animationStyle"], "playera-prismatic")
             self.assertAlmostEqual(rng.weights[6], 0.2)
 
+            controller.finishOpening()
             controller.equip(result["catId"])
-            self.assertEqual(equipped[0]["animationStyle"], "blackbull-noir")
+            self.assertEqual(equipped[0]["animationStyle"], "playera-prismatic")
             self.assertEqual(controller.state["equippedRarity"], 6)
 
     def test_only_unique_media_sources_advance_download_progress(self):

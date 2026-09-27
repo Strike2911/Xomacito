@@ -6,12 +6,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from main import APP_VERSION, UPDATE_VERSION
 from src.ui import run_qt_app
 
 
 if __name__ == "__main__":
     raise SystemExit(run_qt_app(
         project_root=ROOT,
-        app_version="1.2.8",
-        update_version="4.0.27",
+        app_version=APP_VERSION,
+        update_version=UPDATE_VERSION,
     ))

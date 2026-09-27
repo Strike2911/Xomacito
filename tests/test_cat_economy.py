@@ -168,3 +168,32 @@ def test_paid_box_expected_resale_is_below_price():
             prices = [cat.price_cents for cat in controller.catalog if cat.rarity == rarity and not cat.exclusive]
             expected += sum(prices) / len(prices) * weight / 100
         assert 0 < expected < box["priceCents"], (box["id"], expected)
+
+
+def test_winner_sound_waits_for_reveal_and_fires_only_once():
+    for skip in (False, True):
+        controller = make()
+        controller.grantBonusRolls(1)
+        controller.setSkipAnimation(skip)
+        started, completed = [], []
+        controller.revealRequested.connect(started.append)
+        controller.revealCompleted.connect(completed.append)
+        result = controller.openBox("og")
+        assert started == [result]
+        assert completed == []
+        controller.finishOpening()  # Animation finished or skipped in QML.
+        assert completed == [result]
+        controller.finishOpening()  # Closing the popup must not repeat the sound.
+        assert completed == [result]
+
+
+def test_promotional_reveal_uses_same_completion_sound():
+    controller = make()
+    completed = []
+    controller.revealCompleted.connect(completed.append)
+    result = controller.unlockPromotionalCat("GATO STRIKE")
+    assert result["isNew"]
+    assert completed == []
+    controller.finishOpening()
+    controller.finishOpening()
+    assert completed == [result]

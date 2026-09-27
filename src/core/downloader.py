@@ -18,6 +18,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import requests
+from .epidemic_sound import is_epidemic_music_url, music_extractor
 
 
 class _OpenGraphParser(HTMLParser):
@@ -712,6 +713,10 @@ def extract_info_resilient(url, ydl_opts, download=False, progress_callback=None
 
     def run(options):
         with yt_dlp.YoutubeDL(options) as ydl:
+            if is_epidemic_music_url(url):
+                extractor = music_extractor()
+                ydl.add_info_extractor(extractor)
+                return ydl.extract_info(url, download=download, ie_key=extractor.ie_key())
             return ydl.extract_info(url, download=download)
 
     try:

@@ -190,6 +190,11 @@ def build_media_choices(info: dict) -> dict[str, Any]:
             rate = f"{bitrate:.0f} kbps" if bitrate else "Audio"
             lang = f"{language_name} · " if language_name else ""
             common["label"] = f"{lang}{rate} · {acodec} · {ext.upper()} · {_size_label(size)} {marker}"
+            part = fmt.get("xomacito_audio_part")
+            if part:
+                part_name = {"full": "Mezcla completa", "bass": "Bajo", "drums": "Batería",
+                             "instruments": "Instrumentos", "melody": "Melodía", "vocals": "Voz"}.get(part, part)
+                common["label"] = f"{part_name} · {common['label']}"
             audio.append(common)
 
     video.sort(key=lambda item: (
@@ -199,6 +204,7 @@ def build_media_choices(info: dict) -> dict[str, Any]:
         -item["tbr"],
     ))
     audio.sort(key=lambda item: (
+        0 if item["raw"].get("xomacito_audio_part") == "full" else 1,
         LANGUAGE_ORDER.get(item["language"].replace("_", "-").lower(), DEFAULT_PRIORITY),
         0 if is_editor_mp4_audio(item) else 1 if item["compatible"] else 2,
         -(item["abr"] or item["tbr"]),

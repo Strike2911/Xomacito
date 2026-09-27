@@ -26,114 +26,45 @@ Item {
     implicitWidth: 64
     implicitHeight: 64
 
+    // A single fine halo leaves the portrait readable at inventory sizes.
+    readonly property bool motionActive: animatedEffects && visible
     Rectangle {
-        id: upgradedAura
         anchors.centerIn: parent
-        width: parent.width + 10 + root.effectLevel * 4
+        width: parent.width + 6 + root.effectStrength * 4
         height: width
         radius: width / 2
-        visible: root.effectLevel > 0
-        color: Qt.rgba(root.signatureColor.r, root.signatureColor.g,
-                       root.signatureColor.b, 0.05 + root.effectStrength * 0.07)
-        border.width: 2 + Math.floor(root.effectLevel / 2)
-        border.color: root.effectLevel >= 5 ? "#FFFFFF" : root.signatureColor
-        opacity: 0.66 + root.effectStrength * 0.24
-
-        SequentialAnimation on scale {
-            running: root.animatedEffects && root.effectLevel > 0
+        color: Qt.alpha(root.signatureColor, 0.025 + root.effectStrength * 0.025)
+        border.width: 1
+        border.color: Qt.alpha(root.signatureColor, 0.22 + root.effectStrength * 0.18)
+        visible: root.effectLevel > 0 || root.rarity >= 3
+        SequentialAnimation on opacity {
+            running: root.motionActive && (root.effectLevel > 0 || root.rarity >= 3)
             loops: Animation.Infinite
-            NumberAnimation {
-                to: 1.045 + root.effectStrength * 0.035
-                duration: Math.max(460, 980 - root.effectLevel * 85)
-                easing.type: Easing.InOutSine
-            }
-            NumberAnimation {
-                to: 0.98
-                duration: Math.max(460, 980 - root.effectLevel * 85)
-                easing.type: Easing.InOutSine
-            }
+            NumberAnimation { from: 0.55; to: 0.9; duration: 2400; easing.type: Easing.InOutSine }
+            NumberAnimation { to: 0.55; duration: 2400; easing.type: Easing.InOutSine }
         }
     }
-
     Item {
         anchors.centerIn: parent
-        width: parent.width + 18 + root.effectLevel * 3
+        width: parent.width + 8
         height: width
-        visible: root.effectLevel > 0 && !root.bespokeMythic
-
+        visible: !root.bespokeMythic && (root.rarity >= 3 || root.effectLevel > 0)
         Repeater {
-            model: root.effectLevel * 3 + 3
+            model: root.effectLevel >= 4 ? 3 : 2
             Rectangle {
                 required property int index
-                readonly property real orbit: parent.width / 2 - 3
-                width: index % 3 === 0 ? 6 : 3 + root.effectLevel * 0.45
+                width: index === 0 ? 2.5 : 1.5
                 height: width
                 radius: width / 2
-                color: index % 4 === 0 ? "#FFFFFF" : root.rarityColor
-                opacity: 0.52 + (index % 3) * 0.17
-                x: parent.width / 2
-                    + Math.cos(index * Math.PI * 2 / Math.max(1, root.effectLevel * 3 + 3))
-                      * orbit - width / 2
-                y: parent.height / 2
-                    + Math.sin(index * Math.PI * 2 / Math.max(1, root.effectLevel * 3 + 3))
-                      * orbit - height / 2
+                color: index === 0 ? "#F5F0DE" : root.signatureColor
+                opacity: index === 0 ? 0.7 : 0.4
+                x: parent.width / 2 + Math.cos(index * 2.4) * (parent.width / 2) - width / 2
+                y: parent.height / 2 + Math.sin(index * 2.4) * (parent.height / 2) - height / 2
             }
         }
-
         RotationAnimation on rotation {
-            running: root.animatedEffects && root.effectLevel > 0
-            from: 0
-            to: 360
-            duration: Math.max(1800, 5200 - root.effectLevel * 620)
-            loops: Animation.Infinite
-        }
-    }
-
-    Rectangle {
-        anchors.centerIn: parent
-        width: parent.width + (root.rarity >= 6 ? 14 : root.rarity >= 4 ? 8 : 4)
-        height: width
-        radius: width / 2
-        color: "transparent"
-        border.width: root.rarity >= 6 ? 4 : root.rarity >= 5 ? 3 : root.rarity >= 3 ? 2 : 1
-        border.color: root.bespokeMythic ? root.signatureColor : root.rarityColor
-        opacity: root.rarity >= 2 ? 0.42 : 0.2
-        visible: !root.bespokeMythic
-        SequentialAnimation on opacity {
-            running: root.animatedEffects && root.rarity >= 2
-            loops: Animation.Infinite
-            NumberAnimation { to: 0.9; duration: root.rarity >= 6 ? 360 : root.rarity >= 5 ? 620 : 1050; easing.type: Easing.InOutSine }
-            NumberAnimation { to: 0.32; duration: root.rarity >= 6 ? 360 : root.rarity >= 5 ? 620 : 1050; easing.type: Easing.InOutSine }
-        }
-    }
-
-    Item {
-        anchors.centerIn: parent
-        width: parent.width + 12
-        height: width
-        visible: root.rarity >= 3 && !root.bespokeMythic
-        Rectangle {
-            width: root.rarity >= 5 ? 6 : 4
-            height: width
-            radius: width / 2
-            color: root.rarityColor
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: 0
-        }
-        Rectangle {
-            visible: root.rarity >= 4
-            width: root.rarity >= 5 ? 5 : 4
-            height: width
-            radius: width / 2
-            color: root.rarity >= 5 ? "#FFFFFF" : root.rarityColor
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: parent.height - height
-        }
-        RotationAnimation on rotation {
-            running: root.animatedEffects
-            from: 0; to: 360
-            duration: root.rarity >= 6 ? 1500 : root.rarity >= 5 ? 2500 : root.rarity >= 4 ? 3800 : 5200
-            loops: Animation.Infinite
+            running: root.motionActive && !root.bespokeMythic && (root.rarity >= 3 || root.effectLevel > 0)
+            from: 0; to: 360; duration: 14000; loops: Animation.Infinite
         }
     }
 
@@ -148,8 +79,7 @@ Item {
         radius: width / 2
         color: "#071824"
         border.color: root.rarityColor
-        border.width: (root.rarity >= 6 ? 4 : root.rarity >= 4 ? 3 : 2)
-            + (root.effectLevel >= 4 ? 2 : root.effectLevel > 0 ? 1 : 0)
+        border.width: root.rarity >= 5 ? 1.5 : 1
         clip: true
 
         Image {
@@ -165,29 +95,9 @@ Item {
         }
     }
 
-    Repeater {
-        model: root.rarity >= 5 && !root.bespokeMythic ? 7 : 0
-        Rectangle {
-            required property int index
-            width: index % 2 ? 3 : 5
-            height: width
-            radius: width / 2
-            color: index % 3 ? root.rarityColor : "#FFFFFF"
-            x: root.width / 2 + Math.cos(index * Math.PI * 2 / (root.rarity >= 6 ? 12 : 7)) * (root.width / 2 + 7) - width / 2
-            y: root.height / 2 + Math.sin(index * Math.PI * 2 / (root.rarity >= 6 ? 12 : 7)) * (root.height / 2 + 7) - height / 2
-            SequentialAnimation on opacity {
-                running: root.animatedEffects
-                loops: Animation.Infinite
-                PauseAnimation { duration: index * 90 }
-                NumberAnimation { from: 0.15; to: 1; duration: 420 }
-                NumberAnimation { to: 0.12; duration: 540 }
-            }
-        }
-    }
-
     Item {
         anchors.centerIn: parent
-        width: parent.width + 28
+        width: parent.width + 12
         height: width
         visible: root.arcaneMage
         opacity: root.animatedEffects ? 0.92 : 0.7
@@ -221,17 +131,17 @@ Item {
         }
 
         RotationAnimation on rotation {
-            running: root.animatedEffects
+            running: root.motionActive && root.arcaneMage
             from: 360
             to: 0
-            duration: 6200
+            duration: 14000
             loops: Animation.Infinite
         }
     }
 
     Item {
         anchors.centerIn: parent
-        width: parent.width + 24
+        width: parent.width + 10
         height: width
         visible: root.playeraPrismatic
         Repeater {
@@ -250,7 +160,7 @@ Item {
                 rotation: index * 29
                 opacity: 0.7
                 SequentialAnimation on y {
-                    running: root.animatedEffects
+                    running: root.motionActive && root.playeraPrismatic
                     loops: Animation.Infinite
                     PauseAnimation { duration: index * 120 }
                     NumberAnimation { from: baseY + 4; to: baseY - 5; duration: 1200 + index * 80; easing.type: Easing.InOutSine }
@@ -274,7 +184,7 @@ Item {
             color: "#8AFFFF"
             opacity: 0.48
             SequentialAnimation on y {
-                running: root.animatedEffects
+                running: root.motionActive && root.zarkingCyber
                 loops: Animation.Infinite
                 NumberAnimation { from: 5; to: root.height - 6; duration: 1450; easing.type: Easing.InOutQuad }
                 NumberAnimation { to: 5; duration: 980; easing.type: Easing.InOutQuad }
@@ -292,7 +202,7 @@ Item {
                 Rectangle { width: parent.width; height: 1; color: index % 2 ? "#596CFF" : "#00E8FF" }
                 Rectangle { width: 1; height: parent.height; color: index % 2 ? "#596CFF" : "#00E8FF" }
                 SequentialAnimation on opacity {
-                    running: root.animatedEffects; loops: Animation.Infinite
+                    running: root.motionActive && root.zarkingCyber; loops: Animation.Infinite
                     PauseAnimation { duration: index * 190 }
                     NumberAnimation { from: 0.28; to: 0.95; duration: 180 }
                     NumberAnimation { to: 0.38; duration: 900 }
@@ -303,7 +213,7 @@ Item {
 
     Item {
         anchors.centerIn: parent
-        width: parent.width + 28
+        width: parent.width + 12
         height: width
         visible: root.blackbullNoir
 
@@ -321,7 +231,7 @@ Item {
                 color: index === 1 ? "#42FFF3B5" : "#32FFC857"
                 opacity: 0.3
                 SequentialAnimation on opacity {
-                    running: root.animatedEffects; loops: Animation.Infinite
+                    running: root.motionActive && root.blackbullNoir; loops: Animation.Infinite
                     PauseAnimation { duration: index * 310 }
                     NumberAnimation { to: 0.72; duration: 950; easing.type: Easing.InOutSine }
                     NumberAnimation { to: 0.22; duration: 1250; easing.type: Easing.InOutSine }
@@ -338,7 +248,7 @@ Item {
                 x: index === 0 ? 4 : index === 1 ? parent.width - width - 4 : index === 2 ? parent.width / 2 - width / 2 : index === 3 ? 12 : parent.width - width - 12
                 y: index < 2 ? parent.height * 0.48 : index === 2 ? 1 : parent.height - height - 5
                 SequentialAnimation on opacity {
-                    running: root.animatedEffects; loops: Animation.Infinite
+                    running: root.motionActive && root.blackbullNoir; loops: Animation.Infinite
                     PauseAnimation { duration: index * 260 }
                     NumberAnimation { from: 0.2; to: 0.95; duration: 720 }
                     NumberAnimation { to: 0.24; duration: 1280 }
@@ -357,8 +267,8 @@ Item {
         QtObject { id: strikeOrbit; property real phase: 0 }
         NumberAnimation {
             target: strikeOrbit; property: "phase"; from: 0; to: Math.PI * 2
-            duration: 7200; loops: Animation.Infinite
-            running: root.animatedEffects
+            duration: 16000; loops: Animation.Infinite
+            running: root.motionActive && root.strikeApex
         }
 
         Repeater {
@@ -372,16 +282,16 @@ Item {
                 color: "transparent"
                 border.width: 1
                 border.color: index === 0 ? "#776DE2" : "#E4CB82"
-                opacity: index === 0 ? 0.62 : 0.36
+                opacity: index === 0 ? 0.32 : 0.18
                 scale: 0.98 + Math.sin(strikeOrbit.phase * 2 + index * 1.7) * 0.018
             }
         }
 
         Repeater {
-            model: 16
+            model: 8
             Text {
                 required property int index
-                readonly property real angle: index * Math.PI * 2 / 16 + strikeOrbit.phase * (index % 2 ? -0.42 : 0.28)
+                readonly property real angle: index * Math.PI * 2 / 8 + strikeOrbit.phase * (index % 2 ? -0.42 : 0.28)
                 readonly property real orbit: parent.width * (index % 3 === 0 ? 0.46 : 0.41)
                 text: index % 5 === 0 ? "✦" : index % 3 === 0 ? "✧" : "·"
                 color: index % 5 === 0 ? "#FFF2C2" : index % 2 ? "#9D8DFF" : "#74B7FF"

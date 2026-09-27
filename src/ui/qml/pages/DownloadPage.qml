@@ -11,7 +11,6 @@ Item {
     property bool denseLayout: height < 640
     property bool trimUserMuted: false
     property real trimPendingScrubSeconds: -1
-    property bool trimSeekingPreview: false
 
     MediaPlayer {
         id: trimPlayer
@@ -31,6 +30,7 @@ Item {
                 trimPopup.playbackError = ""
                 if (trimPopup.mediaLoadSeekPending) {
                     trimPopup.mediaLoadSeekPending = false
+                    pause()
                     position = Math.max(0, trimPopup.pendingSeekSeconds - Number(viewState.trimPreviewOffset || 0)) * 1000
                 }
             }
@@ -73,13 +73,6 @@ Item {
         }
     }
 
-    Timer {
-        id: trimSeekCoverTimer
-        interval: 280
-        repeat: false
-        onTriggered: page.trimSeekingPreview = false
-    }
-
     function clockText(seconds) {
         var total = Math.max(0, Math.floor(Number(seconds) || 0))
         var hours = Math.floor(total / 3600)
@@ -115,10 +108,7 @@ Item {
         trimPopup.pendingSeekSeconds = bounded
         trimPopup.previewActivated = true
         trimPopup.selectionPlayback = false
-        page.trimSeekingPreview = true
-        trimSeekCoverTimer.restart()
-        if (trimPlayer.playbackState === MediaPlayer.PlayingState)
-            trimPlayer.pause()
+        trimPlayer.pause()
         trimPlayer.position = Math.max(0, bounded - Number(viewState.trimPreviewOffset || 0)) * 1000
     }
 
@@ -127,10 +117,7 @@ Item {
         trimPopup.pendingSeekSeconds = bounded
         trimPopup.previewActivated = true
         trimPopup.selectionPlayback = false
-        page.trimSeekingPreview = true
-        trimSeekCoverTimer.restart()
-        if (trimPlayer.playbackState === MediaPlayer.PlayingState)
-            trimPlayer.pause()
+        trimPlayer.pause()
         page.trimPendingScrubSeconds = bounded
         if (!trimScrubSeekTimer.running)
             trimScrubSeekTimer.start()
@@ -145,8 +132,6 @@ Item {
         var startMs = Math.max(0, page.clockSeconds(options.startTime) * 1000 - offsetMs)
         var endMs = Math.max(startMs, page.clockSeconds(options.endTime) * 1000 - offsetMs)
         trimPopup.previewActivated = true
-        page.trimSeekingPreview = false
-        trimSeekCoverTimer.stop()
         var globalPosition = trimPlayer.position + offsetMs
         trimPopup.selectionPlayback = globalPosition >= startMs && globalPosition < endMs
         trimPlayer.play()
@@ -464,7 +449,6 @@ Item {
                     fallbackRequested = false
                     mediaLoadSeekPending = false
                     selectionPlayback = false
-                    page.trimSeekingPreview = false
                     pendingSeekSeconds = Math.max(0, page.clockSeconds(options.startTime))
                     trimPlayer.stop()
                     trimPlayer.position = pendingSeekSeconds * 1000
@@ -476,9 +460,7 @@ Item {
                 }
                 onClosed: {
                     trimScrubSeekTimer.stop()
-                    trimSeekCoverTimer.stop()
                     page.trimPendingScrubSeconds = -1
-                    page.trimSeekingPreview = false
                     trimPlayer.stop()
                     trimWaveformDelay.stop()
                     trimFilmstripDelay.stop()
@@ -557,7 +539,6 @@ Item {
                             anchors.fill: trimPreviewVideo
                             visible: Boolean(viewState.hasVideo)
                                      && (!trimPopup.previewActivated
-                                         || page.trimSeekingPreview
                                          || trimPlayer.mediaStatus === MediaPlayer.LoadingMedia)
                             source: viewState.thumbnailSource || ""
                             fillMode: Image.PreserveAspectFit
@@ -569,6 +550,8 @@ Item {
                             visible: Boolean(viewState.hasVideo)
                                      && !Boolean(viewState.trimPreviewBusy)
                                      && !Boolean(trimPopup.playbackError || viewState.trimPreviewError)
+                                     && !trimPopup.previewActivated
+                                     && !trimPremiereTimeline.scrubbing
                                      && trimPlayer.playbackState !== MediaPlayer.PlayingState
                             width: 58; height: 58
                             text: "▶"

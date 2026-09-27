@@ -253,7 +253,7 @@ Item {
         property real presentation: 1
         onDoneChanged: { if (done) { presentation = settingsController.state.animationsEnabled ? 0 : 1; if (settingsController.state.animationsEnabled) resultEntrance.restart() } }
         NumberAnimation { id: resultEntrance; target: revealPopup; property: "presentation"; from: 0; to: 1; duration: 240; easing.type: Easing.OutCubic }
-        readonly property bool done: travel >= 0.999
+        readonly property bool done: travel >= 1
         readonly property bool resultCanSell: (root.cats.inventoryItems || []).some(function(cat) { return cat.catId === revealPopup.result.catId && cat.canSell })
         onClosed: { spin.stop(); resultEntrance.stop(); catController.finishOpening(); root.revealFinished() }
         background: Rectangle { radius: 22; color: theme.colors.backgroundAlt; border.color: revealPopup.result.rarityColor || theme.colors.primary; border.width: 2 }

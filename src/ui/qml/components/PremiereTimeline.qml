@@ -430,6 +430,7 @@ Item {
 
         RangeSlider {
             id: timeline
+            z: 14
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: scrubRail.bottom
@@ -444,7 +445,8 @@ Item {
             second.onMoved: root.outPointMoved(Math.max(second.value, root.inPoint + 0.20))
             background: Item {}
             first.handle: Item {
-                x: root.timeToX(root.inPoint) - width / 2
+                objectName: "trimInHandle"
+                x: root.clamp(root.timeToX(root.inPoint) - width / 2, 0, Math.max(0, timeline.width - width))
                 y: 2
                 width: 14; height: timeline.height - 4
                 enabled: root.inPoint >= root.viewportStart && root.inPoint <= root.viewportEnd
@@ -458,7 +460,8 @@ Item {
                 }
             }
             second.handle: Item {
-                x: root.timeToX(root.outPoint) - width / 2
+                objectName: "trimOutHandle"
+                x: root.clamp(root.timeToX(root.outPoint) - width / 2, 0, Math.max(0, timeline.width - width))
                 y: 2
                 width: 14; height: timeline.height - 4
                 enabled: root.outPoint >= root.viewportStart && root.outPoint <= root.viewportEnd

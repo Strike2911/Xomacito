@@ -34,6 +34,7 @@ class InventoryFilter(QSortFilterProxyModel):
 class CatGachaController(QObject):
     stateChanged = Signal()
     revealRequested = Signal("QVariantMap")
+    revealCompleted = Signal("QVariantMap")
     equippedRequested = Signal("QVariantMap")
     notificationRequested = Signal(str, str, str)
 
@@ -131,6 +132,7 @@ class CatGachaController(QObject):
         self._reset_credit = migrated["resetCreditCents"]
         self._liquidated_inventory = migrated["liquidatedInventory"]
         self._opening = False
+        self._pending_reveal = None
         self._repair_equipped()
         self._state: dict = {}
         self._daily_timer = QTimer(self)
@@ -565,14 +567,19 @@ class CatGachaController(QObject):
                               effectUpgraded=not is_new, boxName=box["name"], reel=reel, winningIndex=34)
         self._refresh()
         self._persist()
+        self._pending_reveal = result
         self.revealRequested.emit(result)
         return result
 
     @Slot()
     def finishOpening(self):
+        result = self._pending_reveal
+        self._pending_reveal = None
         if self._opening:
             self._opening = False
             self._refresh()
+        if result is not None:
+            self.revealCompleted.emit(result)
 
     def _repair_equipped(self):
         # Zero is an explicit sale tombstone. Only legacy discoveries without
@@ -630,6 +637,7 @@ class CatGachaController(QObject):
             themeUnlocked=bool(is_new and cat.rarity >= 5),
         )
         if is_new:
+            self._pending_reveal = result
             self.revealRequested.emit(result)
             self.notificationRequested.emit(
                 "success", f"{cat.name} {cat.rarity}★ desbloqueado", "Ya está disponible en Personalización.",

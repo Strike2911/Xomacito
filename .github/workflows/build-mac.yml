@@ -1,0 +1,29 @@
+name: Build native macOS release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mac:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native tools
+        run: brew install python@3.11 ffmpeg deno poppler ghostscript cairo harfbuzz create-dmg
+      - name: Build and verify signed app and DMG
+        run: bash scripts/build_mac.sh
+      - name: Test shared downloads and native macOS support
+        run: |
+          .tools/mac-venv/bin/python -m pip install pytest==8.3.5
+          .tools/mac-venv/bin/python -m pytest tests/test_epidemic_sound.py tests/test_youtube_embedded_fallback.py tests/test_cat_economy.py tests/test_macos_support.py -q
+      - name: Record checksum and minimum macOS
+        run: |
+          shasum -a 256 release/mac/*.dmg > release/mac/SHA256.txt
+          /usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' dist/mac/Xomacito.app/Contents/Info.plist > release/mac/minimum-macos.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Xomacito-mac-arm64
+          path: release/mac/
+          if-no-files-found: error
+          retention-days: 14

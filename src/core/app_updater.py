@@ -31,6 +31,7 @@ IDEA_CONTRIBUTORS = [
     "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan",
 ]
 PUBLIC_VERSION_BY_INTERNAL = {
+    "4.0.29": "1.2.10",
     "4.0.28": "1.2.9",
     "4.0.27": "1.2.8",
     "4.0.26": "1.2.7",
@@ -49,6 +50,14 @@ PUBLIC_VERSION_BY_INTERNAL = {
 }
 PUBLIC_BUGFIX_NOTE = "- Arreglo de bugs de la versión 1.0."
 RELEASE_NOTICES = {
+    "4.0.29": {
+        "eyebrow": "XOMACITO 1.2.10", "title": "Más audio. Recortes más claros.",
+        "subtitle": "WINDOWS Y MAC",
+        "message": "Descarga los enlaces nuevos de Epidemic Sound y previsualiza el video al mover el cabezal.",
+        "highlights": ["Mezcla completa y pistas de Epidemic Sound", "Ambos extremos del recorte visibles", "Auras más finas y sonido al revelar el gato"],
+        "contributors": IDEA_CONTRIBUTORS, "closing": "Las mejoras comparten el mismo código en Windows y Mac.",
+        "platinumCelebration": False, "smoothMotionPromotion": False,
+    },
     "4.0.28": {
         "eyebrow": "XOMACITO 1.2.9", "title": "YouTube vuelve a funcionar.",
         "subtitle": "ACTUALIZACIÓN LIGERA",

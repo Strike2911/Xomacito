@@ -176,7 +176,7 @@ class AppController(QObject):
         # aplicación, incluido el primer acceso de una ID recién conectada.
         self.social.stateChanged.connect(self._sync_social_cat_count)
         QTimer.singleShot(0, self._sync_social_cat_count)
-        self.cats.revealRequested.connect(self._play_cat_reveal)
+        self.cats.revealCompleted.connect(self._play_cat_reveal)
         self.cats.equippedRequested.connect(self._play_cat_equip)
         self.download.navigateRequested.connect(self.navigate)
         self.download.queueRequested.connect(self._send_url_to_queue)
