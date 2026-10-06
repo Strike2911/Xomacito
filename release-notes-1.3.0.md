@@ -9,6 +9,6 @@
 
 ## Instalación
 
-Windows: Setup para instalar desde cero; Update-Light para actualizar una instalación existente. macOS: DMG para Apple Silicon; consulta el mínimo de macOS incluido en los archivos de la publicación.
+Windows: Setup para instalar desde cero; Update-Light para actualizar una instalación existente. macOS: DMG para Apple Silicon (arm64), requiere macOS 26.0 o posterior.
 
 La versión interna 4.0.30 permite actualizar correctamente desde las versiones históricas 3.x y 4.x; la versión visible es 1.3.0.
