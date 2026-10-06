@@ -41,6 +41,7 @@ class SettingsController(QObject):
     progressReported = Signal(float, str)
     consoleChunk = Signal(str)
     consoleFinished = Signal()
+    secretRequested = Signal()
 
     DEPENDENCY_ROLES = ["key", "name", "installed", "localVersion", "latestVersion", "detail", "action", "updateAvailable"]
     MODEL_ROLES = ["key", "name", "family", "path", "installed", "size"]
@@ -484,6 +485,9 @@ class SettingsController(QObject):
     @Slot(str)
     def executeConsole(self, command):
         if not command.strip() or self._state["consoleBusy"]:
+            return
+        if " ".join(command.strip().casefold().split()) == "eres dios?":
+            self.secretRequested.emit()
             return
         self._set_state(consoleBusy=True)
         self.console.execute_command(command)

@@ -977,21 +977,13 @@ class XomacitoWrapperTests(unittest.TestCase):
             sizes.append(sound.stat().st_size)
         self.assertEqual(gacha_sound_path(0), gacha_sound_path(1))
         self.assertEqual(gacha_sound_path(99), gacha_sound_path(6))
-        self.assertEqual(sizes, sorted(sizes))
-        self.assertEqual(
-            set(GACHA_STYLE_SOUND_FILENAMES),
-            {"arcane-mage", "playera-prismatic", "zarking-cyber", "blackbull-noir", "strike-apex", "xomas-solar", "megas-storm", "hola-haunting"},
-        )
-        self.assertTrue(set(GACHA_EQUIP_SOUND_FILENAMES) <= set(GACHA_STYLE_SOUND_FILENAMES))
-        for style in GACHA_STYLE_SOUND_FILENAMES:
-            reveal = gacha_sound_path(6, style)
-            equip = gacha_equip_sound_path(style)
-            self.assertTrue(reveal and reveal.is_file())
-            if style in GACHA_EQUIP_SOUND_FILENAMES:
-                self.assertTrue(equip and equip.is_file())
-                self.assertNotEqual(reveal, equip)
-            else:
-                self.assertIsNone(equip)
+        for rarity in range(1, 7):
+            self.assertEqual(gacha_sound_path(rarity).name, f"cat-jet-{rarity}.mp3")
+            self.assertEqual(gacha_equip_sound_path(rarity), gacha_sound_path(rarity))
+            self.assertEqual(gacha_sound_path(rarity, "xomas-solar"), gacha_sound_path(rarity))
+        self.assertEqual(gacha_sound_path(6, "hola-haunting").name, "god-violin-reveal.wav")
+        self.assertTrue(gacha_sound_path(6, "hola-haunting").is_file())
+        self.assertEqual(gacha_equip_sound_path(6).name, "cat-jet-6.mp3")
 
         application = (ROOT / "src" / "ui" / "application.py").read_text(encoding="utf-8")
         self.assertIn("successfulDownload.connect(self._play_download_completion)", application)
@@ -1320,15 +1312,15 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertNotIn("title_fixer.py", spec)
 
         self.assertIn("PrivilegesRequired=lowest", installer)
-        self.assertIn("OutputBaseFilename=Xomacito-1.3.0-Setup", installer)
-        self.assertIn('#define MyAppVersion "4.0.30"', installer)
-        self.assertIn('#define MyAppDisplayVersion "1.3.0"', installer)
+        self.assertIn("OutputBaseFilename=Xomacito-1.3.1-Setup", installer)
+        self.assertIn('#define MyAppVersion "4.0.31"', installer)
+        self.assertIn('#define MyAppDisplayVersion "1.3.1"', installer)
         self.assertIn("AppVersion={#MyAppDisplayVersion}", installer)
         self.assertIn("shellexec postinstall skipifsilent skipifdoesntexist", installer)
         self.assertIn("CloseApplications=force", installer)
         self.assertIn("CloseApplicationsFilter=Xomacito.exe,ffmpeg.exe,ffprobe.exe", installer)
         self.assertNotIn("CloseApplicationsFilter=*.*", installer)
-        self.assertIn("Compression=lzma2/max", installer)
+        self.assertIn("Compression=lzma2/fast", installer)
         self.assertIn("SolidCompression=yes", installer)
         self.assertIn("[UninstallRun]", installer)
         self.assertIn('{sys}\\taskkill.exe', installer)
@@ -1357,7 +1349,7 @@ class XomacitoWrapperTests(unittest.TestCase):
         public_spec = (ROOT / ".build" / "XomacitoPublic.spec").read_text(encoding="utf-8")
         self.assertIn("is_conflicting_top_level_icu", public_spec)
         self.assertIn('filename == "icuuc.dll"', public_spec)
-        self.assertIn("OutputBaseFilename=Xomacito-1.3.0-Update-Light", light_installer)
+        self.assertIn("OutputBaseFilename=Xomacito-1.3.1-Update-Light", light_installer)
         self.assertIn("CreateUninstallRegKey=no", light_installer)
         self.assertIn("Uninstallable=no", light_installer)
         self.assertIn("function InitializeSetup", light_installer)
@@ -1491,8 +1483,8 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
         self.assertIn("Xomacito-Light.iss", build_script)
-        self.assertIn("release\\Xomacito-1.3.0-Setup.exe", build_script)
-        self.assertIn("release\\Xomacito-1.3.0-Update-Light.exe", build_script)
+        self.assertIn("release\\Xomacito-1.3.1-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-1.3.1-Update-Light.exe", build_script)
         self.assertIn("Assert-ReadableApplicationSource", build_script)
         self.assertIn("pyarmor_runtime|__pyarmor__|pytransform", build_script)
         self.assertIn('PROJECT_ROOT / "main\\.py"', build_script)

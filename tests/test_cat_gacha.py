@@ -44,17 +44,17 @@ class CatGachaTests(unittest.TestCase):
             "JORGE": 3,
             "GATO CONDUCTOR": 3,
             "GATO INTELIGENTE": 3,
-            "GATO MAGO": 6,
+            "THE FOCUS CAT": 6,
             "GATO PLAYERA": 6,
             "GATO ZARKING": 6,
             "BLACK BULL": 6,
             "PERRO ZANE": 5,
             "Frido": 5,
         }
-        by_name = {cat.name.casefold(): cat for cat in catalog}
+        by_name = {cat.name.casefold(): cat for cat in catalog if cat.id != "halloween-hola"}
         for name, rarity in expected_rarities.items():
             self.assertEqual(by_name[name.casefold()].rarity, rarity)
-        self.assertEqual(by_name["gato mago"].animation_style, "arcane-mage")
+        self.assertEqual(by_name["the focus cat"].animation_style, "arcane-mage")
         self.assertEqual(by_name["gato playera"].animation_style, "playera-prismatic")
         self.assertEqual(by_name["gato zarking"].animation_style, "zarking-cyber")
         self.assertEqual(by_name["black bull"].animation_style, "blackbull-noir")
@@ -75,7 +75,7 @@ class CatGachaTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as appdata, patch.dict(os.environ, {"APPDATA": appdata}):
             store = SettingsStore("XomacitoHistoricalCollectionTest")
             controller = CatGachaController(ROOT, store, today_provider=lambda: today)
-            secret = next(cat for cat in controller.catalog if cat.name == "GATO HOLA")
+            secret = next(cat for cat in controller.catalog if cat.id == "halloween-hola")
             remote = controller.sync_snapshot()
             remote["historicalUnlockedCount"] = 149
 

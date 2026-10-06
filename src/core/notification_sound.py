@@ -11,31 +11,10 @@ from pathlib import Path
 
 SOUND_FILENAME = "download-complete.mp3"
 PLATINUM_SOUND_FILENAME = "platinum-celebration.mp3"
-GACHA_SOUND_FILENAMES = {
-    1: "gacha-reveal-1.wav",
-    2: "gacha-reveal-2.wav",
-    3: "gacha-reveal-3.wav",
-    4: "gacha-reveal-4.wav",
-    5: "gacha-reveal-5.wav",
-    6: "gacha-reveal-6-arcane.wav",
-}
-GACHA_STYLE_SOUND_FILENAMES = {
-    "hola-haunting": "gacha-reveal-hola.wav",
-    "xomas-solar": "gacha-reveal-xomas.wav",
-    "megas-storm": "gacha-reveal-megas.wav",
-    "arcane-mage": "gacha-reveal-6-arcane.wav",
-    "playera-prismatic": "gacha-reveal-6-playera.wav",
-    "zarking-cyber": "gacha-reveal-6-zarking.wav",
-    "blackbull-noir": "gacha-reveal-6-blackbull.wav",
-    "strike-apex": "gacha-reveal-6-strike.wav",
-}
-GACHA_EQUIP_SOUND_FILENAMES = {
-    "arcane-mage": "gacha-equip-6-arcane.wav",
-    "playera-prismatic": "gacha-equip-6-playera.wav",
-    "zarking-cyber": "gacha-equip-6-zarking.wav",
-    "blackbull-noir": "gacha-equip-6-blackbull.wav",
-    "strike-apex": "gacha-equip-6-strike.wav",
-}
+GACHA_SOUND_FILENAMES = {rarity: f"cat-jet-{rarity}.mp3" for rarity in range(1, 7)}
+# La revelación del secreto tiene sonido propio; el resto usa su rareza.
+GACHA_STYLE_SOUND_FILENAMES = {"hola-haunting": "god-violin-reveal.wav"}
+GACHA_EQUIP_SOUND_FILENAMES = {}
 
 
 def _roots() -> list[Path]:
@@ -71,9 +50,8 @@ def gacha_sound_path(rarity: int, animation_style: str = "") -> Path | None:
     return _asset_path("sfx", filename)
 
 
-def gacha_equip_sound_path(animation_style: str) -> Path | None:
-    filename = GACHA_EQUIP_SOUND_FILENAMES.get(str(animation_style or "").strip())
-    return _asset_path("sfx", filename) if filename else None
+def gacha_equip_sound_path(rarity: int) -> Path | None:
+    return gacha_sound_path(rarity)
 
 
 def platinum_sound_path() -> Path | None:
@@ -126,9 +104,12 @@ def play_gacha_reveal_sound(rarity: int, animation_style: str = "") -> bool:
     return _play_async(gacha_sound_path(rarity, animation_style))
 
 
-def play_gacha_equip_sound(animation_style: str) -> bool:
-    """Da identidad sonora propia a cada gato mítico al equiparlo."""
-    return _play_async(gacha_equip_sound_path(animation_style))
+def play_gacha_equip_sound(rarity: int) -> bool:
+    return _play_async(gacha_equip_sound_path(rarity))
+
+
+def play_download_failure_sound() -> bool:
+    return _play_async(_asset_path("sfx", "download-cancel.mp3"))
 
 
 def play_platinum_celebration_sound() -> bool:

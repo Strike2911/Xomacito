@@ -100,6 +100,7 @@ class BatchController(QObject):
     queueEvent = Signal(str, str, str, float)
     imageFilesRequested = Signal("QStringList")
     notificationRequested = Signal(str, str, str)
+    failedDownload = Signal()
     successfulDownload = Signal(int)
     gachaSourceCompleted = Signal(str)
 
@@ -112,6 +113,7 @@ class BatchController(QObject):
 
     def __init__(self, project_root, settings: SettingsStore, pool: TaskPool, presets: PresetStore, app_version: str, parent=None):
         super().__init__(parent)
+        self._failed_sound_jobs = set()
         self.project_root = Path(project_root)
         self.settings = settings
         self.pool = pool
@@ -548,6 +550,11 @@ class BatchController(QObject):
             return
         job = self.manager.get_job_by_id(job_id)
         if job:
+            if status == "RUNNING":
+                self._failed_sound_jobs.discard(job_id)
+            elif status in {"FAILED", "CANCELLED"} and job_id not in self._failed_sound_jobs:
+                self._failed_sound_jobs.add(job_id)
+                self.failedDownload.emit()
             job.status = status
             job.progress_message = detail
             self._replace_job_model(job, status, detail, progress)
@@ -780,6 +787,10 @@ class BatchController(QObject):
 
     @Slot(str)
     def removeJob(self, job_id):
+        job = self.manager.get_job_by_id(job_id)
+        if job and job.status == "RUNNING" and job_id not in self._failed_sound_jobs:
+            self._failed_sound_jobs.add(job_id)
+            self.failedDownload.emit()
         self.manager.remove_job(job_id)
         self._pending_jobs.pop(job_id, None)
         self._playlist_entries.pop(job_id, None)

@@ -1,4 +1,5 @@
 import QtQuick
+import QtMultimedia
 import QtQuick.Controls
 import QtQuick.Layouts
 import "../components"
@@ -176,7 +177,7 @@ Item {
                     }
                 }
                 Text { visible: root.showNightContents; Layout.fillWidth: true; text: root.cats.boxes && root.cats.boxes.length > 1 ? root.cats.boxes[1].odds : ""; color: theme.colors.textMuted; font.pixelSize: 12; wrapMode: Text.WordWrap }
-                Text { visible: root.showNightContents; Layout.fillWidth: true; text: "Mítico: 0.2% total, repartido entre Xomas, Megas, Spike, Mago y Black Bull (0.04% cada uno). Cada apertura es independiente."; color: theme.colors.textMuted; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                Text { visible: root.showNightContents; Layout.fillWidth: true; text: "Mítico: 0.2% total, repartido entre Xomas, Megas, Spike, The Focus Cat y Black Bull (0.04% cada uno). Cada apertura es independiente."; color: theme.colors.textMuted; font.pixelSize: 12; wrapMode: Text.WordWrap }
                 Flow {
                     visible: root.showNightContents
                     Layout.fillWidth: true; Layout.preferredHeight: visible ? implicitHeight : 0
@@ -360,20 +361,43 @@ Item {
         }
         readonly property bool done: travel >= 1
         readonly property bool resultCanSell: (root.cats.inventoryItems || []).some(function(cat) { return cat.catId === revealPopup.result.catId && cat.canSell })
-        onClosed: { spin.stop(); resultEntrance.stop(); catController.finishOpening(); root.revealFinished() }
+        onClosed: { rouletteStartTimeout.stop(); rouletteAudio.stop(); spin.stop(); resultEntrance.stop(); catController.finishOpening(); root.revealFinished() }
         background: Rectangle { radius: 22; color: theme.colors.backgroundAlt; border.color: revealPopup.result.rarityColor || theme.colors.primary; border.width: 2 }
         function reveal(value) {
             result = value
             travel = 0
             open()
             if (settingsController.state.animationsEnabled && !root.cats.skipAnimation && value.reel && value.reel.length)
-                spin.restart()
+                { rouletteStartTimeout.restart(); rouletteAudio.play() }
             else {
                 travel = 1
                 catController.finishOpening()
             }
         }
-        NumberAnimation { id: spin; target: revealPopup; property: "travel"; from: 0; to: 1; duration: 4400; easing.type: Easing.OutQuint; onFinished: catController.finishOpening() }
+        MediaPlayer {
+            id: rouletteAudio; objectName: "rouletteAudio"
+            source: Qt.resolvedUrl("../../../../assets/sfx/roulette-gamble.wav")
+            audioOutput: AudioOutput { objectName: "rouletteOutput"; volume: 0.8 }
+            onPlaybackStateChanged: {
+                if (playbackState === MediaPlayer.PlayingState && revealPopup.opened && !revealPopup.done) {
+                    rouletteStartTimeout.stop()
+                    spin.restart()
+                }
+            }
+            onMediaStatusChanged: {
+                if (mediaStatus === MediaPlayer.EndOfMedia && revealPopup.opened && !revealPopup.done) {
+                    spin.stop(); revealPopup.travel = 1; catController.finishOpening()
+                }
+            }
+            onErrorOccurred: {
+                if (revealPopup.opened && !revealPopup.done) { rouletteStartTimeout.stop(); spin.restart() }
+            }
+        }
+        Timer {
+            id: rouletteStartTimeout; interval: 3000
+            onTriggered: { rouletteAudio.stop(); if (revealPopup.opened && !revealPopup.done) spin.restart() }
+        }
+        NumberAnimation { id: spin; target: revealPopup; property: "travel"; from: 0; to: 1; duration: rouletteAudio.duration > 0 ? rouletteAudio.duration : 2167; easing.type: Easing.OutQuint; onFinished: { rouletteAudio.stop(); catController.finishOpening() } }
         MythicEffectField {
             anchors.fill: parent
             animationStyle: revealPopup.result.animationStyle || ""
@@ -395,7 +419,7 @@ Item {
                     kind: checked ? "primary" : "ghost"
                     onClicked: {
                         catController.setSkipAnimation(checked)
-                        if (checked) { spin.stop(); revealPopup.travel = 1; catController.finishOpening() }
+                        if (checked) { rouletteStartTimeout.stop(); rouletteAudio.stop(); spin.stop(); revealPopup.travel = 1; catController.finishOpening() }
                     }
                 }
             }
@@ -501,14 +525,15 @@ Item {
         opacity: 0
         property var result: ({})
         property real pulseScale: 0.5
+        readonly property bool voidCat: result.animationStyle === "hola-haunting"
         readonly property bool arcaneMage: result.animationStyle === "arcane-mage"
         readonly property bool playeraPrismatic: result.animationStyle === "playera-prismatic"
         readonly property bool zarkingCyber: result.animationStyle === "zarking-cyber"
         readonly property bool blackbullNoir: result.animationStyle === "blackbull-noir"
         readonly property bool strikeApex: result.animationStyle === "strike-apex"
         readonly property bool mythicCat: Number(result.rarity || 1) >= 6
-        readonly property color effectColor: result.rarityColor || theme.colors.primary
-        readonly property string equipTitle: strikeApex
+        readonly property color effectColor: voidCat ? "#A83848" : result.rarityColor || theme.colors.primary
+        readonly property string equipTitle: voidCat ? "ALGO TE ESTÁ MIRANDO" : strikeApex
                                                 ? "CORONA SUPREMA ACTIVADA"
                                                 : arcaneMage
                                                 ? "PACTO ARCANO COMPLETADO"
@@ -531,7 +556,7 @@ Item {
 
         Rectangle {
             anchors.fill: parent
-            color: equipCelebration.strikeApex
+            color: equipCelebration.voidCat ? "#FC030105" : equipCelebration.strikeApex
                    ? "#EB170400"
                    : equipCelebration.arcaneMage
                    ? "#D90A001A"
@@ -558,7 +583,7 @@ Item {
             scale: equipCelebration.pulseScale
 
             Repeater {
-                model: equipCelebration.arcaneMage ? 3 : 1
+                model: equipCelebration.voidCat ? 0 : equipCelebration.arcaneMage ? 3 : 1
                 Rectangle {
                     required property int index
                     anchors.centerIn: parent
@@ -580,7 +605,7 @@ Item {
             }
 
             Repeater {
-                model: equipCelebration.arcaneMage ? 18 : 8
+                model: equipCelebration.voidCat ? 0 : equipCelebration.arcaneMage ? 18 : 8
                 Text {
                     required property int index
                     readonly property var glyphs: ["✦", "◇", "✧", "☾", "✶", "✺"]
@@ -594,7 +619,17 @@ Item {
                 }
             }
 
+            Image {
+                anchors.centerIn: parent
+                visible: equipCelebration.voidCat
+                source: equipCelebration.result.source || ""
+                width: parent.width * 0.8; height: width
+                fillMode: Image.PreserveAspectFit
+                opacity: 0.2 + equipCelebration.pulseScale * 0.65
+                scale: 0.85 + equipCelebration.pulseScale * 0.3
+            }
             CatAvatar {
+                visible: !equipCelebration.voidCat
                 anchors.centerIn: parent
                 width: equipCelebration.mythicCat ? 150 : 104
                 height: width
@@ -644,8 +679,8 @@ Item {
                     property: "pulseScale"
                     from: 0.5
                     to: 1
-                    duration: equipCelebration.strikeApex ? 1450 : equipCelebration.playeraPrismatic ? 760 : equipCelebration.zarkingCyber ? 620 : equipCelebration.blackbullNoir ? 1120 : equipCelebration.arcaneMage ? 980 : 420
-                    easing.type: equipCelebration.playeraPrismatic
+                    duration: equipCelebration.voidCat ? 2200 : equipCelebration.strikeApex ? 1450 : equipCelebration.playeraPrismatic ? 760 : equipCelebration.zarkingCyber ? 620 : equipCelebration.blackbullNoir ? 1120 : equipCelebration.arcaneMage ? 980 : 420
+                    easing.type: equipCelebration.voidCat ? Easing.InCubic : equipCelebration.playeraPrismatic
                                  ? Easing.OutBounce
                                  : equipCelebration.zarkingCyber
                                    ? Easing.OutExpo
@@ -654,7 +689,7 @@ Item {
                                      : equipCelebration.arcaneMage ? Easing.OutElastic : Easing.OutBack
                 }
             }
-            PauseAnimation { duration: equipCelebration.mythicCat ? 1250 : 500 }
+            PauseAnimation { duration: equipCelebration.voidCat ? 1500 : equipCelebration.mythicCat ? 1250 : 500 }
             NumberAnimation {
                 target: equipCelebration
                 property: "opacity"

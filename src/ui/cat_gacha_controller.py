@@ -662,6 +662,28 @@ class CatGachaController(QObject):
         return result
 
     @Slot(result="QVariantMap")
+    def claimVoidSecret(self):
+        campaign = "void-console-discovery"
+        if self._opening or campaign in self._claimed_promotions:
+            self.notificationRequested.emit("info", "La consola permanece en silencio", "Ya recibiste esta recompensa o hay una apertura en curso.")
+            return {}
+        cat = self._by_id["halloween-hola"]
+        before = self._inventory.get(cat.id, 0)
+        is_new = cat.id not in self._unlocked
+        self._claimed_promotions.add(campaign)
+        self._inventory[cat.id] = before + 1
+        self._unlocked.add(cat.id)
+        if not is_new:
+            self._duplicates[cat.id] = self._duplicates.get(cat.id, 0) + 1
+        self._advance_roll_balance_revision()
+        self._refresh()
+        self._persist()
+        result = self._result(cat, isNew=is_new, isDuplicate=not is_new, quantityBefore=before, isDiscovery=True)
+        self.notificationRequested.emit("success", "GATO DIOS desbloqueado", "Una presencia respondió. Recibiste una copia en tu colección.")
+        self.equippedRequested.emit(result)
+        return result
+
+    @Slot(result="QVariantMap")
     def claimZaneBirthdayReward(self):
         """Entrega una sola vez la recompensa local del cumpleaños de Zane de 2026."""
         campaign = "zane-birthday-2026"

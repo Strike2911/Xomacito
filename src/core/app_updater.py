@@ -31,6 +31,7 @@ IDEA_CONTRIBUTORS = [
     "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan", "Nini",
 ]
 PUBLIC_VERSION_BY_INTERNAL = {
+    "4.0.31": "1.3.1",
     "4.0.30": "1.3.0",
     "4.0.29": "1.2.10",
     "4.0.28": "1.2.9",
@@ -51,6 +52,14 @@ PUBLIC_VERSION_BY_INTERNAL = {
 }
 PUBLIC_BUGFIX_NOTE = "- Arreglo de bugs de la versión 1.0."
 RELEASE_NOTICES = {
+    "4.0.31": {
+        "eyebrow": "XOMACITO 1.3.1", "title": "Una experiencia más pulida.",
+        "subtitle": "WINDOWS Y MAC",
+        "message": "Mejoras de sonido, presentación y consistencia de la colección.",
+        "highlights": ["Ajustes de audio y animación", "Correcciones de nombres en la colección", "Avisos sonoros de descarga"],
+        "contributors": IDEA_CONTRIBUTORS, "closing": "Gracias por seguir mejorando Xomacito.",
+        "platinumCelebration": False, "smoothMotionPromotion": False,
+    },
     "4.0.30": {
         "eyebrow": "XOMACITO 1.3.0", "title": "ALL MY FELLAS!!",
         "subtitle": "NOCHE DE ENTIERRO",

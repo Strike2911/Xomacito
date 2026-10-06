@@ -22,6 +22,7 @@ from src.core.app_updater import (
 from src.core.daily_icon import daily_cat_assets
 from src.core.notification_sound import (
     play_completion_sound,
+    play_download_failure_sound,
     play_gacha_equip_sound,
     play_gacha_reveal_sound,
     play_platinum_celebration_sound,
@@ -176,6 +177,11 @@ class AppController(QObject):
         # aplicación, incluido el primer acceso de una ID recién conectada.
         self.social.stateChanged.connect(self._sync_social_cat_count)
         QTimer.singleShot(0, self._sync_social_cat_count)
+        self.config.secretRequested.connect(self._claim_void_secret)
+        self.download.cancelledRequested.connect(play_download_failure_sound)
+        self.download.notificationRequested.connect(self._play_download_error)
+        self.batch.notificationRequested.connect(self._play_download_error)
+        self.batch.failedDownload.connect(play_download_failure_sound)
         self.cats.revealCompleted.connect(self._play_cat_reveal)
         self.cats.equippedRequested.connect(self._play_cat_equip)
         self.download.navigateRequested.connect(self.navigate)
@@ -212,6 +218,16 @@ class AppController(QObject):
     def _play_download_completion(self, _completed_items=1):
         play_completion_sound()
 
+    @Slot()
+    def _claim_void_secret(self):
+        self.setPage(4)
+        self.cats.claimVoidSecret()
+
+    @Slot(str, str, str)
+    def _play_download_error(self, level, title, message):
+        if level == "error":
+            play_download_failure_sound()
+
     @Slot("QVariantMap")
     def _play_cat_reveal(self, result):
         payload = dict(result or {})
@@ -222,7 +238,11 @@ class AppController(QObject):
 
     @Slot("QVariantMap")
     def _play_cat_equip(self, result):
-        play_gacha_equip_sound(str(dict(result or {}).get("animationStyle") or ""))
+        payload = dict(result or {})
+        if payload.get("isDiscovery"):
+            self._play_cat_reveal(payload)
+        else:
+            play_gacha_equip_sound(int(payload.get("rarity", 1)))
 
     @Slot()
     def playPlatinumCelebration(self):

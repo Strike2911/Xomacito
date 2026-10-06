@@ -14,7 +14,7 @@ def test_collections_are_separate_and_secret_hidden():
     og, night = (box_candidates(cats, b) for b in BOXES)
     assert not ({c.id for c in og} & {c.id for c in night})
     assert len(night) == 67
-    assert {c.name for c in night if c.rarity == 6} == {'GATO XOMAS','GATO MEGAS','GATO SPIKE','GATO MAGO','BLACK BULL'}
+    assert {c.name for c in night if c.rarity == 6} == {'GATO XOMAS','GATO MEGAS','GATO SPIKE','THE FOCUS CAT','BLACK BULL'}
     c = make()
     assert not any(x['catId'] == 'halloween-hola' for x in c.state['inventoryItems'])
     assert next(x for x in cats if x.id == 'cat-655d97e229cb').name == 'GATO FOLLADOR'
@@ -77,3 +77,29 @@ def test_rebalance_keeps_weights_and_moves_existing_ids():
     assert any(cat.name == "PERRO ZANE" for cat in og)
     assert not any(cat.name == "PERRO ZANE" for cat in night)
     assert next(cat for cat in night if cat.id == "cat-e78cf17a3656").rarity == 6
+
+
+def test_console_secret_grants_one_extra_copy_and_persists():
+    c = make()
+    c.openBox("daily")
+    c.finishOpening()
+    before = c.sync_snapshot()
+    result = c.claimVoidSecret()
+    assert result["name"] == "GATO DIOS"
+    assert result["isDuplicate"]
+    assert c._inventory["halloween-hola"] == 2
+    assert c._wallet == before["walletCents"]
+    assert not c.claimVoidSecret()
+    restored = make(c.settings)
+    assert not restored.claimVoidSecret()
+    assert restored._inventory["halloween-hola"] == 2
+
+
+def test_console_secret_is_available_outside_october_and_names_are_clean():
+    c = make(day=date(2026,11,5))
+    assert c.claimVoidSecret()["isNew"]
+    names = {cat.id: cat.name for cat in c.catalog}
+    assert names["night-0a3ea74e5b52"] == "GATO DOWN"
+    assert names["night-652b412ac921"] == "GATO CRISTIANO"
+    assert names["night-f259ad8ed099"] == "3AM"
+    assert names["night-408338413606"] == "8 BITS"

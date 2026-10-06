@@ -176,6 +176,7 @@ class DownloadController(QObject):
     navigateRequested = Signal(str)
     queueRequested = Signal(str)
     notificationRequested = Signal(str, str, str)
+    cancelledRequested = Signal()
     successfulDownload = Signal(int)
     gachaSourceCompleted = Signal(str)
 
@@ -2254,6 +2255,9 @@ class DownloadController(QObject):
 
     @Slot()
     def cancel(self):
+        if not self._state.get("busy") or self.cancellation.is_set():
+            return
+        self.cancelledRequested.emit()
         self.cancellation.set()
         self.ffmpeg.cancel_current_process()
         self._set_state(status="Cancelando…")
