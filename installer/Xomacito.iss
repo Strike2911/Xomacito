@@ -22,7 +22,7 @@ OutputBaseFilename=Xomacito-1.3.0-Setup
 SetupIconFile={#ProjectRoot}\Xomacito-icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName} {#MyAppDisplayVersion}
-Compression=lzma2/max
+Compression=lzma2/fast
 SolidCompression=yes
 WizardStyle=modern dynamic
 WizardSizePercent=110
@@ -52,7 +52,7 @@ Type: files; Name: "{app}\_internal\assets\progress\cat-siamese-1.png"
 Type: files; Name: "{app}\_internal\assets\progress\cat-siamese-2.png"
 
 [Files]
-Source: "{#ProjectRoot}\dist\Xomacito\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#ProjectRoot}\dist\Xomacito\*"; DestDir: "{app}"; Excludes: "*.obj,*.lib,*.prl,objects-Debug\*,objects-Release\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 ; El acceso directo principal va directamente en Programas para que Windows
