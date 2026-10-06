@@ -31,6 +31,7 @@ IDEA_CONTRIBUTORS = [
     "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan", "Nini",
 ]
 PUBLIC_VERSION_BY_INTERNAL = {
+    "4.0.32": "1.3.2",
     "4.0.31": "1.3.1",
     "4.0.30": "1.3.0",
     "4.0.29": "1.2.10",
@@ -52,6 +53,14 @@ PUBLIC_VERSION_BY_INTERNAL = {
 }
 PUBLIC_BUGFIX_NOTE = "- Arreglo de bugs de la versión 1.0."
 RELEASE_NOTICES = {
+    "4.0.32": {
+        "eyebrow": "XOMACITO 1.3.2", "title": "Corrección de audio.",
+        "subtitle": "ACTUALIZACIÓN LIGERA",
+        "message": "Corrige la selección de sonidos al equipar elementos de la colección.",
+        "highlights": ["Ajuste de audio al equipar"],
+        "contributors": IDEA_CONTRIBUTORS, "closing": "Se conservan tu cuenta, colección y saldo.",
+        "platinumCelebration": False, "smoothMotionPromotion": False,
+    },
     "4.0.31": {
         "eyebrow": "XOMACITO 1.3.1", "title": "Una experiencia más pulida.",
         "subtitle": "WINDOWS Y MAC",

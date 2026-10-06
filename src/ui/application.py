@@ -239,7 +239,7 @@ class AppController(QObject):
     @Slot("QVariantMap")
     def _play_cat_equip(self, result):
         payload = dict(result or {})
-        if payload.get("isDiscovery"):
+        if payload.get("isDiscovery") or payload.get("catId") == "halloween-hola":
             self._play_cat_reveal(payload)
         else:
             play_gacha_equip_sound(int(payload.get("rarity", 1)))
