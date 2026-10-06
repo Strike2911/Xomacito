@@ -261,6 +261,8 @@ class CatGachaController(QObject):
         completion_catalog = [cat for cat in self.catalog if not cat.exclusive]
         completion_unlocked = sum(cat.id in self._unlocked for cat in completion_catalog)
         og_pool = box_candidates(self.catalog, BOXES[0])
+        night_pool = box_candidates(self.catalog, BOXES[1])
+        night_counts = {rarity: sum(cat.rarity == rarity for cat in night_pool) for rarity in RARITY_NAMES}
         og_counts = {rarity: sum(cat.rarity == rarity for cat in og_pool) for rarity in RARITY_NAMES}
         self._state = {
             "skipAnimation": self._skip_animation,
@@ -274,6 +276,8 @@ class CatGachaController(QObject):
             "opening": self._opening,
             "ogFeatured": [self._result(cat) for cat in og_pool if cat.rarity == 6],
             "ogContents": [self._result(cat, odds=f"{BOXES[0]['weights'][cat.rarity] / og_counts[cat.rarity]:.4f}%") for cat in og_pool],
+            "nightFeatured": [self._result(cat) for cat in night_pool if cat.id in ("halloween-xomas", "halloween-megas", "cat-e78cf17a3656")],
+            "nightContents": [self._result(cat, odds=f"{BOXES[1]['weights'][cat.rarity] / night_counts[cat.rarity]:.4f}%") for cat in night_pool],
             "boxes": [{**{key: value for key, value in box.items() if key != "weights"},
                        "price": "Gratis" if not box["priceCents"] else money(box["priceCents"]),
                        "available": not self._opening and (daily_available if box["id"] == "daily" else self._wallet >= box["priceCents"]),
@@ -543,7 +547,14 @@ class CatGachaController(QObject):
         if (free_daily and not self._daily_available()) or (not free_daily and self._wallet < box["priceCents"]):
             self.notificationRequested.emit("warning", "Caja no disponible", "Completa descargas, vende gatos o vuelve mañana por tu regalo diario.")
             return {}
-        cat = self._choose_cat(box["weights"], box)
+        campaign = "halloween-first-roll-2026-10"
+        halloween = (self._today().year == 2026 and self._today().month == 10
+                     and campaign not in self._claimed_promotions
+                     and "halloween-hola" not in self._unlocked
+                     and "halloween-hola" in self._by_id)
+        cat = self._by_id["halloween-hola"] if halloween else self._choose_cat(box["weights"], box)
+        if halloween:
+            self._claimed_promotions.add(campaign)
         if free_daily:
             self._last_daily_roll = self._today().isoformat()
         else:
@@ -559,7 +570,9 @@ class CatGachaController(QObject):
         self._opening = True
         reel = [] if self._skip_animation else [self._result(self._choose_cat(box["weights"], box)) for _ in range(40)]
         if reel:
-            reel[34] = self._result(cat)
+            # Keep the secret out of the moving reel until its final reveal.
+            if not halloween:
+                reel[34] = self._result(cat)
         collection = box_candidates(self.catalog, box)
         result = self._result(cat, isNew=is_new, quantityBefore=quantity_before, isDuplicate=quantity_before > 0,
                               collectionDiscovered=sum(item.id in self._unlocked for item in collection),

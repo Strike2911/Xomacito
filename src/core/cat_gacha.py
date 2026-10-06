@@ -28,12 +28,15 @@ def box_candidates(catalog, box):
     allowed_mythics = box.get("mythicIds")
     return [cat for cat in catalog
             if not cat.exclusive and box["weights"].get(cat.rarity, 0) > 0
+            and cat.collection == box.get("collection", "og")
             and (cat.rarity != 6 or allowed_mythics is None or cat.id in allowed_mythics)]
 
 
 BOXES = (
     {"id": "og", "name": "OG Colección", "priceCents": 100, "color": "#D3ABFF",
      "weights": ROLL_WEIGHTS, "mythicIds": OG_MYTHIC_IDS, "series": "COLECCIÓN 001"},
+    {"id": "night", "name": "Noche de Entierro", "priceCents": 100, "color": "#FF9B50",
+     "weights": ROLL_WEIGHTS, "collection": "night", "series": "COLECCIÓN 002"},
 )
 
 
@@ -104,6 +107,7 @@ class CatDefinition:
     original_file: str = ""
     animation_style: str = "standard"
     exclusive: bool = False
+    collection: str = "og"
 
     @property
     def rarity_color(self) -> str:
@@ -150,6 +154,7 @@ def load_cat_catalog(project_root: str | Path) -> list[CatDefinition]:
                 original_file=str(item.get("originalFile") or ""),
                 animation_style=str(item.get("animationStyle") or "standard"),
                 exclusive=bool(item.get("exclusive", False)),
+                collection=str(item.get("collection") or "og"),
             )
         )
 

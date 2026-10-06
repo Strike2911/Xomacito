@@ -20,6 +20,9 @@ GACHA_SOUND_FILENAMES = {
     6: "gacha-reveal-6-arcane.wav",
 }
 GACHA_STYLE_SOUND_FILENAMES = {
+    "hola-haunting": "gacha-reveal-hola.wav",
+    "xomas-solar": "gacha-reveal-xomas.wav",
+    "megas-storm": "gacha-reveal-megas.wav",
     "arcane-mage": "gacha-reveal-6-arcane.wav",
     "playera-prismatic": "gacha-reveal-6-playera.wav",
     "zarking-cyber": "gacha-reveal-6-zarking.wav",

@@ -25,6 +25,7 @@ Item {
                                              : strikeApex ? "#8476E8" : rarityColor
     implicitWidth: 64
     implicitHeight: 64
+    NightCatEffect { anchors.fill: parent; style: root.animationStyle; active: root.motionActive; z: 4 }
 
     // A single fine halo leaves the portrait readable at inventory sizes.
     readonly property bool motionActive: animatedEffects && visible

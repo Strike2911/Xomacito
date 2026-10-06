@@ -20,7 +20,8 @@
       "image": "cat-cf837ae651c8.png",
       "avatar": "cat-cf837ae651c8-avatar.webp",
       "originalFile": "GATO BLACK BULL.png",
-      "animationStyle": "blackbull-noir"
+      "animationStyle": "blackbull-noir",
+      "collection": "night"
     },
     {
       "id": "cat-3a59baa03982",
@@ -200,7 +201,8 @@
       "image": "cat-d3b872881f51.png",
       "avatar": "cat-d3b872881f51-avatar.webp",
       "originalFile": "gato backroom.png",
-      "animationStyle": "standard"
+      "animationStyle": "standard",
+      "collection": "night"
     },
     {
       "id": "cat-03ffd51c1f63",
@@ -254,7 +256,8 @@
       "image": "cat-41f56f0e849e.jpg",
       "avatar": "cat-41f56f0e849e-avatar.webp",
       "originalFile": "GATO CIERVO.jpg",
-      "animationStyle": "standard"
+      "animationStyle": "standard",
+      "collection": "night"
     },
     {
       "id": "cat-3bbfd30f2821",
@@ -461,7 +464,8 @@
       "image": "cat-f539dc1c2b24.jpg",
       "avatar": "cat-f539dc1c2b24-avatar.webp",
       "originalFile": "GATO GALLETA.jpg",
-      "animationStyle": "standard"
+      "animationStyle": "standard",
+      "collection": "night"
     },
     {
       "id": "cat-1f6a613f8243",
@@ -515,7 +519,8 @@
       "image": "cat-a00a4762aa72.png",
       "avatar": "cat-a00a4762aa72-avatar.webp",
       "originalFile": "gato hechicero.png",
-      "animationStyle": "standard"
+      "animationStyle": "standard",
+      "collection": "night"
     },
     {
       "id": "cat-9d5d7cc2731c",
@@ -569,7 +574,8 @@
       "image": "cat-855a784bd141.jpg",
       "avatar": "cat-855a784bd141-avatar.webp",
       "originalFile": "GATO LOCURA.jpg",
-      "animationStyle": "standard"
+      "animationStyle": "standard",
+      "collection": "night"
     },
     {
       "id": "cat-1683d765c66e",
@@ -587,7 +593,8 @@
       "image": "cat-6f08664122e1.jpg",
       "avatar": "cat-6f08664122e1-avatar.webp",
       "originalFile": "GATO MAGO.jpg",
-      "animationStyle": "arcane-mage"
+      "animationStyle": "arcane-mage",
+      "collection": "night"
     },
     {
       "id": "cat-5ac99bc29562",
@@ -623,7 +630,8 @@
       "image": "cat-59b9b1997b94.jpg",
       "avatar": "cat-59b9b1997b94-avatar.webp",
       "originalFile": "GATO MUNDO.jpg",
-      "animationStyle": "standard"
+      "animationStyle": "standard",
+      "collection": "night"
     },
     {
       "id": "cat-855f675ac835",
@@ -659,7 +667,8 @@
       "image": "cat-3ac7e2fe6f9e.jpg",
       "avatar": "cat-3ac7e2fe6f9e-avatar.webp",
       "originalFile": "GATO NERVIOSO.jpg",
-      "animationStyle": "standard"
+      "animationStyle": "standard",
+      "collection": "night"
     },
     {
       "id": "cat-d528a357f667",
@@ -677,7 +686,8 @@
       "image": "cat-5b9212e22df6.jpg",
       "avatar": "cat-5b9212e22df6-avatar.webp",
       "originalFile": "GATO OJOS.jpg",
-      "animationStyle": "standard"
+      "animationStyle": "standard",
+      "collection": "night"
     },
     {
       "id": "cat-909e10bb0d1b",
@@ -803,7 +813,8 @@
       "image": "cat-7894c6dff168.png",
       "avatar": "cat-7894c6dff168-avatar.webp",
       "originalFile": "gato pirata.png",
-      "animationStyle": "standard"
+      "animationStyle": "standard",
+      "collection": "night"
     },
     {
       "id": "cat-3fbb2a6fdb2e",
@@ -875,7 +886,8 @@
       "image": "cat-b5033e4ca089.jpg",
       "avatar": "cat-b5033e4ca089-avatar.webp",
       "originalFile": "GATO PUDU.jpg",
-      "animationStyle": "standard"
+      "animationStyle": "standard",
+      "collection": "night"
     },
     {
       "id": "cat-b2df823bc8cf",
@@ -925,11 +937,12 @@
     {
       "id": "cat-e78cf17a3656",
       "name": "GATO SPIKE",
-      "rarity": 5,
+      "rarity": 6,
       "image": "cat-e78cf17a3656.jpg",
       "avatar": "cat-e78cf17a3656-avatar.webp",
       "originalFile": "GATO SPIKE.jpg",
-      "animationStyle": "standard"
+      "animationStyle": "spike-emerald",
+      "collection": "night"
     },
     {
       "id": "cat-910f73deffc0",
@@ -1023,7 +1036,7 @@
     },
     {
       "id": "cat-655d97e229cb",
-      "name": "GATO XOMACITO",
+      "name": "GATO FOLLADOR",
       "rarity": 2,
       "image": "cat-655d97e229cb.png",
       "avatar": "cat-655d97e229cb-avatar.webp",
@@ -1055,7 +1068,8 @@
       "image": "cat-1ae45b559307.jpg",
       "avatar": "cat-1ae45b559307-avatar.webp",
       "originalFile": "GATOS BUHOS.jpg",
-      "animationStyle": "standard"
+      "animationStyle": "standard",
+      "collection": "night"
     },
     {
       "id": "cat-3816f4a936b7",
@@ -1100,7 +1114,8 @@
       "image": "cat-8f255261a642.png",
       "avatar": "cat-8f255261a642-avatar.webp",
       "originalFile": "jorge halloween edition.png",
-      "animationStyle": "standard"
+      "animationStyle": "standard",
+      "collection": "night"
     },
     {
       "id": "cat-97575d0c8d17",
@@ -1209,7 +1224,8 @@
       "avatar": "cat-5a99d9f019f0-avatar.webp",
       "originalFile": "PERRO ZANE.png",
       "animationStyle": "standard",
-      "exclusive": true
+      "exclusive": false,
+      "collection": "og"
     },
     {
       "id": "cat-cf85e6539348",
@@ -1354,6 +1370,589 @@
       "avatar": "cat-65d78402fdcf-avatar.webp",
       "originalFile": "ñam penecito.png",
       "animationStyle": "standard"
+    },
+    {
+      "id": "night-0a3ea74e5b52",
+      "name": "39 GATODOWN",
+      "rarity": 3,
+      "image": "night-0a3ea74e5b52.jpg",
+      "avatar": "night-0a3ea74e5b52-avatar.webp",
+      "originalFile": "39 gatodown.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-f259ad8ed099",
+      "name": "3AM",
+      "rarity": 5,
+      "image": "night-f259ad8ed099.jpg",
+      "avatar": "night-f259ad8ed099-avatar.webp",
+      "originalFile": "3AM.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-652b412ac921",
+      "name": "41GATO CRISTIANO",
+      "rarity": 2,
+      "image": "night-652b412ac921.jpg",
+      "avatar": "night-652b412ac921-avatar.webp",
+      "originalFile": "41gato cristiano.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-408338413606",
+      "name": "8 BITS",
+      "rarity": 1,
+      "image": "night-408338413606.jpg",
+      "avatar": "night-408338413606-avatar.webp",
+      "originalFile": "8 BITS.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-56ceeb905c2d",
+      "name": "A",
+      "rarity": 2,
+      "image": "night-56ceeb905c2d.jpg",
+      "avatar": "night-56ceeb905c2d-avatar.webp",
+      "originalFile": "a.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-6a2c095cd940",
+      "name": "ANTONIMUS",
+      "rarity": 1,
+      "image": "night-6a2c095cd940.jpg",
+      "avatar": "night-6a2c095cd940-avatar.webp",
+      "originalFile": "ANTONIMUS.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-5cb528d9790e",
+      "name": "BOBUX",
+      "rarity": 2,
+      "image": "night-5cb528d9790e.jpg",
+      "avatar": "night-5cb528d9790e-avatar.webp",
+      "originalFile": "BOBUX.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-7dda4303a09d",
+      "name": "BOLIVIANO",
+      "rarity": 3,
+      "image": "night-7dda4303a09d.jpg",
+      "avatar": "night-7dda4303a09d-avatar.webp",
+      "originalFile": "boliviano.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-97635b8c4afd",
+      "name": "CATPOOL",
+      "rarity": 4,
+      "image": "night-97635b8c4afd.jpg",
+      "avatar": "night-97635b8c4afd-avatar.webp",
+      "originalFile": "CatPool.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-8fb201397079",
+      "name": "CONDON GATO",
+      "rarity": 3,
+      "image": "night-8fb201397079.jpg",
+      "avatar": "night-8fb201397079-avatar.webp",
+      "originalFile": "CONDON GATO.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-3fdd35ca39bf",
+      "name": "DORAEMON",
+      "rarity": 2,
+      "image": "night-3fdd35ca39bf.png",
+      "avatar": "night-3fdd35ca39bf-avatar.webp",
+      "originalFile": "DORAEMON.png",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-affee27e3755",
+      "name": "EL ADMIN CON SU NOVIA",
+      "rarity": 2,
+      "image": "night-affee27e3755.jpg",
+      "avatar": "night-affee27e3755-avatar.webp",
+      "originalFile": "EL ADMIN CON SU NOVIA.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-fb063626d476",
+      "name": "EMPANADAS",
+      "rarity": 2,
+      "image": "night-fb063626d476.jpg",
+      "avatar": "night-fb063626d476-avatar.webp",
+      "originalFile": "EMPANADAS.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-cfb6f900699a",
+      "name": "ETA VAINA E SERIA",
+      "rarity": 2,
+      "image": "night-cfb6f900699a.jpg",
+      "avatar": "night-cfb6f900699a-avatar.webp",
+      "originalFile": "ETA VAINA E SERIA.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-5a9ab5d02ced",
+      "name": "FANATICO DE PERSONA",
+      "rarity": 2,
+      "image": "night-5a9ab5d02ced.jpg",
+      "avatar": "night-5a9ab5d02ced-avatar.webp",
+      "originalFile": "FANATICO DE PERSONA.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-498c7ec78c8e",
+      "name": "FLEXEANDO POBREZA",
+      "rarity": 2,
+      "image": "night-498c7ec78c8e.jpg",
+      "avatar": "night-498c7ec78c8e-avatar.webp",
+      "originalFile": "FLEXEANDO POBREZA.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-ab3a63b77eee",
+      "name": "GATA LESBIANA",
+      "rarity": 1,
+      "image": "night-ab3a63b77eee.jpg",
+      "avatar": "night-ab3a63b77eee-avatar.webp",
+      "originalFile": "GATA LESBIANA.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-a7e4d391ce26",
+      "name": "GATO BOLAS",
+      "rarity": 1,
+      "image": "night-a7e4d391ce26.jpg",
+      "avatar": "night-a7e4d391ce26-avatar.webp",
+      "originalFile": "GATO BOLAS.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-ec176540fd25",
+      "name": "GATO EMO",
+      "rarity": 3,
+      "image": "night-ec176540fd25.jpg",
+      "avatar": "night-ec176540fd25-avatar.webp",
+      "originalFile": "GATO EMO.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-d0b4bdc05805",
+      "name": "GATO FERNET",
+      "rarity": 3,
+      "image": "night-d0b4bdc05805.jpg",
+      "avatar": "night-d0b4bdc05805-avatar.webp",
+      "originalFile": "GATO FERNET.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-35899d4cccce",
+      "name": "GATO GRIFFITH",
+      "rarity": 4,
+      "image": "night-35899d4cccce.png",
+      "avatar": "night-35899d4cccce-avatar.webp",
+      "originalFile": "GATO GRIFFITH.png",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-70980569334b",
+      "name": "GATO LUNA",
+      "rarity": 1,
+      "image": "night-70980569334b.jpg",
+      "avatar": "night-70980569334b-avatar.webp",
+      "originalFile": "GATO LUNA.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "halloween-megas",
+      "name": "GATO MEGAS",
+      "rarity": 6,
+      "image": "halloween-megas.png",
+      "avatar": "halloween-megas-avatar.webp",
+      "originalFile": "gato megas.png",
+      "animationStyle": "megas-storm",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-8fdda0859c25",
+      "name": "GATO PENDEJO NO SABE CONTAR 3",
+      "rarity": 2,
+      "image": "night-8fdda0859c25.jpg",
+      "avatar": "night-8fdda0859c25-avatar.webp",
+      "originalFile": "GATO PENDEJO NO SABE CONTAR 3.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "halloween-xomas",
+      "name": "GATO XOMAS",
+      "rarity": 6,
+      "image": "halloween-xomas.jpg",
+      "avatar": "halloween-xomas-avatar.webp",
+      "originalFile": "GATO XOMAS.jpg",
+      "animationStyle": "xomas-solar",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-71e04b530564",
+      "name": "GATOBEJA",
+      "rarity": 2,
+      "image": "night-71e04b530564.jpg",
+      "avatar": "night-71e04b530564-avatar.webp",
+      "originalFile": "GATOBEJA.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-55649b7a0651",
+      "name": "GUTS",
+      "rarity": 2,
+      "image": "night-55649b7a0651.jpg",
+      "avatar": "night-55649b7a0651-avatar.webp",
+      "originalFile": "GUTS.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "halloween-hola",
+      "name": "GATO HOLA",
+      "rarity": 6,
+      "image": "halloween-hola.jpg",
+      "avatar": "halloween-hola-avatar.webp",
+      "originalFile": "HOLA.jpg",
+      "animationStyle": "hola-haunting",
+      "collection": "night",
+      "exclusive": true
+    },
+    {
+      "id": "night-ecace186c376",
+      "name": "IMITANDO EMOJIS",
+      "rarity": 1,
+      "image": "night-ecace186c376.jpg",
+      "avatar": "night-ecace186c376-avatar.webp",
+      "originalFile": "imitando emojis.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-27ef33912a45",
+      "name": "JUDIO",
+      "rarity": 1,
+      "image": "night-27ef33912a45.png",
+      "avatar": "night-27ef33912a45-avatar.webp",
+      "originalFile": "JUDIO.png",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-45cbed8f09a8",
+      "name": "LA PRIMERA PALIDA",
+      "rarity": 1,
+      "image": "night-45cbed8f09a8.png",
+      "avatar": "night-45cbed8f09a8-avatar.webp",
+      "originalFile": "LA PRIMERA PALIDA.png",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-144d29d083d4",
+      "name": "LA ULTIMA PAJA",
+      "rarity": 1,
+      "image": "night-144d29d083d4.png",
+      "avatar": "night-144d29d083d4-avatar.webp",
+      "originalFile": "LA ULTIMA PAJA.png",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-6bbcd1397ddd",
+      "name": "LO SIENTO CRECER DENTRO DE MI",
+      "rarity": 1,
+      "image": "night-6bbcd1397ddd.jpg",
+      "avatar": "night-6bbcd1397ddd-avatar.webp",
+      "originalFile": "LO SIENTO CRECER DENTRO DE MI.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-bc8f95f4fa8d",
+      "name": "MARTHA LA PERRA QUE HABLA",
+      "rarity": 2,
+      "image": "night-bc8f95f4fa8d.png",
+      "avatar": "night-bc8f95f4fa8d-avatar.webp",
+      "originalFile": "MARTHA LA PERRA QUE HABLA.png",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-4dc42ffad7a9",
+      "name": "MI PENE CUANDO",
+      "rarity": 1,
+      "image": "night-4dc42ffad7a9.png",
+      "avatar": "night-4dc42ffad7a9-avatar.webp",
+      "originalFile": "MI PENE CUANDO.png",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-2ff33f93c419",
+      "name": "MIRANDO TETORRIS",
+      "rarity": 3,
+      "image": "night-2ff33f93c419.png",
+      "avatar": "night-2ff33f93c419-avatar.webp",
+      "originalFile": "MIRANDO TETORRIS.png",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-30293cae40fe",
+      "name": "MIREN COMO SUFRO Y ME PROYECTO",
+      "rarity": 5,
+      "image": "night-30293cae40fe.jpg",
+      "avatar": "night-30293cae40fe-avatar.webp",
+      "originalFile": "MIREN COMO SUFRO Y ME PROYECTO.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-007d3469801b",
+      "name": "NO DEBERIA METER MI PEÑE AHI",
+      "rarity": 1,
+      "image": "night-007d3469801b.jpg",
+      "avatar": "night-007d3469801b-avatar.webp",
+      "originalFile": "NO DEBERIA METER MI PEÑE AHI.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-787d858682af",
+      "name": "OH POR DIOS NECESITO PENE",
+      "rarity": 2,
+      "image": "night-787d858682af.jpg",
+      "avatar": "night-787d858682af-avatar.webp",
+      "originalFile": "OH POR DIOS NECESITO PENE.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-006f9b21c0ed",
+      "name": "OLIENDO QUESILLO",
+      "rarity": 1,
+      "image": "night-006f9b21c0ed.png",
+      "avatar": "night-006f9b21c0ed-avatar.webp",
+      "originalFile": "OLIENDO QUESILLO.png",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-214fcf943f06",
+      "name": "OMAIGOTO",
+      "rarity": 4,
+      "image": "night-214fcf943f06.jpg",
+      "avatar": "night-214fcf943f06-avatar.webp",
+      "originalFile": "OMAIGOTO.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-4da5b088d36e",
+      "name": "OWO",
+      "rarity": 4,
+      "image": "night-4da5b088d36e.jpg",
+      "avatar": "night-4da5b088d36e-avatar.webp",
+      "originalFile": "OWO.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-a81e18359b11",
+      "name": "POLIGATO",
+      "rarity": 2,
+      "image": "night-a81e18359b11.jpg",
+      "avatar": "night-a81e18359b11-avatar.webp",
+      "originalFile": "POLIGATO.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-e833d1d4233e",
+      "name": "RE TRANQUI",
+      "rarity": 2,
+      "image": "night-e833d1d4233e.png",
+      "avatar": "night-e833d1d4233e-avatar.webp",
+      "originalFile": "RE TRANQUI.png",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-5d293c8236d4",
+      "name": "RECIEN MOJADITO",
+      "rarity": 1,
+      "image": "night-5d293c8236d4.png",
+      "avatar": "night-5d293c8236d4-avatar.webp",
+      "originalFile": "RECIEN MOJADITO.png",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-987475c99b53",
+      "name": "RECIEN PAJEADO MAMADOR EDITION",
+      "rarity": 1,
+      "image": "night-987475c99b53.jpg",
+      "avatar": "night-987475c99b53-avatar.webp",
+      "originalFile": "RECIEN PAJEADO MAMADOR EDITION.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-cb20c01c8a14",
+      "name": "RESIDENT EVIL",
+      "rarity": 1,
+      "image": "night-cb20c01c8a14.png",
+      "avatar": "night-cb20c01c8a14-avatar.webp",
+      "originalFile": "RESIDENT EVIL.png",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-fce8d0606039",
+      "name": "SENTADO DE PANA",
+      "rarity": 1,
+      "image": "night-fce8d0606039.jpg",
+      "avatar": "night-fce8d0606039-avatar.webp",
+      "originalFile": "sentado de pana.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-4ab2b520c511",
+      "name": "SEXITO",
+      "rarity": 1,
+      "image": "night-4ab2b520c511.jpg",
+      "avatar": "night-4ab2b520c511-avatar.webp",
+      "originalFile": "SEXITO.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-e43bd3e32c67",
+      "name": "SIENTO UN PENECITO DE METAL",
+      "rarity": 3,
+      "image": "night-e43bd3e32c67.jpg",
+      "avatar": "night-e43bd3e32c67-avatar.webp",
+      "originalFile": "SIENTO UN PENECITO DE METAL.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-1fc3823229a2",
+      "name": "THOMAS",
+      "rarity": 1,
+      "image": "night-1fc3823229a2.png",
+      "avatar": "night-1fc3823229a2-avatar.webp",
+      "originalFile": "THOMAS.png",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-5f68efaba05c",
+      "name": "Y YO EN UNA BOTELLA",
+      "rarity": 4,
+      "image": "night-5f68efaba05c.jpg",
+      "avatar": "night-5f68efaba05c-avatar.webp",
+      "originalFile": "Y YO EN UNA BOTELLA.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
+    },
+    {
+      "id": "night-9130795ea264",
+      "name": "YO SOY DIOS",
+      "rarity": 2,
+      "image": "night-9130795ea264.jpg",
+      "avatar": "night-9130795ea264-avatar.webp",
+      "originalFile": "YO SOY DIOS.jpg",
+      "animationStyle": "standard",
+      "collection": "night",
+      "exclusive": false
     }
   ]
 }

@@ -24,20 +24,20 @@ class CatGachaTests(unittest.TestCase):
         payload = json.loads(catalog_path.read_text(encoding="utf-8"))
         catalog = load_cat_catalog(ROOT)
 
-        self.assertEqual(len(catalog), 150)
-        self.assertEqual(len(payload["cats"]), 150)
+        self.assertEqual(len(catalog), 203)
+        self.assertEqual(len(payload["cats"]), 203)
         self.assertIn("GATITO PENSATIVO", {cat.name for cat in catalog})
         self.assertIn("GATO DIOS", {cat.name for cat in catalog})
-        self.assertIn("GATO XOMACITO", {cat.name for cat in catalog})
+        self.assertIn("GATO FOLLADOR", {cat.name for cat in catalog})
         self.assertEqual(
-            Counter(cat.rarity for cat in catalog),
-            {1: 61, 2: 36, 3: 28, 4: 9, 5: 11, 6: 5},
+            Counter(cat.rarity for cat in catalog if cat.collection == "og"),
+            {1: 53, 2: 36, 3: 24, 4: 9, 5: 10, 6: 3},
         )
         expected_rarities = {
             "GATO DIOS": 5,
             "GATO DETECTIVE": 5,
             "GATO RARO": 3,
-            "GATO SPIKE": 5,
+            "GATO SPIKE": 6,
             "GATO STRIKE": 6,
             "GATO ALE": 5,
             "RYKOZIO": 5,
@@ -60,7 +60,7 @@ class CatGachaTests(unittest.TestCase):
         self.assertEqual(by_name["black bull"].animation_style, "blackbull-noir")
         self.assertEqual(by_name["gato strike"].animation_style, "strike-apex")
         self.assertTrue(all(cat.name == cat.name.upper() for cat in catalog if cat.name != "Frido"))
-        self.assertTrue(by_name["perro zane"].exclusive)
+        self.assertFalse(by_name["perro zane"].exclusive)
         self.assertFalse(by_name["frido"].exclusive)
         for cat in catalog:
             self.assertTrue(cat.image_path.is_file())
@@ -75,18 +75,18 @@ class CatGachaTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as appdata, patch.dict(os.environ, {"APPDATA": appdata}):
             store = SettingsStore("XomacitoHistoricalCollectionTest")
             controller = CatGachaController(ROOT, store, today_provider=lambda: today)
-            zane = next(cat for cat in controller.catalog if cat.name == "PERRO ZANE")
+            secret = next(cat for cat in controller.catalog if cat.name == "GATO HOLA")
             remote = controller.sync_snapshot()
             remote["historicalUnlockedCount"] = 149
 
             controller.mergeRemoteState(remote)
 
             self.assertEqual(controller.state["unlockedCount"], 149)
-            self.assertNotIn(zane.id, controller._unlocked)
+            self.assertNotIn(secret.id, controller._unlocked)
             self.assertEqual(len(controller.sync_snapshot()["unlockedIds"]), 149)
             restored = CatGachaController(ROOT, store, today_provider=lambda: today)
             self.assertEqual(restored.state["unlockedCount"], 149)
-            self.assertNotIn(zane.id, restored._unlocked)
+            self.assertNotIn(secret.id, restored._unlocked)
 
     def test_daily_roll_and_every_ten_downloads_are_persistent(self):
         today = date(2026, 7, 22)
@@ -337,9 +337,9 @@ class CatGachaTests(unittest.TestCase):
                 ROOT, store, rng=random.Random(2911), today_provider=lambda: current_day[0],
             )
             dog = next(cat for cat in controller.catalog if cat.name == "PERRO ZANE")
-            self.assertTrue(dog.exclusive)
+            self.assertFalse(dog.exclusive)
             self.assertNotIn(dog.id, controller._unlocked)
-            self.assertNotIn(dog.id, {item["catId"] for item in controller.collection.items()})
+            self.assertIn(dog.id, {item["catId"] for item in controller.collection.items()})
             self.assertEqual(controller.claimZaneBirthdayReward(), {})
 
             current_day[0] = date(2026, 8, 26)

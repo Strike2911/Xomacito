@@ -7,6 +7,7 @@ Item {
     id: root
     property int section: 0
     property bool showContents: false
+    property bool showNightContents: false
     property bool dense: height <= 650
     readonly property bool wide: width >= 900
     readonly property bool revealOpen: revealPopup.opened
@@ -112,6 +113,91 @@ Item {
             ColumnLayout {
                 width: boxesScroll.availableWidth - 12; spacing: 14
                 XCard {
+                    Layout.fillWidth: true; implicitHeight: nightLayout.implicitHeight + 40
+                    border.color: "#895039"
+                    GridLayout {
+                        id: nightLayout
+                        columns: root.wide ? 2 : 1
+                        columnSpacing: 28; rowSpacing: 20
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.margins: 20
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: root.wide ? root.width * 0.4 : -1
+                            Layout.minimumWidth: root.wide ? root.width * 0.4 : 0
+                            Layout.maximumWidth: root.wide ? root.width * 0.4 : Infinity
+                            Layout.preferredHeight: root.wide ? 272 : 212
+                            Layout.alignment: Qt.AlignTop
+                            radius: 16; clip: true
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: "#201A2D" }
+                                GradientStop { position: 0.6; color: "#492B36" }
+                                GradientStop { position: 1; color: "#181923" }
+                            }
+                            Text { anchors.left: parent.left; anchors.top: parent.top; anchors.margins: 18; text: "XOMACITO / COLECCIÓN 002"; color: "#E8BE9F"; font.pixelSize: 10; font.letterSpacing: 2 }
+                            Row {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.top: parent.top; anchors.topMargin: root.wide ? 66 : 40; spacing: root.wide ? 16 : 24
+                                Repeater {
+                                    model: root.cats.nightFeatured || []
+                                    Column {
+                                        required property var modelData
+                                        spacing: 7
+                                        Rectangle {
+                                            width: root.wide ? Math.max(70, Math.min(98, root.width * 0.072)) : 86; height: width; radius: 12
+                                            color: "#29202C"; border.width: 2; border.color: "#E8B78E"
+                                            Image { anchors.fill: parent; anchors.margins: 7; source: modelData.source; fillMode: Image.PreserveAspectFit; asynchronous: true }
+                                        }
+                                        Text { width: parent.width; text: modelData.name.replace("GATO ", ""); color: "#FFF3FC"; font.pixelSize: 11; font.bold: true; horizontalAlignment: Text.AlignHCenter }
+                                        Text { width: parent.width; text: modelData.stars; color: modelData.rarityColor; font.pixelSize: 10; horizontalAlignment: Text.AlignHCenter }
+                                    }
+                                }
+                            }
+                            Text { anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: 13; text: "NOCHE DE ENTIERRO"; color: "#FFFFFF"; font.pixelSize: root.wide ? 25 : 23; font.bold: true; font.letterSpacing: 2 }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true; Layout.alignment: Qt.AlignTop
+                            spacing: 14
+                            Text { text: "NOCHE DE ENTIERRO"; color: "#FFBB79"; font.pixelSize: 11; font.bold: true; font.letterSpacing: 1.5 }
+                            Text { Layout.fillWidth: true; text: "ALL MY FELLAS!!"; color: theme.colors.text; font.pixelSize: 25; font.bold: true; wrapMode: Text.WordWrap }
+                            Text { Layout.fillWidth: true; text: "Xomas, Megas y Spike lideran esta colección de " + (root.cats.nightContents || []).length + " gatos. Cada apertura entrega un gato; pueden salir repetidos."; color: theme.colors.textMuted; font.pixelSize: 13; lineHeight: 1.2; wrapMode: Text.WordWrap }
+                            RowLayout {
+                                Layout.fillWidth: true; spacing: 10
+                                XButton { objectName: "catBox_night"; text: "Abrir Noche de Entierro · $1.00"; enabled: !root.cats.opening && root.cats.walletCents >= 100; onClicked: catController.openBox("night") }
+                            }
+                            Text { Layout.fillWidth: true; text: root.cats.downloadProgress + "/10 descargas para tu próximo $1.00 virtual"; color: theme.colors.textMuted; font.pixelSize: 11 }
+                            Rectangle {
+                                Layout.fillWidth: true; height: 5; radius: 3; color: theme.colors.backgroundAlt
+                                Rectangle { height: parent.height; width: parent.width * root.cats.downloadProgressRatio; radius: 3; color: "#DDA476" }
+                            }
+                            XButton { text: root.showNightContents ? "Ocultar contenido y probabilidades" : "Ver contenido y probabilidades"; compact: true; kind: "ghost"; onClicked: root.showNightContents = !root.showNightContents }
+                        }
+                    }
+                }
+                Text { visible: root.showNightContents; Layout.fillWidth: true; text: root.cats.boxes && root.cats.boxes.length > 1 ? root.cats.boxes[1].odds : ""; color: theme.colors.textMuted; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                Text { visible: root.showNightContents; Layout.fillWidth: true; text: "Mítico: 0.2% total, repartido entre Xomas, Megas, Spike, Mago y Black Bull (0.04% cada uno). Cada apertura es independiente."; color: theme.colors.textMuted; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                Flow {
+                    visible: root.showNightContents
+                    Layout.fillWidth: true; Layout.preferredHeight: visible ? implicitHeight : 0
+                    spacing: 8
+                    Repeater {
+                        model: root.showNightContents ? (root.cats.nightContents || []) : []
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: 146; height: 148; radius: 12
+                            color: theme.colors.surfaceRaised; border.color: modelData.rarityColor
+                            Column {
+                                anchors.fill: parent; anchors.margins: 9; spacing: 4
+                                Image { width: parent.width; height: 67; source: modelData.source; fillMode: Image.PreserveAspectFit; asynchronous: true }
+                                Text { width: parent.width; text: modelData.name; color: theme.colors.text; font.pixelSize: 10; elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter }
+                                Text { width: parent.width; text: modelData.stars; color: modelData.rarityColor; font.pixelSize: 10; horizontalAlignment: Text.AlignHCenter }
+                                Text { width: parent.width; text: modelData.odds + " · " + modelData.price; color: theme.colors.textMuted; font.pixelSize: 10; horizontalAlignment: Text.AlignHCenter }
+                            }
+                        }
+                    }
+                }
+                XCard {
                     Layout.fillWidth: true; implicitHeight: ogLayout.implicitHeight + 40
                     border.color: "#9276B8"
                     GridLayout {
@@ -123,6 +209,8 @@ Item {
                         Rectangle {
                             Layout.fillWidth: true
                             Layout.preferredWidth: root.wide ? root.width * 0.4 : -1
+                            Layout.minimumWidth: root.wide ? root.width * 0.4 : 0
+                            Layout.maximumWidth: root.wide ? root.width * 0.4 : Infinity
                             Layout.preferredHeight: root.wide ? 272 : 212
                             Layout.alignment: Qt.AlignTop
                             radius: 16; clip: true
@@ -253,6 +341,23 @@ Item {
         property real presentation: 1
         onDoneChanged: { if (done) { presentation = settingsController.state.animationsEnabled ? 0 : 1; if (settingsController.state.animationsEnabled) resultEntrance.restart() } }
         NumberAnimation { id: resultEntrance; target: revealPopup; property: "presentation"; from: 0; to: 1; duration: 240; easing.type: Easing.OutCubic }
+        Rectangle {
+            anchors.fill: parent; radius: 20; z: 20
+            visible: revealPopup.opened && revealPopup.done && revealPopup.result.animationStyle === "hola-haunting"
+            color: "#080308"
+            property real arrival: 0
+            opacity: settingsController.state.animationsEnabled ? (arrival > 0.8 ? (1-arrival)*5 : 1) : 0
+            onVisibleChanged: { if (visible && settingsController.state.animationsEnabled && !root.cats.skipAnimation) haunting.start(); else arrival = 1 }
+            NumberAnimation on arrival { id: haunting; from: 0; to: 1; duration: 2400 }
+            Image {
+                anchors.centerIn: parent
+                width: Math.min(parent.width, parent.height) * (0.18 + parent.arrival * 0.95); height: width
+                source: revealPopup.result.source || ""
+                fillMode: Image.PreserveAspectFit
+                opacity: Math.min(1, parent.arrival * 2)
+            }
+            Text { anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: 25; text: "NO ESTABAS SOLO."; color: "#F56A73"; font.letterSpacing: 5; font.pixelSize: 16 }
+        }
         readonly property bool done: travel >= 1
         readonly property bool resultCanSell: (root.cats.inventoryItems || []).some(function(cat) { return cat.catId === revealPopup.result.catId && cat.canSell })
         onClosed: { spin.stop(); resultEntrance.stop(); catController.finishOpening(); root.revealFinished() }
@@ -273,10 +378,10 @@ Item {
             anchors.fill: parent
             animationStyle: revealPopup.result.animationStyle || ""
             effectColor: revealPopup.result.rarityColor || theme.colors.primary
-            active: revealPopup.opened && revealPopup.done
+            active: revealPopup.opened && revealPopup.done && settingsController.state.animationsEnabled
             progress: revealPopup.travel
             mode: "reveal"
-            opacity: 0.3
+            opacity: revealPopup.result.animationStyle === "hola-haunting" ? 0.85 : 0.3
         }
         ColumnLayout {
             anchors.fill: parent; spacing: 14
@@ -352,7 +457,7 @@ Item {
                         Text { text: (revealPopup.result.stars || "") + "   ·   " + (revealPopup.result.price || "") + " virtual"; color: revealPopup.result.rarityColor || theme.colors.primary; font.pixelSize: 16 }
                         Text {
                             Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 12; color: theme.colors.textMuted
-                            text: revealPopup.result.isNew ? "Un nuevo rostro para tu álbum OG." : revealPopup.result.isDuplicate ? "Puedes conservar esta copia, equiparla o vender una." : "Ya lo habías descubierto. Ahora vuelve a acompañarte."
+                            text: revealPopup.result.animationStyle === "hola-haunting" ? "HALLOWEEN 2026 · Encontraste al visitante secreto." : revealPopup.result.isNew ? "Un nuevo rostro para tu colección." : revealPopup.result.isDuplicate ? "Puedes conservar esta copia, equiparla o vender una." : "Ya lo habías descubierto. Ahora vuelve a acompañarte."
                         }
                     }
                 }
@@ -441,7 +546,7 @@ Item {
             anchors.fill: parent
             animationStyle: equipCelebration.result.animationStyle || ""
             effectColor: equipCelebration.effectColor
-            active: equipCelebration.visible
+            active: equipCelebration.visible && settingsController.state.animationsEnabled
             progress: equipCelebration.pulseScale
             mode: "equip"
         }

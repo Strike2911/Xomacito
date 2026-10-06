@@ -28,7 +28,7 @@ MAX_INSTALLER_SIZE = 2 * 1024 * 1024 * 1024
 INSTALLER_APP_ID = "{8B474FFD-6C60-4B82-889E-7DD12563E7E5}_is1"
 IDEA_CONTRIBUTORS = [
     "Jorge", "Xomas", "Megas", "Playera", "Mensva", "Zarking", "Spike",
-    "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan",
+    "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan", "Nini",
 ]
 PUBLIC_VERSION_BY_INTERNAL = {
     "4.0.29": "1.2.10",

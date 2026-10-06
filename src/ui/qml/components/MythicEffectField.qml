@@ -2,6 +2,7 @@ import QtQuick
 
 Item {
     id: root
+    clip: true
     property string animationStyle: ""
     property color effectColor: "#9B5CFF"
     property bool active: false
@@ -12,7 +13,8 @@ Item {
     readonly property bool zarking: animationStyle === "zarking-cyber"
     readonly property bool blackbull: animationStyle === "blackbull-noir"
     readonly property bool strike: animationStyle === "strike-apex"
-    visible: arcane || playera || zarking || blackbull || strike
+    visible: animationStyle === "spike-emerald" || arcane || playera || zarking || blackbull || strike || animationStyle === "xomas-solar" || animationStyle === "megas-storm" || animationStyle === "hola-haunting"
+    NightCatEffect { anchors.fill: parent; anchors.margins: 12; style: root.animationStyle; active: root.active; reveal: root.mode === "reveal" }
 
     // GATO MAGO: astrolabio arcano, runas y órbitas en sentidos opuestos.
     Item {
