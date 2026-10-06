@@ -31,6 +31,7 @@ IDEA_CONTRIBUTORS = [
     "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan", "Nini",
 ]
 PUBLIC_VERSION_BY_INTERNAL = {
+    "4.0.30": "1.3.0",
     "4.0.29": "1.2.10",
     "4.0.28": "1.2.9",
     "4.0.27": "1.2.8",
@@ -50,6 +51,14 @@ PUBLIC_VERSION_BY_INTERNAL = {
 }
 PUBLIC_BUGFIX_NOTE = "- Arreglo de bugs de la versión 1.0."
 RELEASE_NOTICES = {
+    "4.0.30": {
+        "eyebrow": "XOMACITO 1.3.0", "title": "ALL MY FELLAS!!",
+        "subtitle": "NOCHE DE ENTIERRO",
+        "message": "La segunda colección llega con Xomas, Megas y Spike como protagonistas.",
+        "highlights": ["67 gatos en la caja 2 y una sorpresa de Halloween", "Spike mítico con seis estrellas y efectos propios", "Perro Zane en OG y colecciones equilibradas", "Gracias a Nini por contribuir"],
+        "contributors": IDEA_CONTRIBUTORS, "closing": "Conservas tus gatos y saldo. ¡Abre tu próxima caja!",
+        "platinumCelebration": False, "smoothMotionPromotion": False,
+    },
     "4.0.29": {
         "eyebrow": "XOMACITO 1.2.10", "title": "Más audio. Recortes más claros.",
         "subtitle": "WINDOWS Y MAC",

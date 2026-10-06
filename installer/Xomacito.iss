@@ -1,6 +1,6 @@
 #define MyAppName "Xomacito"
-#define MyAppVersion "4.0.29"
-#define MyAppDisplayVersion "1.2.10"
+#define MyAppVersion "4.0.30"
+#define MyAppDisplayVersion "1.3.0"
 #define MyAppPublisher "Xomacito"
 #define MyAppExeName "Xomacito.exe"
 #define ProjectRoot ".."
@@ -18,7 +18,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#ProjectRoot}\release
-OutputBaseFilename=Xomacito-1.2.10-Setup
+OutputBaseFilename=Xomacito-1.3.0-Setup
 SetupIconFile={#ProjectRoot}\Xomacito-icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName} {#MyAppDisplayVersion}
@@ -35,10 +35,10 @@ RestartApplications=no
 Uninstallable=yes
 CreateUninstallRegKey=yes
 MinVersion=10.0.17763
-VersionInfoVersion=4.0.29.0
+VersionInfoVersion=4.0.30.0
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppDisplayVersion}
-VersionInfoDescription=Xomacito 1.2.10
+VersionInfoDescription=Xomacito 1.3.0
 VersionInfoCompany={#MyAppPublisher}
 
 [Languages]
