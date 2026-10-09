@@ -102,6 +102,7 @@ class BatchController(QObject):
     notificationRequested = Signal(str, str, str)
     failedDownload = Signal()
     successfulDownload = Signal(int)
+    outputReady = Signal(str)
     gachaSourceCompleted = Signal(str)
 
     ROLES = [
@@ -542,6 +543,9 @@ class BatchController(QObject):
 
     @Slot(str, str, str, float)
     def _apply_queue_event(self, job_id, status, detail, progress):
+        if status == "OUTPUT_READY":
+            self.outputReady.emit(detail)
+            return
         if job_id == "GLOBAL_PROGRESS":
             self._set_state(progress=progress, status=detail)
             return
@@ -550,6 +554,8 @@ class BatchController(QObject):
             return
         job = self.manager.get_job_by_id(job_id)
         if job:
+            if status == "COMPLETED" and getattr(job, "final_filepath", None):
+                self.outputReady.emit(str(job.final_filepath))
             if status == "RUNNING":
                 self._failed_sound_jobs.discard(job_id)
             elif status in {"FAILED", "CANCELLED"} and job_id not in self._failed_sound_jobs:

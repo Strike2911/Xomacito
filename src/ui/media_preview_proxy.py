@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import secrets
+import re
 import threading
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urlparse, urljoin
 
 import requests
 
@@ -12,6 +13,11 @@ import requests
 _RESPONSE_HEADERS = (
     "Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified",
 )
+
+
+def _media_suffix(source):
+    match = re.search(r'\.(m3u8|mp4|m4s|ts|aac|mp3|key|webm|ogg)$', urlparse(source).path, re.I)
+    return '/stream.' + match[1].lower() if match else ''
 
 
 @dataclass(frozen=True)
@@ -30,6 +36,25 @@ class _PreviewServer(ThreadingHTTPServer):
         self.routes_lock = lock
         self.session = requests.Session()
 
+    def manifest(self, text, source, headers):
+        def route(value):
+            remote = urljoin(source, value)
+            if urlparse(remote).scheme not in {'http', 'https'}: return value
+            with self.routes_lock:
+                token = next((key for key, entry in self.routes.items() if entry.source == remote and entry.headers == headers), None)
+                if token is None:
+                    token = secrets.token_urlsafe(18)
+                    self.routes[token] = _PreviewRoute(remote, dict(headers))
+            return f'http://127.0.0.1:{self.server_port}/media/{token}' + _media_suffix(remote)
+        lines = []
+        for line in text.splitlines():
+            if line.strip() and not line.startswith('#'):
+                line = route(line.strip())
+            elif 'URI="' in line:
+                line = re.sub(r'URI="([^"]+)"', lambda match: 'URI="' + route(match[1]) + '"', line)
+            lines.append(line)
+        return ('\n'.join(lines) + '\n').encode('utf-8')
+
 
 class _PreviewHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -41,7 +66,7 @@ class _PreviewHandler(BaseHTTPRequestHandler):
         self._relay(include_body=True)
 
     def _relay(self, *, include_body: bool):
-        token = unquote(urlparse(self.path).path).removeprefix("/media/")
+        token = unquote(urlparse(self.path).path).removeprefix("/media/").split('/')[0]
         with self.server.routes_lock:
             route = self.server.routes.get(token)
         if route is None:
@@ -68,6 +93,20 @@ class _PreviewHandler(BaseHTTPRequestHandler):
                 timeout=(10, 45),
                 allow_redirects=True,
             )
+            content_type = response.headers.get('Content-Type', '').lower()
+            manifest = response.status_code < 400 and ('mpegurl' in content_type or urlparse(response.url).path.lower().endswith('.m3u8'))
+            if manifest:
+                payload = bytearray()
+                for chunk in response.iter_content(65536):
+                    payload.extend(chunk)
+                    if len(payload) > 4 * 1024 * 1024: raise OSError('Manifiesto demasiado grande')
+                body = self.server.manifest(payload.decode('utf-8-sig'), response.url, route.headers)
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/vnd.apple.mpegurl')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                if include_body: self.wfile.write(body)
+                return
             self.send_response(response.status_code)
             for name in _RESPONSE_HEADERS:
                 value = response.headers.get(name)
@@ -78,7 +117,7 @@ class _PreviewHandler(BaseHTTPRequestHandler):
                 for chunk in response.iter_content(chunk_size=256 * 1024):
                     if chunk:
                         self.wfile.write(chunk)
-        except (requests.RequestException, BrokenPipeError, ConnectionResetError, OSError):
+        except (requests.RequestException, BrokenPipeError, ConnectionResetError, OSError, UnicodeError):
             self.close_connection = True
         finally:
             if response is not None:
@@ -113,7 +152,7 @@ class MediaPreviewProxy:
             token = secrets.token_urlsafe(18)
             self._routes[token] = _PreviewRoute(source, dict(headers or {}))
             port = self._server.server_address[1]
-        return f"http://127.0.0.1:{port}/media/{token}"
+        return f"http://127.0.0.1:{port}/media/{token}" + _media_suffix(source)
 
     def shutdown(self):
         with self._lock:

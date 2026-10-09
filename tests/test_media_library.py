@@ -213,23 +213,19 @@ class MediaLibraryTests(unittest.TestCase):
         self.assertIn("parent.createBinAction(name, false)", script)
         self.assertIn("project.importFiles([mediaPath], true, targetBin, false)", script)
         self.assertIn('AUTO_SYNC_KEY = "xomacito-auto-sync-v1"', script)
-        self.assertIn("setInterval(() => syncProject(false), SYNC_INTERVAL_MS)", script)
-        self.assertIn("async function stableItems(items)", script)
-        self.assertIn("if (count >= 2) stable.push(item)", script)
         self.assertIn("async function ensureCategoryBin", script)
         self.assertIn('return "Recortes"', script)
         self.assertIn('return "Imágenes"', script)
         html = (panel / "index.html").read_text(encoding="utf-8")
         styles = (panel / "styles.css").read_text(encoding="utf-8")
-        self.assertIn("Conectar proyecto abierto", html)
-        self.assertIn("No se crearán duplicados", html)
+        self.assertIn("Importar nuevas descargas", html)
         self.assertIn('data-kind="Audio"', html)
-        self.assertIn("@media (max-width: 310px)", styles)
+        self.assertNotIn("display: grid", styles)
 
     def test_library_page_explains_its_empty_state(self):
         qml = (ROOT / "src/ui/qml/pages/MediaLibraryPage.qml").read_text(encoding="utf-8")
-        self.assertIn("Biblioteca en preparación", qml)
-        self.assertIn("Este espacio está vacío", qml)
+        self.assertIn("Sin medios", qml)
+        self.assertIn("Indexa una carpeta", qml)
 
     def test_waveform_renderer_creates_a_cached_editorial_preview(self):
         ffmpeg_path = ROOT / "bin" / "ffmpeg" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
@@ -373,7 +369,7 @@ class MediaLibraryTests(unittest.TestCase):
             self.assertTrue(source.is_file())
             self.assertFalse(list((library / "Importados").rglob("notas.txt")))
 
-    def test_empty_library_qml_keeps_user_media_backend_intact(self):
+    def test_library_qml_exposes_preview_and_preserves_user_media(self):
         script = r'''
 import os
 import subprocess
@@ -406,7 +402,7 @@ engine = QQmlApplicationEngine()
 context = engine.rootContext()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
-    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("downloadController", controller.download), ("quickController", controller.quick), ("premiereController", controller.premiere), ("batchController", controller.batch),
     ("mediaLibraryController", controller.media_library), ("imageController", controller.image_studio),
     ("settingsController", controller.config), ("catController", controller.cats),
     ("socialController", controller.social), ("presetStore", controller.presets),
@@ -423,10 +419,10 @@ for _ in range(40):
     if controller.media_library.state["itemCount"]:
         break
 assert controller.media_library.state["itemCount"] >= 1
-media_list = window.findChild(QQuickItem, "premiereMediaList")
-clip_range = window.findChild(QObject, "mediaClipRange")
-assert media_list is None
-assert clip_range is None
+media_list = window.findChild(QQuickItem, "libraryFiles")
+clip_range = window.findChild(QObject, "libraryPreviewPlayer")
+assert media_list is not None
+assert clip_range is not None
 assert controller.media_library.state["selected"]["videoCodec"] == "H264"
 assert controller.media_library.state["selected"]["sizeBytes"] > 0
 assert "bytes" in controller.media_library.state["selected"]["sizeBytesLabel"]

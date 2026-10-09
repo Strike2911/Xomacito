@@ -237,7 +237,7 @@ Item {
                         onClicked: root.setZoom(root.zoomFactor - 1)
                     }
                 }
-                Slider {
+                XSlider {
                     id: zoomSlider
                     width: 78; height: 20
                     from: 1; to: 16; stepSize: 1

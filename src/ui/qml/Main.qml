@@ -27,10 +27,16 @@ ApplicationWindow {
     property int tutorialQuietTicks: 0
     property var tutorialSteps: [
         {
-            "page": 0, "target": "navigation", "icon": "↔",
+            "page": 7, "target": "navigation", "icon": "↔",
             "title": "Tu mapa de trabajo",
             "message": "Cada pestaña conserva lo que estabas haciendo. Puedes moverte entre tareas sin perder enlaces, selecciones ni ajustes.",
             "actions": ["Descarga o prepara contenido desde la primera pestaña.", "Usa Guía cuando quieras repasar sólo el apartado abierto."]
+        },
+        {
+            "page": 7, "target": "page", "icon": "↓",
+            "title": "Modo rápido, a tu ritmo",
+            "message": "Pega enlaces, elige calidad y descarga. Cada tarea conserva sus ajustes mientras preparas la siguiente.",
+            "actions": ["Busca un título con la lupa o selecciona elementos de una lista.", "Prepara recortes con las tijeras y conversiones en Postprocesar.", "Revisa la actividad, el historial lateral y la carpeta de destino inferior."]
         },
         {
             "page": 0, "target": "page", "icon": "↓",
@@ -48,7 +54,7 @@ ApplicationWindow {
             "page": 2, "target": "page", "icon": "▣",
             "title": "Biblioteca para edición",
             "message": "Aquí reúnes y revisas material de edición sin alterar los originales.",
-            "actions": ["Arrastra archivos o carpetas sobre la lista.", "Pliega carpetas y selecciona un archivo para ver todos sus datos.", "Marca el fragmento necesario y crea un recorte independiente."]
+            "actions": ["Explora carpetas, colecciones y medios web desde el panel izquierdo.", "Alterna lista o cuadrícula y selecciona varios medios con Ctrl / Shift.", "Previsualiza, crea subclips o envía la selección a Premiere desde el panel derecho."]
         },
         {
             "page": 3, "target": "page", "icon": "◇",
@@ -248,14 +254,14 @@ ApplicationWindow {
 
         XCard {
             Layout.fillWidth: true
-            implicitHeight: window.denseWindow ? 62 : settingsController.state.compactMode ? 68 : 78
+            implicitHeight: window.denseWindow ? 54 : 60
             cardColor: theme.colors.surfaceRaised
             RowLayout {
                 anchors.fill: parent
                 anchors.margins: window.denseWindow ? 9 : 11
                 spacing: window.denseWindow ? 10 : 13
                 CatAvatar {
-                    Layout.preferredWidth: window.denseWindow ? 44 : settingsController.state.compactMode ? 48 : 54
+                    Layout.preferredWidth: window.denseWindow ? 36 : 42
                     Layout.preferredHeight: Layout.preferredWidth
                     source: appController.catSource
                     rarity: appController.catRarity
@@ -273,7 +279,6 @@ ApplicationWindow {
                 ColumnLayout {
                     spacing: 2
                     Text { text: "XOMACITO"; color: theme.colors.text; font.pixelSize: window.denseWindow ? 17 : settingsController.state.compactMode ? 18 : 20; font.weight: Font.Bold; font.letterSpacing: 0.5 }
-                    Text { text: "Analiza, descarga y prepara contenido"; color: theme.colors.textMuted; font.pixelSize: 10 }
                 }
                 Item { Layout.fillWidth: true }
                 XButton {
@@ -313,28 +318,29 @@ ApplicationWindow {
                 objectName: "navigationBar"
                 anchors.fill: parent; anchors.margins: 6; spacing: 6
                 Repeater {
-                    model: appController.pages
+                    model: [7, 0, 1, 2, 3, 4, 5, 6]
                     Button {
                         id: navigationButton
-                        required property string modelData
+                        required property int modelData
+                        property int pageIndex: modelData
                         required property int index
-                        objectName: "navButton" + index
-                        property int pendingCatRolls: index === 4 ? Number(catController.state.earnedRolls || 0) : 0
-                        property bool showRollBadge: index === 4 && pendingCatRolls > 0
+                        objectName: "navButton" + pageIndex
+                        property int pendingCatRolls: pageIndex === 4 ? Number(catController.state.earnedRolls || 0) : 0
+                        property bool showRollBadge: pageIndex === 4 && pendingCatRolls > 0
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
                         Layout.preferredWidth: 1
                         implicitHeight: window.denseWindow ? 30 : 34
-                        text: modelData
+                        text: appController.pages[pageIndex]
                         font.pixelSize: 12
-                        font.weight: appController.page === index ? Font.DemiBold : Font.Normal
+                        font.weight: appController.page === pageIndex ? Font.DemiBold : Font.Normal
                         focusPolicy: Qt.StrongFocus
-                        Accessible.name: modelData + (index === 4 ? ". Saldo virtual: " + catController.state.wallet : "")
-                        onClicked: appController.setPage(index)
-                        contentItem: Text { text: parent.text; color: appController.page === index ? "white" : theme.colors.textMuted; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; font: parent.font }
+                        Accessible.name: appController.pages[pageIndex] + (pageIndex === 4 ? ". Saldo virtual: " + catController.state.wallet : "")
+                        onClicked: appController.setPage(pageIndex)
+                        contentItem: Text { text: parent.text; color: appController.page === pageIndex ? "white" : theme.colors.textMuted; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; font: parent.font }
                         background: Rectangle {
                             radius: 10
-                            color: appController.page === index ? theme.colors.primary : parent.hovered ? theme.colors.surfaceSoft : "transparent"
+                            color: appController.page === pageIndex ? theme.colors.primary : parent.hovered ? theme.colors.surfaceSoft : "transparent"
                             border.width: parent.activeFocus ? 1 : 0
                             border.color: theme.colors.accent
                             Behavior on color { ColorAnimation { duration: settingsController.state.animationsEnabled ? 140 : 0 } }
@@ -367,10 +373,10 @@ ApplicationWindow {
                             radius: height / 2
                             color: "#F23F42"
                             border.width: 2
-                            border.color: appController.page === index ? theme.colors.primary : theme.colors.surface
+                            border.color: appController.page === pageIndex ? theme.colors.primary : theme.colors.surface
                             visible: navigationButton.showRollBadge
                             z: 10
-                            property int navIndex: index
+                            property int navIndex: pageIndex
                             property int count: navigationButton.pendingCatRolls
                             property int observedCount: 0
                             property bool observationReady: false
@@ -441,7 +447,14 @@ ApplicationWindow {
                 id: pages
                 anchors.fill: parent
                 currentIndex: appController.page
-                Item { DownloadPage { anchors.fill: parent } }
+                Item {
+                    ScrollView {
+                        id: detailedScroll; anchors.fill: parent; clip: true; implicitHeight: 0; implicitWidth: 0
+                        contentWidth: availableWidth; contentHeight: detailedPage.height
+                        ScrollBar.vertical: XScrollBar {}
+                        DownloadPage { id: detailedPage; objectName: "detailedDownloadPage"; width: detailedScroll.availableWidth; height: Math.max(600, detailedScroll.height) }
+                    }
+                }
                 Item { QueuePage { anchors.fill: parent } }
                 Item { MediaLibraryPage { anchors.fill: parent } }
                 Item { ImageStudioPage { anchors.fill: parent } }
@@ -457,6 +470,7 @@ ApplicationWindow {
                 }
                 Item { ScoreboardPage { anchors.fill: parent; onConnectRequested: socialOnboardingPopup.open() } }
                 Item { SettingsPage { anchors.fill: parent } }
+                Item { QuickPage { anchors.fill: parent } }
 
                 Connections {
                     target: appController

@@ -6,18 +6,12 @@ import "../components"
 Item {
     id: page
     property var viewState: settingsController.state
-    property var sections: ["General", "Cookies", "Dependencias", "Modelos", "Consola", "Acerca de"]
+    property var sections: ["General", "Cookies", "Dependencias", "Modelos", "Acerca de"]
 
     ColumnLayout {
         anchors.fill: parent
         spacing: 14
-        SectionTitle {
-            Layout.fillWidth: true
-            eyebrow: "CONFIGURACIÓN"
-            title: "Tu espacio de trabajo."
-            description: "Apariencia, acceso, componentes y herramientas avanzadas sin reconstruir la pantalla."
-            number: "04"
-        }
+
         RowLayout {
             Layout.fillWidth: true; Layout.fillHeight: true; spacing: 14
             XCard {
@@ -48,12 +42,11 @@ Item {
                     ScrollView { id: cookiesScroll; contentWidth: availableWidth; background: Item {} ScrollBar.horizontal.policy: ScrollBar.AlwaysOff; ScrollBar.vertical: XScrollBar {} Loader { width: Math.max(0, cookiesScroll.availableWidth - 14); sourceComponent: cookiesPage } }
                     ScrollView { id: dependenciesScroll; contentWidth: availableWidth; background: Item {} ScrollBar.horizontal.policy: ScrollBar.AlwaysOff; ScrollBar.vertical: XScrollBar {} Loader { width: Math.max(0, dependenciesScroll.availableWidth - 14); sourceComponent: dependenciesPage } }
                     ScrollView { id: modelsScroll; contentWidth: availableWidth; background: Item {} ScrollBar.horizontal.policy: ScrollBar.AlwaysOff; ScrollBar.vertical: XScrollBar {} Loader { width: Math.max(0, modelsScroll.availableWidth - 14); sourceComponent: modelsPage } }
-                    ScrollView { id: consoleScroll; contentWidth: availableWidth; background: Item {} ScrollBar.horizontal.policy: ScrollBar.AlwaysOff; ScrollBar.vertical: XScrollBar {} Loader { width: Math.max(0, consoleScroll.availableWidth - 14); sourceComponent: consolePage } }
                     ScrollView { id: aboutScroll; contentWidth: availableWidth; background: Item {} ScrollBar.horizontal.policy: ScrollBar.AlwaysOff; ScrollBar.vertical: XScrollBar {} Loader { width: Math.max(0, aboutScroll.availableWidth - 14); sourceComponent: aboutPage } }
                 }
             }
         }
-        ProgressStrip { Layout.fillWidth: true; visible: viewState.busy || viewState.status.length > 0; value: viewState.progress; status: viewState.status; busy: viewState.busy }
+        ProgressStrip { Layout.fillWidth: true; visible: viewState.busy; value: viewState.progress; status: viewState.status; busy: viewState.busy }
     }
 
     Component {
@@ -228,15 +221,32 @@ Item {
         id: modelsPage
         ColumnLayout {
             spacing: 14
-            SectionTitle { Layout.fillWidth: true; eyebrow: "MODELOS"; title: "I.A. y reescalado local"; description: "Descarga sólo los motores que uses y administra el espacio ocupado." }
+            Text { text: "Modelos de inteligencia artificial"; color: theme.colors.text; font.pixelSize: 20; font.weight: Font.DemiBold }
+            XSwitch { text: "Mantener modelos cargados en memoria"; checked: viewState.keepAiModels; onToggled: settingsController.setValue("keepAiModels", checked) }
+            Text { Layout.fillWidth: true; text: "Reduce el tiempo entre procesos a cambio de mantener la memoria ocupada."; color: theme.colors.textMuted; font.pixelSize: 11; wrapMode: Text.WordWrap }
+            GridLayout {
+                Layout.fillWidth: true; columns: 2; columnSpacing: 10; rowSpacing: 10
+                XCard { Layout.fillWidth: true; implicitHeight: 122
+                    ColumnLayout { anchors.fill: parent; anchors.margins: 12
+                        Text { text: "Eliminación de fondo · BiRefNet"; color: theme.colors.text; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                        Text { text: "Retratos, objetos y bordes finos"; color: theme.colors.textMuted; font.pixelSize: 10 }
+                        XButton { Layout.fillWidth: true; text: "Preparar modelos"; compact: true; enabled: !viewState.busy; onClicked: settingsController.downloadModels("rembg") }
+                    }
+                }
+                XCard { Layout.fillWidth: true; implicitHeight: 122
+                    ColumnLayout { anchors.fill: parent; anchors.margins: 12
+                        Text { text: "Reescalado · Upscayl"; color: theme.colors.text; font.pixelSize: 12 }
+                        Text { text: "Fotografía, anime e ilustración"; color: theme.colors.textMuted; font.pixelSize: 10 }
+                        XButton { Layout.fillWidth: true; text: "Preparar motor"; compact: true; enabled: !viewState.busy; onClicked: settingsController.downloadModels("Upscayl") }
+                    }
+                }
+            }
             RowLayout {
                 Layout.fillWidth: true
-                XButton { text: "Preparar rembg"; onClicked: settingsController.downloadModels("rembg") }
-                XButton { text: "Preparar todos los escaladores"; kind: "secondary"; onClicked: settingsController.downloadModels("all") }
-                XButton { text: "Importar modelo NCNN"; kind: "secondary"; onClicked: settingsController.importUpscaylModel() }
-                XButton { text: "Actualizar lista"; kind: "ghost"; onClicked: settingsController.refreshModels() }
-                Item { Layout.fillWidth: true }
-                XButton { text: "Abrir modelos"; kind: "ghost"; onClicked: settingsController.openFolder("models") }
+                Text { Layout.fillWidth: true; text: "Instalados"; color: theme.colors.text; font.pixelSize: 13; font.weight: Font.DemiBold }
+                XButton { text: "Importar NCNN"; compact: true; kind: "ghost"; onClicked: settingsController.importUpscaylModel() }
+                XButton { text: "Actualizar"; compact: true; kind: "ghost"; onClicked: settingsController.refreshModels() }
+                XButton { text: "Abrir carpeta"; compact: true; kind: "ghost"; onClicked: settingsController.openFolder("models") }
             }
             ListView {
                 Layout.fillWidth: true; Layout.preferredHeight: Math.max(350, contentHeight); model: settingsController.modelModel; spacing: 7; interactive: false
@@ -256,30 +266,6 @@ Item {
                 }
                 Text { anchors.centerIn: parent; visible: parent.count === 0; text: "Aún no hay modelos instalados"; color: theme.colors.textMuted }
             }
-        }
-    }
-
-    Component {
-        id: consolePage
-        ColumnLayout {
-            spacing: 12
-            SectionTitle { Layout.fillWidth: true; eyebrow: "CONSOLA"; title: "Herramientas integradas"; description: "FFmpeg, yt-dlp y los motores NCNN comparten el runtime de Xomacito." }
-            Rectangle {
-                Layout.fillWidth: true; Layout.preferredHeight: 430; radius: 12; color: theme.colors.backgroundAlt; border.color: theme.colors.border; border.width: 1
-                ScrollView {
-                    anchors.fill: parent; anchors.margins: 10
-                    ScrollBar.vertical: XScrollBar {}
-                    TextArea { id: consoleOutput; readOnly: true; text: settingsController.consoleText; color: theme.colors.text; font.family: "Cascadia Mono"; font.pixelSize: 11; wrapMode: viewState.consoleWrap ? TextEdit.WrapAnywhere : TextEdit.NoWrap; background: null; onTextChanged: cursorPosition = length }
-                }
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                XTextField { id: command; Layout.fillWidth: true; placeholderText: "xomacito help, ffmpeg -version, yt-dlp --version…"; onAccepted: { settingsController.executeConsole(text); text = "" } }
-                XButton { text: "Ejecutar"; enabled: !viewState.consoleBusy; onClicked: { settingsController.executeConsole(command.text); command.text = "" } }
-                XButton { text: "Cancelar"; kind: "danger"; enabled: viewState.consoleBusy; onClicked: settingsController.cancelConsole() }
-                XButton { text: "Limpiar"; kind: "ghost"; onClicked: settingsController.clearConsole() }
-            }
-            XSwitch { text: "Ajustar líneas largas"; checked: viewState.consoleWrap; onToggled: settingsController.setValue("consoleWrap", checked) }
         }
     }
 

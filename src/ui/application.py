@@ -32,8 +32,10 @@ from .batch_controller import BatchController
 from .cat_gacha_controller import CatGachaController
 from .dialog_broker import DialogBroker
 from .download_controller import DownloadController
+from .quick_controller import QuickController
+from .premiere_controller import PremiereController
 from .image_controller import ImageController
-from .media_library_controller import MediaLibraryController
+from .media_browser_controller import MediaBrowserController
 from .presets import PresetStore
 from .settings_controller import SettingsController
 from .settings_store import SettingsStore
@@ -71,7 +73,7 @@ class AppController(QObject):
     trayAvailableChanged = Signal()
     updateProgressReported = Signal(float, str)
 
-    PAGES = ["Descargar", "Cola", "Biblioteca", "Estudio", "Personalización", "Scoreboard", "Configuración"]
+    PAGES = ["Descargar", "Cola", "Biblioteca", "Estudio", "Personalización", "Scoreboard", "Configuración", "Modo rápido"]
 
     def __init__(
         self,
@@ -93,16 +95,18 @@ class AppController(QObject):
         self.presets = PresetStore(self.settings, self)
         self.download = DownloadController(self.project_root, self.settings, self.pool, self.dialogs, self.presets, self.update_version, self)
         self.batch = BatchController(self.project_root, self.settings, self.pool, self.presets, self.update_version, self)
-        self.media_library = MediaLibraryController(
+        self.media_library = MediaBrowserController(
             self.project_root, self.settings, self.pool, self.download.ffmpeg, self
         )
+        self.quick = QuickController(self.project_root, self.settings, self.pool, self.dialogs, self.presets, self.update_version, self)
+        self.premiere = PremiereController(self.media_library, self)
         self.image_studio = ImageController(self.project_root, self.settings, self.pool, self.update_version, self)
         self.config = SettingsController(self.project_root, self.settings, self.theme, self.pool, self)
         self.cats = CatGachaController(self.project_root, self.settings, self)
         self.social = SocialController(self.project_root, self.settings, self.pool, self)
         self.theme.setCatThemeUnlocks(self.cats.state.get("themeUnlockCount", 0))
         self.config.setValue("theme", self.theme.themeName)
-        self._page = 0
+        self._page = 7
         self._update_state = {
             "checking": False, "downloading": False, "progress": 0.0,
             "status": "", "latestVersion": "", "releaseNotes": "",
@@ -155,13 +159,28 @@ class AppController(QObject):
         return bool(self._tray and self._tray.isVisible())
 
     def _connect_routes(self):
+        self.quick.notificationRequested.connect(self.toastRequested)
+        self.premiere.notificationRequested.connect(self.toastRequested)
+        self.quick.gachaSourceCompleted.connect(self.cats.recordSuccessfulSource)
+        self.quick.successfulDownload.connect(self._play_download_completion)
+        self.quick.successfulDownload.connect(self.social.recordDownload)
+        self.quick.outputReady.connect(self.media_library.recordDownload)
+        self.quick.outputReady.connect(self.premiere.completed)
+        self.download.outputReady.connect(self.premiere.completed)
+        self.batch.outputReady.connect(self.premiere.completed)
+        self.image_studio.outputReady.connect(self.premiere.completed)
+        self.media_library.webDownloadReady.connect(lambda path, send: self.premiere.completed(path) if not send else None)
+        self.quick.premiereRequested.connect(self.premiere.send)
+        self.media_library.webDownloadReady.connect(lambda path, send: self.premiere.send(path, False) if send else None)
+        self.quick.cancelledRequested.connect(play_download_failure_sound)
+        self.quick.notificationRequested.connect(self._play_download_error)
         for controller in (self.download, self.batch, self.media_library, self.image_studio, self.config, self.cats, self.social):
             controller.notificationRequested.connect(self.toastRequested)
         self.download.gachaSourceCompleted.connect(self.cats.recordSuccessfulSource)
         self.batch.gachaSourceCompleted.connect(self.cats.recordSuccessfulSource)
         self.download.successfulDownload.connect(self._play_download_completion)
         self.batch.successfulDownload.connect(self._play_download_completion)
-        self.download.successfulDownload.connect(lambda _count: self.media_library.refresh())
+        self.download.successfulDownload.connect(lambda _count: self.media_library.recordDownload(self.download.state['lastOutput']) if self.download.state.get('lastOutput') else self.media_library.refresh())
         self.batch.successfulDownload.connect(lambda _count: self.media_library.refresh())
         self.download.successfulDownload.connect(self.social.recordDownload)
         self.batch.successfulDownload.connect(self.social.recordDownload)
@@ -275,7 +294,10 @@ class AppController(QObject):
 
         target = None
         blocked = False
-        if self._page == 0:
+        if self._page == 7:
+            target = self.quick
+            blocked = bool(self.quick.state.get("url"))
+        elif self._page == 0:
             target = self.download
             blocked = bool(self.download.state.get("busy") or self.download.state.get("localFile"))
         elif self._page == 1:
@@ -375,6 +397,9 @@ class AppController(QObject):
     def navigate(self, name):
         aliases = {
             "download": 0,
+            "quick": 7,
+            "rapido": 7,
+            "modo rápido": 7,
             "batch": 1,
             "queue": 1,
             "library": 2,
@@ -569,6 +594,8 @@ class AppController(QObject):
         self.dialogs.close_all()
         self.social.shutdown()
         self.download.shutdown()
+        self.quick.shutdown()
+        self.premiere.shutdown()
         self.batch.shutdown()
         self.media_library.shutdown()
         self.image_studio.shutdown()
@@ -617,6 +644,8 @@ def run_qt_app(
     context.setContextProperty("appController", controller)
     context.setContextProperty("theme", controller.theme)
     context.setContextProperty("downloadController", controller.download)
+    context.setContextProperty("quickController", controller.quick)
+    context.setContextProperty("premiereController", controller.premiere)
     context.setContextProperty("batchController", controller.batch)
     context.setContextProperty("mediaLibraryController", controller.media_library)
     context.setContextProperty("imageController", controller.image_studio)

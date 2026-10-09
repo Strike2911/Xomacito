@@ -69,7 +69,7 @@ def test_probability_mask_is_not_stretched_per_image():
 
 def test_image_studio_page_explains_its_empty_state():
     qml = Path("src/ui/qml/pages/ImageStudioPage.qml").read_text(encoding="utf-8")
-    assert "Arrastra una imagen para comenzar" in qml
+    assert "Arrastra imágenes aquí" in qml
     assert "imageController.start()" in qml
     assert "ImageComparison" in qml
 

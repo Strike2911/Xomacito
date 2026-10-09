@@ -39,6 +39,14 @@ store.update({
     "batch_download_path": str(home / "Queue destination"),
 })
 controller = AppController(app, root, "1.2.5")
+assert controller.download.options["audioOutputFormat"] == "MP3"
+controller.download.setValue("url", "https://www.epidemicsound.com/track/example/")
+assert controller.download.state["epidemicAudio"]
+assert controller.download.options["audioOutputFormat"] == "MP3"
+controller.download.setValue("url", "https://www.youtube.com/watch?v=abc")
+assert not controller.download.state["epidemicAudio"]
+assert controller.download.options["audioOutputFormat"] == "MP3"
+controller.download.setOption("audioOutputFormat", "WAV para Premiere")
 assert controller.download.state["effectiveOutputPath"] == str(home / "Download destination")
 assert controller.batch.state["effectiveOutputPath"] == str(home / "Queue destination")
 controller.download.setValue("outputPath", str(home / "Chosen download"))
@@ -50,6 +58,7 @@ assert controller.batch.state["effectiveOutputPath"] == str(home / "Chosen queue
 controller.shutdown()
 
 controller = AppController(app, root, "1.2.5")
+assert controller.download.options["audioOutputFormat"] == "WAV para Premiere"
 assert controller.download.state["effectiveOutputPath"] == str(home / "Chosen download")
 assert controller.batch.state["effectiveOutputPath"] == str(home / "Chosen queue")
 assert controller.config.state["progressCat"] == "classic"
@@ -69,7 +78,7 @@ assert controller.batch.state["effectiveOutputPath"] == str(home / "Chosen queue
 engine = QQmlApplicationEngine()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
-    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("downloadController", controller.download), ("quickController", controller.quick), ("premiereController", controller.premiere), ("batchController", controller.batch),
     ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
     ("settingsController", controller.config), ("catController", controller.cats),
     ("socialController", controller.social), ("presetStore", controller.presets),
@@ -79,6 +88,7 @@ for name, value in (
 engine.load(QUrl.fromLocalFile(str(root / "src/ui/qml/Main.qml")))
 assert engine.rootObjects()
 window = engine.rootObjects()[0]
+controller.setPage(0)
 window.show()
 for width, height in ((960, 680), (1280, 720), (1440, 900)):
     window.setWidth(width)

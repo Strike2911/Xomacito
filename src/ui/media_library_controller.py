@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, Property, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFileDialog
 
@@ -203,6 +203,9 @@ class MediaLibraryController(QObject):
         self.settings.set("premiere_library_path", str(self.root))
         self.items = ObjectListModel(self.ROLES, self)
         self.library_rows = ObjectListModel(self.LIBRARY_ROW_ROLES, self)
+        self._linked_paths = list(settings.get("media_library_linked_paths", []) or [])
+        self._metadata_cache = {}
+        self._refresh_pending = False
         self._collapsed_folders: set[str] = set()
         self._hidden_folders: set[str] = {
             str(Path(value).resolve())
@@ -337,6 +340,7 @@ class MediaLibraryController(QObject):
     @Slot()
     def refresh(self):
         if self._state["busy"]:
+            self._refresh_pending = True
             return
         self._set_state(busy=True, progress=-1.0, status="Analizando archivos…")
         self.pool.submit(
@@ -347,7 +351,17 @@ class MediaLibraryController(QObject):
 
     def _scan_worker(self):
         rows: list[dict[str, Any]] = []
-        for path in sorted(self.root.rglob("*"), key=lambda item: item.stat().st_mtime if item.is_file() else 0, reverse=True):
+        candidates = set()
+        for source in [self.root, *[Path(value) for value in list(self._linked_paths)]]:
+            try:
+                if source.is_file():
+                    candidates.add(source.resolve())
+                elif source.is_dir():
+                    candidates.update(path.resolve() for path in source.rglob("*") if path.is_file())
+            except OSError:
+                continue
+        next_cache = {}
+        for path in sorted(candidates):
             if (
                 not path.is_file()
                 or path.suffix.lower() not in SUPPORTED_MEDIA
@@ -355,6 +369,13 @@ class MediaLibraryController(QObject):
             ):
                 continue
             try:
+                stat = path.stat()
+                signature = (str(path), stat.st_mtime_ns, stat.st_size)
+                cached = self._metadata_cache.get(signature)
+                if cached:
+                    rows.append(dict(cached))
+                    next_cache[signature] = cached
+                    continue
                 info = self.ffmpeg.get_local_media_info(str(path)) or {}
                 streams = list(info.get("streams") or [])
                 video = next((stream for stream in streams if stream.get("codec_type") == "video"), None)
@@ -414,8 +435,10 @@ class MediaLibraryController(QObject):
                     "searchText": search_text,
                     "isFavorite": favorite,
                 })
+                next_cache[signature] = dict(rows[-1])
             except (OSError, ValueError, subprocess.SubprocessError):
                 continue
+        self._metadata_cache = next_cache
         self._write_manifest(rows)
         return rows
 
@@ -445,13 +468,20 @@ class MediaLibraryController(QObject):
         os.replace(temporary, self.root / ".xomacito-library.json")
 
     def _scan_ready(self, rows):
+        selected_path = (self._state.get("selected") or {}).get("path")
         self.items.replace(list(rows or []))
         self._rebuild_library_rows()
-        selected_index = 0 if rows else -1
+        selected_index = next((i for i, row in enumerate(rows) if row["path"] == selected_path), 0 if rows else -1)
         status = self._status_after_refresh or f"{len(rows)} archivo(s) listo(s)."
         self._status_after_refresh = ""
         self._set_state(busy=False, progress=1.0, status=status, itemCount=len(rows))
-        self.select(selected_index)
+        if selected_path and selected_index >= 0 and rows[selected_index]["path"] == selected_path:
+            self._set_state(selectedIndex=selected_index, selected=rows[selected_index])
+        else:
+            self.select(selected_index)
+        if self._refresh_pending:
+            self._refresh_pending = False
+            QTimer.singleShot(0, self.refresh)
 
     @Slot(int)
     def select(self, index: int):
@@ -690,6 +720,8 @@ class MediaLibraryController(QObject):
 
     @Slot()
     def chooseLibraryFolder(self):
+        if self._state["busy"]:
+            return
         folder = QFileDialog.getExistingDirectory(None, "Biblioteca de Xomacito para Premiere", str(self.root))
         if not folder:
             return
@@ -704,6 +736,42 @@ class MediaLibraryController(QObject):
         self._set_state(clipOutputDir=str(self.clips_dir), lastClipPath="")
         self.libraryPathChanged.emit(str(self.root))
         self.refresh()
+
+    @Slot()
+    def linkFolder(self):
+        folder = QFileDialog.getExistingDirectory(None, "Vincular carpeta sin copiar archivos", str(Path.home()))
+        if folder:
+            self.linkPath(folder)
+
+    @Slot(str)
+    def linkPath(self, value: str):
+        self.linkPaths([value])
+
+    @Slot("QVariantList")
+    def linkPaths(self, values):
+        for value in values:
+            path = Path(value).expanduser()
+            if not path.exists() or (path.is_file() and path.suffix.lower() not in SUPPORTED_MEDIA):
+                continue
+            value = str(path.resolve())
+            if not self._inside_library(path) and value not in self._linked_paths:
+                self._linked_paths.append(value)
+        self.settings.set("media_library_linked_paths", self._linked_paths)
+        self.refresh()
+
+    @Slot("QVariantList")
+    def linkDroppedPaths(self, values):
+        for value in list(values or []):
+            url = value if isinstance(value, QUrl) else QUrl(str(value))
+            if url.isLocalFile():
+                self.linkPath(url.toLocalFile())
+
+    @Slot()
+    def openSelected(self):
+        path = str((self._state.get("selected") or {}).get("path") or "")
+        if path:
+            from .download_controller import reveal_in_file_manager
+            reveal_in_file_manager(path)
 
     @Slot()
     def importFolder(self):
@@ -894,7 +962,7 @@ class MediaLibraryController(QObject):
             encoding="utf-8",
         )
         self.settings.set("premiere_auto_import_enabled", True)
-        if panel_installed:
+        if panel_installed and not package.is_file():
             message = (
                 "Reinicia Premiere si estaba abierto y entra a Ventana > Plugins UXP > "
                 "Xomacito Link. El menú >> sólo muestra paneles ya abiertos."
@@ -908,7 +976,7 @@ class MediaLibraryController(QObject):
 
         self._set_state(
             premiereLinkEnabled=True,
-            status="Instala Xomacito Link, reinicia Premiere y ábrelo desde Ventana > Plugins UXP.",
+            status="Instala o actualiza Xomacito Link, reinicia Premiere y ábrelo desde Ventana > Plugins UXP.",
         )
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(package)))
         self.notificationRequested.emit(

@@ -128,6 +128,8 @@ class SettingsController(QObject):
     def setValue(self, key: str, value):
         if key not in self._state:
             return
+        if key == "section" and value not in {"General", "Cookies", "Dependencias", "Modelos", "Acerca de"}:
+            value = "General"
         if key == "progressCat" and value not in ("classic", "orange"):
             return
         if key == "appearance":

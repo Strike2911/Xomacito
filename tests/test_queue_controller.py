@@ -151,7 +151,7 @@ engine = QQmlApplicationEngine()
 context = engine.rootContext()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
-    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("downloadController", controller.download), ("quickController", controller.quick), ("premiereController", controller.premiere), ("batchController", controller.batch),
     ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
     ("settingsController", controller.config),
     ("catController", controller.cats), ("presetStore", controller.presets),

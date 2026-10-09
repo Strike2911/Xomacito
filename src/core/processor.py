@@ -280,7 +280,8 @@ CODEC_PROFILES = {
         "WAV (Sin Comprimir)": {
             "pcm_s16le": {
                 "PCM 16-bit": ['-c:a', 'pcm_s16le'],
-                "PCM 24-bit": ['-c:a', 'pcm_s24le']
+                "PCM 24-bit": ['-c:a', 'pcm_s24le'],
+                "Premiere · PCM 24-bit / 48 kHz": ['-c:a', 'pcm_s24le', '-ar', '48000']
             }, "container": ".wav"
         },
         "WMA v2 (Windows Media)": {

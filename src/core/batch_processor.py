@@ -708,6 +708,7 @@ class QueueManager:
 
                 if final_path_for_import and os.path.exists(final_path_for_import):
                     job.completed_items += 1
+                    self.ui_callback(job.job_id, "OUTPUT_READY", final_path_for_import)
                     
             except UserCancelledError:
                 raise

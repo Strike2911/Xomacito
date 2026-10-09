@@ -24,14 +24,7 @@ Item {
         anchors.fill: parent
         spacing: page.dense ? 6 : 10
 
-        SectionTitle {
-            Layout.fillWidth: true
-            compact: page.dense
-            eyebrow: "COLA DE TRABAJO"
-            title: "Tu contenido, antes de descargar."
-            description: "Revisa cada canción o video, elige su destino y procesa todo sin perder el control."
-            number: "02"
-        }
+
 
         XCard {
             Layout.fillWidth: true

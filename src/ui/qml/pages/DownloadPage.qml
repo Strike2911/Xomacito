@@ -9,6 +9,8 @@ Item {
     property var viewState: downloadController.state
     property var options: downloadController.options
     property bool denseLayout: height < 640
+    property bool epidemicAudio: Boolean(viewState.epidemicAudio) && !viewState.localFile && viewState.mode === "Solo Audio"
+    property bool automaticAudio: page.epidemicAudio || (viewState.mode === "Solo Audio" && !viewState.localFile && !options.applyPreset && !options.recodeAudioEnabled)
     property bool trimUserMuted: false
     property real trimPendingScrubSeconds: -1
 
@@ -165,14 +167,7 @@ Item {
         anchors.fill: parent
         spacing: page.denseLayout || settingsController.state.compactMode ? 8 : 12
 
-        SectionTitle {
-            Layout.fillWidth: true
-            eyebrow: "DESCARGA INTELIGENTE"
-            title: "Pega. Analiza. Descarga."
-            description: "Video, audio, miniaturas y subtítulos con formatos listos para editar."
-            number: "01"
-            compact: true
-        }
+
 
         XCard {
             id: sourceCard
@@ -347,8 +342,21 @@ Item {
                         LabeledControl {
                             visible: !viewState.imagePost
                             Layout.preferredWidth: 340
-                            Layout.fillWidth: true; compact: page.denseLayout; label: "Preset de conversión"
-                            XComboBox { Layout.fillWidth: true; compact: page.denseLayout; model: viewState.mode === "Solo Audio" ? presetStore.audioPresets : presetStore.videoPresets; currentIndex: Math.max(0, find(viewState.preset)); onActivated: downloadController.setValue("preset", currentText) }
+                            Layout.fillWidth: true; compact: page.denseLayout
+                            label: page.epidemicAudio ? "Epidemic Sound · WAV automático" : (page.automaticAudio ? "Formato automático de audio" : "Preset de conversión")
+                            XComboBox {
+                                Layout.fillWidth: true
+                                compact: page.denseLayout
+                                model: page.automaticAudio ? ["MP3", "WAV para Premiere", "Original"] : (viewState.mode === "Solo Audio" ? presetStore.audioPresets : presetStore.videoPresets)
+                                enabled: !page.epidemicAudio
+                                currentIndex: Math.max(0, find(page.epidemicAudio ? "WAV para Premiere" : (page.automaticAudio ? (options.audioOutputFormat || "MP3") : viewState.preset)))
+                                onActivated: {
+                                    if (page.automaticAudio) downloadController.setOption("audioOutputFormat", currentText)
+                                    else downloadController.setValue("preset", currentText)
+                                }
+                                ToolTip.visible: hovered && page.automaticAudio
+                                ToolTip.text: "Conversión automática al terminar. Elige WAV para editar en Premiere."
+                            }
                         }
                         }
                         LabeledControl {
@@ -631,7 +639,7 @@ Item {
                                     compact: true; implicitWidth: 34; text: "−"; kind: "ghost"
                                     onClicked: trimAudio.volume = Math.max(0, trimAudio.volume - 0.1)
                                 }
-                                Slider {
+                                XSlider {
                                     objectName: "trimVolumeSlider"
                                     Layout.preferredWidth: 100
                                     from: 0; to: 1; stepSize: 0.05

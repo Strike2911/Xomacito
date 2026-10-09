@@ -5,7 +5,8 @@ ScrollBar {
     id: root
     orientation: Qt.Vertical
     policy: ScrollBar.AsNeeded
-    implicitWidth: 11
+    visible: policy === ScrollBar.AlwaysOn || (policy === ScrollBar.AsNeeded && size < 0.999)
+    implicitWidth: 10
     padding: 2
     anchors.top: parent.top
     anchors.right: parent.right

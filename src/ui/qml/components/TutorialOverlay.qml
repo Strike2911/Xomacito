@@ -51,7 +51,10 @@ Popup {
 
     function startPage(pageIndex) {
         pageOnly = true
-        var wanted = Math.max(1, Math.min(steps.length - 1, Number(pageIndex) + 1))
+        var wanted = 0
+        for (var i = 0; i < steps.length; ++i) {
+            if (steps[i].target === "page" && steps[i].page === Number(pageIndex)) { wanted = i; break }
+        }
         stepIndex = wanted
         tutorial.visible = true
         selectStep(wanted)

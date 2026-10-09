@@ -24,7 +24,7 @@ controller = AppController(app, root, "1.1", "4.0.17")
 engine = QQmlApplicationEngine()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
-    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("downloadController", controller.download), ("quickController", controller.quick), ("premiereController", controller.premiere), ("batchController", controller.batch),
     ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
     ("settingsController", controller.config), ("catController", controller.cats),
     ("socialController", controller.social), ("presetStore", controller.presets),
@@ -47,6 +47,17 @@ def point(item, fraction=0.5):
     return item.mapToScene(QPointF(item.width() * fraction, item.height() / 2)).toPoint()
 def click(item, fraction=0.5):
     assert item is not None and item.isVisible()
+    # Collection cards may be below the fold; scroll them into view before clicking.
+    ancestor = item.parentItem()
+    while ancestor is not None:
+        content_y = ancestor.property("contentY")
+        content_height = ancestor.property("contentHeight")
+        if content_y is not None and content_height is not None:
+            mapped = item.mapToItem(ancestor, QPointF(item.width()/2, item.height()/2))
+            if mapped.y() > ancestor.height() or mapped.y() < 0:
+                ancestor.setProperty("contentY", max(0, min(content_height-ancestor.height(), content_y+mapped.y()-ancestor.height()/2)))
+                QTest.qWait(100)
+        ancestor = ancestor.parentItem()
     QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, point(item, fraction))
     QTest.qWait(80)
 
@@ -98,7 +109,10 @@ assert controller.cats.state["skipAnimation"]
 assert SettingsStore().get("skip_cat_animation") is True
 click(find(window.contentItem(), "catRollButton"))
 popup = window.findChild(QObject, "catRevealPopup")
-assert popup.property("opened")
+for _ in range(40):
+    if popup.property("opened"): break
+    QTest.qWait(25)
+assert popup.property("opened"), ({k:controller.cats.state.get(k) for k in ("opening","wallet","earnedRolls","totalRolls","status")}, point(find(window.contentItem(),"catRollButton")), find(window.contentItem(),"catRollButton").property("enabled"))
 assert popup.property("done")
 assert not controller.cats.state["opening"]
 click(find(window.contentItem(), "catRevealSkipToggle"))

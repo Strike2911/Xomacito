@@ -158,7 +158,7 @@ class QtMigrationTests(unittest.TestCase):
         main = (ROOT / "src/ui/qml/Main.qml").read_text(encoding="utf-8")
         overlay = (ROOT / "src/ui/qml/components/TutorialOverlay.qml").read_text(encoding="utf-8")
         settings = (ROOT / "src/ui/qml/pages/SettingsPage.qml").read_text(encoding="utf-8")
-        self.assertEqual(main.count('"target": "page"'), 7)
+        self.assertEqual(main.count('"target": "page"'), 8)
         self.assertIn('"target": "navigation"', main)
         self.assertIn('objectName: "guidedTutorialButton"', main)
         self.assertIn("onGuidedTourRequested", main)
@@ -206,7 +206,7 @@ engine = QQmlApplicationEngine()
 context = engine.rootContext()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
-    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("downloadController", controller.download), ("quickController", controller.quick), ("premiereController", controller.premiere), ("batchController", controller.batch),
     ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
     ("settingsController", controller.config), ("catController", controller.cats),
     ("socialController", controller.social), ("presetStore", controller.presets),
@@ -242,7 +242,7 @@ assert controller.settings.get("guided_tour_seen_version") == "4.0.2"
 assert QMetaObject.invokeMethod(tutorial, "startPage", Qt.DirectConnection, Q_ARG("QVariant", 2))
 QTest.qWait(80)
 assert tutorial.property("pageOnly") is True
-assert tutorial.property("stepIndex") == 3
+assert tutorial.property("stepIndex") == 4
 assert controller.page == 2
 controller.shutdown()
 '''
@@ -287,7 +287,7 @@ engine = QQmlApplicationEngine()
 context = engine.rootContext()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
-    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("downloadController", controller.download), ("quickController", controller.quick), ("premiereController", controller.premiere), ("batchController", controller.batch),
     ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
     ("settingsController", controller.config),
     ("catController", controller.cats),
@@ -343,7 +343,7 @@ engine = QQmlApplicationEngine()
 context = engine.rootContext()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
-    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("downloadController", controller.download), ("quickController", controller.quick), ("premiereController", controller.premiere), ("batchController", controller.batch),
     ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
     ("settingsController", controller.config),
     ("catController", controller.cats),
@@ -373,7 +373,7 @@ controller.shutdown()
             )
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
-    def test_download_page_fits_1280x720_without_main_scroll(self):
+    def test_detailed_download_page_fits_its_scrollable_workspace(self):
         script = r'''
 from pathlib import Path
 from PySide6.QtCore import QObject, QPointF, QUrl
@@ -393,7 +393,7 @@ engine = QQmlApplicationEngine()
 context = engine.rootContext()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
-    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("downloadController", controller.download), ("quickController", controller.quick), ("premiereController", controller.premiere), ("batchController", controller.batch),
     ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
     ("settingsController", controller.config),
     ("catController", controller.cats),
@@ -404,18 +404,21 @@ engine.load(QUrl.fromLocalFile(str(root / "src/ui/qml/Main.qml")))
 window = engine.rootObjects()[0]
 window.setProperty("width", 1280)
 window.setProperty("height", 720)
+controller.setPage(0)
 QTest.qWait(220)
+detailed = window.findChild(QQuickItem, "detailedDownloadPage")
+assert detailed is not None and detailed.isVisible()
 
 def geometry(name):
     item = window.findChild(QObject, name)
     assert item is not None, name
-    point = QQuickItem.mapToScene(item, QPointF(0, 0))
+    point = QQuickItem.mapToItem(item, detailed, QPointF(0, 0))
     return point.y(), float(item.property("height"))
 
 names = ["downloadSourceCard", "downloadPrimaryGrid", "downloadFooterCard", "downloadProgress"]
 blocks = [geometry(name) for name in names]
 for index, (y, height) in enumerate(blocks):
-    assert y >= 0 and y + height <= 720.5, (names[index], y, height)
+    assert y >= 0 and y + height <= detailed.height() + 0.5, (names[index], y, height)
 for current, following in zip(blocks, blocks[1:]):
     assert current[0] + current[1] <= following[0] + 0.5, (current, following)
 assert blocks[1][1] >= 260, blocks
@@ -453,7 +456,11 @@ controller = AppController(app, Path.cwd(), "2.1")
 
 app.clipboard().setText("https://example.test/video")
 QTest.qWait(220)
-assert controller.download.state["url"] == "https://example.test/video"
+assert controller.quick.state["url"] == "https://example.test/video"
+controller.setPage(0)
+app.clipboard().setText("https://example.test/detailed")
+QTest.qWait(220)
+assert controller.download.state["url"] == "https://example.test/detailed"
 
 controller.setPage(1)
 app.clipboard().setText("https://example.test/playlist")
@@ -516,7 +523,7 @@ engine = QQmlApplicationEngine()
 context = engine.rootContext()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
-    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("downloadController", controller.download), ("quickController", controller.quick), ("premiereController", controller.premiere), ("batchController", controller.batch),
     ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
     ("settingsController", controller.config),
     ("catController", controller.cats), ("socialController", controller.social),
@@ -585,7 +592,7 @@ engine = QQmlApplicationEngine()
 context = engine.rootContext()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
-    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("downloadController", controller.download), ("quickController", controller.quick), ("premiereController", controller.premiere), ("batchController", controller.batch),
     ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
     ("settingsController", controller.config),
     ("catController", controller.cats), ("presetStore", controller.presets),
@@ -598,7 +605,7 @@ window.setProperty("width", 1280)
 window.setProperty("height", 720)
 QTest.qWait(120)
 assert list(controller.pages) == [
-    "Descargar", "Cola", "Biblioteca", "Estudio", "Personalización", "Scoreboard", "Configuración"
+    "Descargar", "Cola", "Biblioteca", "Estudio", "Personalización", "Scoreboard", "Configuración", "Modo rápido"
 ]
 nav_row = window.findChild(QQuickItem, "navigationBar")
 assert nav_row is not None
@@ -606,7 +613,7 @@ nav_buttons = sorted(
     [item for item in nav_row.childItems() if item.property("text") in list(controller.pages)],
     key=lambda item: float(item.property("x")),
 )
-assert len(nav_buttons) == 7
+assert len(nav_buttons) == 8
 nav_widths = [float(button.property("width")) for button in nav_buttons]
 assert max(nav_widths) - min(nav_widths) < 1.5
 last_nav = nav_buttons[-1]
@@ -625,7 +632,7 @@ def find_visual(item, name):
             return found
     return None
 assert find_visual(window.contentItem(), "catRollButton") is not None
-personalization_button = nav_buttons[4]
+personalization_button = next(item for item in nav_buttons if item.property("text") == "Personalización")
 assert personalization_button.property("showRollBadge") is False
 controller.cats.recordSuccessfulDownloads(20)
 QTest.qWait(180)
@@ -677,11 +684,12 @@ SettingsStore().set("premiere_library_path", str(Path(os.environ["APPDATA"]) / "
 app = QApplication([])
 root = Path.cwd()
 controller = AppController(app, root, "3.2")
+controller.setPage(0)
 engine = QQmlApplicationEngine()
 context = engine.rootContext()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
-    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("downloadController", controller.download), ("quickController", controller.quick), ("premiereController", controller.premiere), ("batchController", controller.batch),
     ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
     ("settingsController", controller.config),
     ("catController", controller.cats),
@@ -745,7 +753,7 @@ engine = QQmlApplicationEngine()
 context = engine.rootContext()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
-    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("downloadController", controller.download), ("quickController", controller.quick), ("premiereController", controller.premiere), ("batchController", controller.batch),
     ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
     ("settingsController", controller.config), ("catController", controller.cats),
     ("socialController", controller.social), ("presetStore", controller.presets),
@@ -799,7 +807,7 @@ engine = QQmlApplicationEngine()
 context = engine.rootContext()
 for name, value in (
     ("appController", controller), ("theme", controller.theme),
-    ("downloadController", controller.download), ("batchController", controller.batch),
+    ("downloadController", controller.download), ("quickController", controller.quick), ("premiereController", controller.premiere), ("batchController", controller.batch),
     ("imageController", controller.image_studio), ("mediaLibraryController", controller.media_library),
     ("settingsController", controller.config),
     ("catController", controller.cats),
@@ -821,6 +829,8 @@ def open_combo(item):
     )
     QTest.qWait(60)
 
+controller.setPage(0)
+QTest.qWait(120)
 download_mode = window.findChild(QObject, "downloadModeCombo")
 assert download_mode is not None
 open_combo(download_mode)
@@ -931,14 +941,14 @@ controller.shutdown()
             self.assertNotIn("@Slot(str, object)", source)
             self.assertIn('@Slot(str, "QVariant")', source)
 
-    def test_all_seven_pages_are_persistent_and_have_tools(self):
+    def test_all_eight_pages_are_persistent_and_have_tools(self):
         main = (ROOT / "src" / "ui" / "qml" / "Main.qml").read_text(encoding="utf-8")
         self.assertIn("StackLayout", main)
         self.assertIn('objectName: "platinumCelebrationPopup"', main)
         self.assertIn("¡PLATINASTE XOMACITO!", main)
         self.assertIn("platinum_duality", main)
         self.assertIn("platinumCelebration", main)
-        for page in ("DownloadPage", "QueuePage", "MediaLibraryPage", "ImageStudioPage", "SettingsPage", "CatGachaPage", "ScoreboardPage"):
+        for page in ("DownloadPage {", "QuickPage {", "QueuePage", "MediaLibraryPage", "ImageStudioPage", "SettingsPage", "CatGachaPage", "ScoreboardPage"):
             self.assertEqual(main.count(page), 1)
 
         download = (ROOT / "src" / "ui" / "qml" / "pages" / "DownloadPage.qml").read_text(encoding="utf-8")
@@ -1002,9 +1012,8 @@ controller.shutdown()
         self.assertIn("trimPopup.selectionPlayback", download)
         self.assertIn('objectName: "trimEditingWorkspace"', download)
         self.assertIn("Layout.preferredWidth: 286", download)
-        self.assertIn("property bool trimSeekingPreview: false", download)
-        self.assertIn("page.trimSeekingPreview = true", download)
-        self.assertIn("|| page.trimSeekingPreview", download)
+        self.assertIn("property real trimPendingScrubSeconds: -1", download)
+        self.assertIn("id: trimScrubSeekTimer", download)
         self.assertIn('text: "✓  Corte preciso siempre activo"', download)
         self.assertNotIn('XSwitch { text: "Corte preciso"', download)
         video_range = (ROOT / "src" / "ui" / "qml" / "components" / "VideoRangeSelector.qml").read_text(encoding="utf-8")
@@ -1022,7 +1031,7 @@ controller.shutdown()
         image = (ROOT / "src" / "ui" / "qml" / "pages" / "ImageStudioPage.qml").read_text(encoding="utf-8")
         library = (ROOT / "src" / "ui" / "qml" / "pages" / "MediaLibraryPage.qml").read_text(encoding="utf-8")
         self.assertIn("ImageComparison", image)
-        self.assertIn("Biblioteca en preparación", library)
+        self.assertIn("Sin medios", library)
 
     def test_runtime_no_longer_depends_on_tk(self):
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
@@ -1339,10 +1348,10 @@ controller.shutdown()
     def test_studio_and_library_pages_explain_their_empty_state(self):
         image_page = (ROOT / "src" / "ui" / "qml" / "pages" / "ImageStudioPage.qml").read_text(encoding="utf-8")
         library_page = (ROOT / "src" / "ui" / "qml" / "pages" / "MediaLibraryPage.qml").read_text(encoding="utf-8")
-        self.assertIn("Arrastra una imagen para comenzar", image_page)
+        self.assertIn("Arrastra imágenes aquí", image_page)
         self.assertIn("imageController.start()", image_page)
-        self.assertIn("Biblioteca en preparación", library_page)
-        self.assertIn("Este espacio está vacío", library_page)
+        self.assertIn("Sin medios", library_page)
+        self.assertIn("Indexa una carpeta", library_page)
 
     def test_multiple_trim_ranges_are_queued_and_processed_once(self):
         script = r'''

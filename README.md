@@ -1,6 +1,6 @@
 # Xomacito
 
-Versión visible actual: **Xomacito 1.2.10**. Revisión interna de actualización: **4.0.29**.
+Versión visible actual: **Xomacito 1.4.0**. Revisión interna de actualización: **4.0.40**.
 
 Aplicación independiente para Windows y macOS que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike** pero principalmente inspirado en Dowp hecho por Marck.
 
@@ -8,7 +8,7 @@ Aplicación independiente para Windows y macOS que permite descargar, convertir 
 
 [![Descargar Xomacito](https://img.shields.io/badge/Descargar-Xomacito-2ea44f?style=for-the-badge&logo=windows)](https://github.com/Strike2911/Xomacito/releases/latest)
 
-Para una instalación nueva o una actualización desde versiones antiguas (incluida 1.0.1), utiliza el [instalador completo Xomacito 1.2.10](https://github.com/Strike2911/Xomacito/releases/download/v4.0.29/Xomacito-1.2.10-Setup.exe). Incluye la corrección de YouTube y no requiere instalar primero la versión 1.2. Si ya tienes una instalación reciente, puedes utilizar `Xomacito-1.2.10-Update-Light.exe`, que conserva los componentes y modelos existentes. El instalador completo incluye FFmpeg y los componentes principales; los modelos de inteligencia artificial se descargan únicamente cuando se solicitan.
+Si ya tienes Xomacito, instala [la actualización ligera 1.4.0](https://github.com/Strike2911/Xomacito/releases/download/v4.0.40/Xomacito-1.4.0-Update-Light.exe). Conserva los componentes, modelos y preferencias existentes. Para una instalación nueva, instala primero el [paquete completo 1.2.10](https://github.com/Strike2911/Xomacito/releases/download/v4.0.29/Xomacito-1.2.10-Setup.exe) y después la actualización 1.4.0. El paquete completo incluye FFmpeg y los componentes principales; los modelos de inteligencia artificial se descargan únicamente cuando se solicitan.
 
 > Windows puede mostrar una advertencia de SmartScreen porque el instalador todavía no utiliza un certificado comercial de firma de código. Comprueba que el archivo provenga de este repositorio antes de ejecutarlo.
 
@@ -73,7 +73,7 @@ los errores de arranque, en `~/Library/Logs/Xomacito-startup-error.log`.
 - Descarga de fotografías públicas de Instagram, incluidas publicaciones con `img_index`.
 - Corte de fragmentos y recodificación mediante FFmpeg.
 - Biblioteca Premiere compacta con arrastre de carpetas, metadatos de FFprobe, vista previa y recorte no destructivo.
-- Panel UXP “Xomacito Link” con estado guiado, filtros, autoimportación estable y bins separados para video, audio, imágenes y recortes.
+- Panel UXP “Xomacito Link” con controles Spectrum, selección múltiple, lotes confirmados, importación de archivos terminados y envío de selecciones desde Premiere hacia la biblioteca.
 - Conversión, optimización y procesamiento de imágenes.
 - Reescalado inteligente de imágenes y videos con perfiles optimizados según el contenido.
 - Removedor de fondos renovado con modelos BiRefNet para retratos, bordes finos y escenas complejas.
@@ -153,3 +153,25 @@ Consulta [docs/BENCHMARK.md](docs/BENCHMARK.md) para conocer las mediciones de a
 
 - [YouTube de Strike](https://www.youtube.com/@ElStrikew)
 - [Apoyar en Ko-fi](https://ko-fi.com/strikepoint)
+
+## Modo rápido y biblioteca
+
+**Modo rápido** ocupa su propia pestaña principal. La barra superior reúne enlaces, búsqueda en YouTube/SoundCloud, recortes, etiqueta, modo y calidad. Puedes seleccionar elementos de una playlist, bajar solo la miniatura, aplicar un preset de video y enviar el resultado a Premiere. La actividad ocupa el centro, el historial se abre a la derecha y el destino permanece abajo. Cada tarea conserva sus ajustes; cancelar o limpiar actividad no borra los archivos ni el historial. Los nombres repetidos generan una copia.
+
+**Biblioteca** utiliza tres paneles ajustables: carpetas/colecciones, medios y previsualización/detalles. Admite lista y cuadrícula, búsqueda y filtros, orden, favoritos, colecciones persistentes, selección Ctrl/Shift y arrastre nativo de varios archivos. Indexar conserva la ubicación original. Los controles de reproducción incluyen volumen, repetición, búsqueda en el video, onda de audio y subclips independientes. El panel derecho permite enviar la selección a Premiere o insertar el medio seleccionado en el cabezal.
+
+Las búsquedas de YouTube y SoundCloud muestran miniaturas, duración y autor en cuadrícula o lista. Pulsa **Ver** o haz doble clic para reproducir un resultado en el panel lateral mientras sigues explorando. Las casillas eligen qué descargar; abrir la vista previa no inicia una descarga ni cambia su calidad. Los resultados de búsqueda empiezan sin seleccionar, mientras que una playlist empieza seleccionada. Algunos sitios pueden requerir cookies o no ofrecer una vista previa reproducible: el panel permite reintentar o abrir el enlace original.
+
+El reproductor compartido de búsqueda y Biblioteca permite ampliar la vista, acercar con la rueda y mover la imagen ampliada, cambiar velocidad, volumen y repetición. Atajos con el reproductor enfocado: **Espacio** reproduce/pausa, **←/→** avanza o retrocede cinco segundos, **M** silencia y **F** amplía. Al cerrar la vista previa o salir de la página se detiene la reproducción.
+
+**Medios web** reúne Wikimedia, Openverse, Freesound, Pixabay y Pexels. Wikimedia y Openverse permiten consultas públicas; los demás requieren una clave API personal, conservada solo durante la sesión. Freesound ofrece explícitamente su previa MP3 y enlaza al original. Cada resultado muestra origen, autor y licencia; las descargas guardan un archivo de créditos junto al medio. Pixabay conserva las consultas en caché durante 24 horas. Los proveedores y sus formatos pueden limitar una descarga; el enlace al origen permanece disponible.
+
+La organización toma como referencia [DowP](https://github.com/MarckDP/DowP), con implementación propia en Python/QML y los componentes visuales de Xomacito. La conexión con editores de esta implementación está centrada en Premiere.
+
+Para instalar el panel y configurar el envío, consulta [Xomacito Link](premiere-panel/README.md).
+
+## Estudio de imagen
+
+El lienzo ocupa el centro y permite ampliar con la rueda, desplazar la imagen ampliada y comparar el original con el resultado. La barra lateral selecciona eliminación de fondo, reescalado o conversión; la lista y los ajustes quedan a la derecha. **Administrar** abre Configuración → Modelos. Los controles de GPU, suavizado, expansión de bordes, escala, tamaño de bloques, potencia y TTA se aplican al motor correspondiente.
+
+La salida admite No Convertir, PNG, JPG/JPEG, WebP, AVIF, PDF, SVG, TIFF, ICO, ICNS y BMP. SVG contiene la imagen raster incrustada, sin vectorización. ICNS genera iconos cuadrados con relleno transparente para conservar la proporción. No Convertir conserva el formato de las imágenes raster compatibles; documentos y entradas que no pueden reexportarse se guardan como PNG con la extensión correcta. El destino y la política para archivos existentes permanecen junto al botón de procesamiento.

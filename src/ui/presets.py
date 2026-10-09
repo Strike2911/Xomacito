@@ -12,6 +12,7 @@ from .settings_store import SettingsStore
 
 
 ALPHA_PRESET = "Edición - ProRes 4444 Liviano (Transparencia)"
+PREMIERE_AUDIO_PRESET = "Audio - Premiere WAV 48 kHz (24-bit)"
 
 
 def _video(name, codec, profile, container, audio="AAC", audio_profile="Buena Calidad (~192kbps)"):
@@ -59,6 +60,7 @@ BUILT_IN_PRESETS = {
     "Audio - MP3 320kbps": _audio("MP3 (libmp3lame)", "320kbps (CBR)", ".mp3"),
     "Audio - AAC 192kbps": _audio("AAC", "Buena Calidad (~192kbps)", ".m4a"),
     "Audio - WAV 16-bit (Sin pérdida)": _audio("WAV (Sin Comprimir)", "PCM 16-bit", ".wav"),
+    PREMIERE_AUDIO_PRESET: _audio("WAV (Sin Comprimir)", "Premiere · PCM 24-bit / 48 kHz", ".wav"),
 }
 
 

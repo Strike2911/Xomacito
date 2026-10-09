@@ -6,15 +6,16 @@ def test_og_mythics_are_exactly_requested_cats():
     catalog = load_cat_catalog(Path(__file__).resolve().parents[1])
     pool = box_candidates(catalog, {"weights": ROLL_WEIGHTS, "mythicIds": OG_MYTHIC_IDS})
     assert {c.name for c in pool if c.rarity == 6} == {"GATO STRIKE", "GATO PLAYERA", "GATO ZARKING"}
-    assert {c.id for c in pool if c.rarity < 6} == {c.id for c in catalog if c.rarity < 6 and not c.exclusive}
+    assert {c.id for c in pool if c.rarity < 6} == {c.id for c in catalog if c.rarity < 6 and not c.exclusive and c.collection == "og"}
 
 
-def test_unscoped_boxes_keep_their_catalog():
+def test_unscoped_boxes_default_to_og_catalog():
     catalog = load_cat_catalog(Path(__file__).resolve().parents[1])
-    assert {c.id for c in box_candidates(catalog, {"weights": ROLL_WEIGHTS})} == {c.id for c in catalog if not c.exclusive}
+    assert {c.id for c in box_candidates(catalog, {"weights": ROLL_WEIGHTS})} == {c.id for c in catalog if not c.exclusive and c.collection == "og"}
 
 
 def test_paid_daily_and_roulette_obey_collection_without_reset():
+    from datetime import date
     from src.ui.cat_gacha_controller import CatGachaController
     class Settings(dict):
         def set(self,key,value,*args,**kwargs): self[key]=value
@@ -22,7 +23,7 @@ def test_paid_daily_and_roulette_obey_collection_without_reset():
         def choices(self,values,**kwargs): return [max(values)]
         def choice(self,values): return values[0]
     settings=Settings(cat_gacha={"economyEpoch":1,"walletCents":500,"inventory":{"cat-cf837ae651c8":1},"unlockedIds":["cat-cf837ae651c8"],"totalDownloads":31})
-    controller=CatGachaController(Path(__file__).resolve().parents[1],settings,rng=MythicRandom())
+    controller=CatGachaController(Path(__file__).resolve().parents[1],settings,rng=MythicRandom(), today_provider=lambda: date(2026, 9, 24))
     before=controller.sync_snapshot()
     paid=controller.openBox("og")
     assert paid["catId"] in OG_MYTHIC_IDS

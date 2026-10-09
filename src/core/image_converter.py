@@ -1,5 +1,6 @@
 ﻿import os
 import io
+import base64
 import sys
 import re
 import tempfile
@@ -19,7 +20,7 @@ except ImportError:
     CAN_PDF = False
     print("ADVERTENCIA: 'pdf2image' no instalado. No se podrán convertir archivos .pdf, .ai, .eps")
 
-from PIL import Image, ImageDraw, ImageChops
+from PIL import Image, ImageDraw, ImageChops, ImageOps
 from src.core.exceptions import UserCancelledError
 from src.core.image_intelligence import resolve_ort_providers
 
@@ -610,6 +611,16 @@ class ImageConverter:
             elif output_format == "TIFF": self._save_as_tiff(pil_image, output_path, options)
             elif output_format == "ICO": self._save_as_ico(pil_image, output_path, options)
             elif output_format == "BMP": self._save_as_bmp(pil_image, output_path, options)
+            elif output_format == "ICNS":
+                icon = ImageOps.pad(pil_image.convert("RGBA"), (1024, 1024), method=Image.Resampling.LANCZOS, color=(0, 0, 0, 0))
+                icon.save(output_path, format="ICNS")
+            elif output_format == "SVG":
+                buffer = io.BytesIO()
+                pil_image.save(buffer, format="PNG")
+                encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+                width, height = pil_image.size
+                with open(output_path, "w", encoding="utf-8") as handle:
+                    handle.write(f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{width}" height="{height}" viewBox="0 0 {width} {height}"><image width="{width}" height="{height}" xlink:href="data:image/png;base64,{encoded}"/></svg>')
             else:
                 raise Exception(f"Formato de salida no soportado: {output_format}")
             

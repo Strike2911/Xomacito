@@ -16,6 +16,7 @@ PYTHON="$VENV/bin/python"
 "$PYTHON" -c 'import sys; assert sys.version_info[:2] == (3, 11), "Recrea .tools/mac-venv con Python 3.11"'
 "$PYTHON" -m pip install -r requirements.txt
 "$PYTHON" -m pip check
+"$PYTHON" scripts/build_premiere_panel.py
 [[ -f Xomacito-icon.icns ]] || bash scripts/make_mac_icon.sh
 "$PYTHON" -m PyInstaller --noconfirm --clean \
     --workpath .build/work/mac --distpath dist/mac .build/XomacitoMac.spec

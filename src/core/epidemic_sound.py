@@ -8,6 +8,17 @@ import re
 from urllib.parse import urlparse
 
 
+def is_epidemic_sound_url(url):
+    """Identify the official source, including legacy track and sound-effect URLs."""
+    try:
+        parsed = urlparse(str(url).strip())
+        return parsed.scheme in {"http", "https"} and parsed.hostname in {
+            "epidemicsound.com", "www.epidemicsound.com",
+        }
+    except ValueError:
+        return False
+
+
 def is_epidemic_music_url(url):
     try:
         parsed = urlparse(str(url).strip())

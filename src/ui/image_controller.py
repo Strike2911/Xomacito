@@ -128,6 +128,7 @@ class ImageController(QObject):
     optionsChanged = Signal()
     selectedChanged = Signal()
     progressReported = Signal(float, str)
+    outputReady = Signal(str)
     notificationRequested = Signal(str, str, str)
 
     ROLES = ["itemId", "path", "name", "page", "pages", "title", "status", "detail", "output", "preview", "mediaType"]
@@ -219,8 +220,6 @@ class ImageController(QObject):
             self._options[key] = TASK_DEFAULTS[active_task][key]
         if active_task == "upscaleVideo":
             self._state["format"] = "MP4"
-        elif active_task == "removeBackground" and self._state["format"] not in {"PNG", "WEBP"}:
-            self._state["format"] = "PNG"
         self._process_item_outputs = {}
         self._next_id = 1
         self.progressReported.connect(self._apply_progress)
@@ -257,6 +256,10 @@ class ImageController(QObject):
     @Property("QVariantMap", notify=selectedChanged)
     def selected(self):
         return self.items.item(self._state["selectedIndex"]) or {}
+
+    @Property("QStringList", constant=True)
+    def stillFormats(self):
+        return ["No Convertir", "PNG", "JPG", "JPEG", "WEBP", "AVIF", "PDF", "SVG", "TIFF", "ICO", "ICNS", "BMP"]
 
     @Property("QStringList", constant=True)
     def formats(self):
@@ -955,7 +958,10 @@ class ImageController(QObject):
         return [str(result)]
 
     def _output_path(self, folder, item, output_format):
-        if output_format == "No Convertir": extension = Path(item["path"]).suffix
+        if output_format == "No Convertir":
+            extension = Path(item["path"]).suffix.lower()
+            if extension not in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif", ".gif", ".avif"}:
+                extension = ".png"
         elif output_format == "JPEG": extension = ".jpeg"
         elif output_format == "JPG": extension = ".jpg"
         else: extension = "." + str(output_format).lower()
@@ -985,6 +991,8 @@ class ImageController(QObject):
             if matching: self.items.update_item(row, {"status": "COMPLETED", "detail": "Completado", "output": matching})
         first = outputs[0]
         self._set_state(busy=False, progress=1.0, status=f"Completado: {len(outputs)} archivos.", lastOutput=first)
+        for output in outputs:
+            self.outputReady.emit(output)
         self._load_selected_result()
         self.notificationRequested.emit("success", "Conversión completada", str(Path(first).parent))
 

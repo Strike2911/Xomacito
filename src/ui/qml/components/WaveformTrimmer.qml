@@ -199,7 +199,7 @@ Item {
             Layout.fillWidth: true
             spacing: 7
             Text { text: "ZOOM"; color: theme.colors.textDim; font.pixelSize: 8; font.weight: Font.Bold; font.letterSpacing: 0.8 }
-            Slider {
+            XSlider {
                 id: zoomControl
                 Layout.preferredWidth: root.compact ? 94 : 130
                 from: 1
@@ -211,7 +211,7 @@ Item {
                 ToolTip.text: Number(root.zoomLevel).toFixed(root.zoomLevel < 2 ? 0 : 1) + "×"
             }
             Text { text: Number(root.zoomLevel).toFixed(root.zoomLevel < 2 ? 0 : 1) + "×"; color: theme.colors.primary; font.pixelSize: 9; font.weight: Font.DemiBold }
-            Slider {
+            XSlider {
                 id: panControl
                 Layout.fillWidth: true
                 visible: root.zoomLevel > 1.01

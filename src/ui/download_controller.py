@@ -34,6 +34,7 @@ from src.core.downloader import (
     is_x_status_url,
 )
 from src.core.exceptions import UserCancelledError
+from src.core.epidemic_sound import is_epidemic_sound_url
 from src.core.video_quality import quality_preserving_selector, validate_download_resolution
 from src.core.file_naming import next_available_media_stem, next_available_path
 from src.core.processor import FFmpegProcessor, clean_and_convert_vtt_to_srt, pixel_format_has_alpha
@@ -60,7 +61,7 @@ from .media_logic import (
     safe_filename,
     seconds_from_time,
 )
-from .presets import ALPHA_PRESET, BUILT_IN_PRESETS, PresetStore, resolve_recode_parameters
+from .presets import ALPHA_PRESET, PREMIERE_AUDIO_PRESET, BUILT_IN_PRESETS, PresetStore, resolve_recode_parameters
 from .settings_store import SettingsStore
 from .waveform import render_waveform, waveform_target
 from .filmstrip import filmstrip_target, render_filmstrip
@@ -69,6 +70,7 @@ from .workers import TaskPool
 
 
 DEFAULT_OPTIONS: dict[str, Any] = {
+    "audioOutputFormat": "MP3",
     "downloadSubtitles": False,
     "cleanSubtitle": True,
     "keepFullSubtitle": False,
@@ -152,6 +154,22 @@ def reveal_in_file_manager(target: str | Path) -> bool:
     return bool(QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder))))
 
 
+def automatic_audio_options(options: dict) -> dict:
+    """Convert downloaded audio unless the user chose a specific codec/preset."""
+    output = options.get("audioOutputFormat", "MP3")
+    if options.get("mode") != "Solo Audio" or options.get("local_file"):
+        return dict(options)
+    if is_epidemic_sound_url(options.get("url", "")):
+        output = "WAV para Premiere"
+    elif (options.get("recode_audio_enabled") or options.get("recode_video_enabled")
+            or output == "Original"):
+        return dict(options)
+    preset = PREMIERE_AUDIO_PRESET if output == "WAV para Premiere" else "Audio - MP3 192kbps"
+    return {**options, **BUILT_IN_PRESETS[preset], "keep_original_file": False,
+            "automatic_audio_output": output, "resolution_change_enabled": False,
+            "fps_force_enabled": False}
+
+
 def editor_mp4_fallback_options(options: dict) -> dict:
     """Fuerza un resultado H.264/AAC MP4 si el sitio sólo entregó WEBM/MKV."""
     compatible = {**options, **BUILT_IN_PRESETS["Web/Móvil - H.264 Máxima"]}
@@ -178,6 +196,7 @@ class DownloadController(QObject):
     notificationRequested = Signal(str, str, str)
     cancelledRequested = Signal()
     successfulDownload = Signal(int)
+    outputReady = Signal(str)
     gachaSourceCompleted = Signal(str)
 
     def __init__(
@@ -209,7 +228,7 @@ class DownloadController(QObject):
         self.cancellation = threading.Event()
         output = settings.get("default_download_path") or str(Path.home() / "Downloads")
         self._state: dict[str, Any] = {
-            "url": "", "outputPath": output, "title": "", "mode": "Video+Audio",
+            "url": "", "epidemicAudio": False, "outputPath": output, "title": "", "mode": "Video+Audio",
             "audioLanguage": settings.get("download_audio_language", "Automático"),
             "localFile": "", "thumbnailSource": "", "status": "Pega un enlace o importa un archivo.",
             "progress": 0.0, "busy": False, "analyzed": False, "lastOutput": "",
@@ -311,6 +330,8 @@ class DownloadController(QObject):
         if key not in self._state:
             return
         self._set_state(**{key: value})
+        if key == "url":
+            self._set_state(epidemicAudio=is_epidemic_sound_url(value))
         if key == "outputPath":
             self.settings.set("default_download_path", str(value))
             self._refresh_tag_state()
@@ -339,6 +360,7 @@ class DownloadController(QObject):
         self._options[key] = value
         self.optionsChanged.emit()
         persisted = {
+            "audioOutputFormat": self._options["audioOutputFormat"],
             "keep_original": self._options["keepOriginal"],
             "video_codec": self._options["recodeCodecName"],
             "video_profile": self._options["recodeProfileName"],
@@ -1233,6 +1255,7 @@ class DownloadController(QObject):
         self.optionsChanged.emit()
         self._set_state(
             title=title, busy=False, analyzed=True, progress=1.0, imagePost=image_post, imageCount=image_count,
+            epidemicAudio=is_epidemic_sound_url(info.get("webpage_url") or self._state["url"]),
             status="Publicación de imagen lista." if image_post else "Enlace analizado. Elige calidad y descarga.",
             thumbnailSource=thumbnail, duration=duration, mode=mode,
             originalWidth=int(info.get("width") or 0), originalHeight=int(info.get("height") or 0),
@@ -1240,6 +1263,8 @@ class DownloadController(QObject):
         )
         if not image_post:
             self._ensure_preset_for_mode(mode)
+            if self._state["epidemicAudio"]:
+                self._set_state(status="Epidemic Sound: se guardará automáticamente en WAV de 48 kHz para Premiere.")
             self._refresh_trim_preview_source()
 
     def _apply_local_analysis(self, result: dict):
@@ -1604,6 +1629,7 @@ class DownloadController(QObject):
         return options
 
     def _process_worker(self, options: dict) -> str:
+        options = automatic_audio_options(options)
         input_file = options.get("local_file")
         downloaded = False
         if self._image_post:
@@ -1617,6 +1643,15 @@ class DownloadController(QObject):
                     validate_download_resolution(self.ffmpeg.get_local_media_info(input_file), selected)
         if self.cancellation.is_set():
             raise UserCancelledError("Proceso cancelado.")
+
+        if (options.get("automatic_audio_output") == "MP3"
+                and not options.get("fragmentEnabled")
+                and Path(input_file).suffix.lower() == ".mp3"):
+            info = self.ffmpeg.get_local_media_info(input_file)
+            streams = info.get("streams", [])
+            if len(streams) == 1 and streams[0].get("codec_name") == "mp3":
+                # Avoid another lossy encode when the source is already MP3.
+                options["recode_audio_enabled"] = False
 
         if options.get("fragmentEnabled") and downloaded and self._last_download_was_partial:
             partial_options = self._relative_partial_clip_options(options)
@@ -1957,7 +1992,8 @@ class DownloadController(QObject):
 
     def _recode_file(self, input_file: str, options: dict, downloaded: bool) -> str:
         params, container = resolve_recode_parameters(options)
-        output = self._resolve_output(Path(options["output_path"]), options["title"] + "_recodificado", container)
+        suffix = "" if options.get("automatic_audio_output") else "_recodificado"
+        output = self._resolve_output(Path(options["output_path"]), options["title"] + suffix, container)
         if not output:
             raise UserCancelledError("Recodificación cancelada.")
         temporary = output.with_name(f"{output.stem}.temp{output.suffix}")
@@ -2211,6 +2247,7 @@ class DownloadController(QObject):
     def _operation_success(self, output: str):
         completed_download = self._current_counts_as_download
         self._set_state(busy=False, progress=1.0, status="Proceso completado.", lastOutput=output)
+        self.outputReady.emit(output)
         self.notificationRequested.emit("success", "Proceso completado", output)
         if completed_download:
             self.successfulDownload.emit(1)
