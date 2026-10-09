@@ -362,10 +362,10 @@ Item {
         readonly property bool done: travel >= 1
         readonly property bool resultCanSell: (root.cats.inventoryItems || []).some(function(cat) { return cat.catId === revealPopup.result.catId && cat.canSell })
         onClosed: { rouletteStartTimeout.stop(); rouletteAudio.stop(); spin.stop(); resultEntrance.stop(); catController.finishOpening(); root.revealFinished() }
-        background: Rectangle { radius: 22; color: theme.colors.backgroundAlt; border.color: revealPopup.result.rarityColor || theme.colors.primary; border.width: 2 }
+        background: Rectangle { objectName: "catRevealBorder"; radius: 22; color: theme.colors.backgroundAlt; border.color: revealPopup.done ? revealPopup.result.rarityColor || theme.colors.primary : theme.colors.border; border.width: 2 }
         function reveal(value) {
-            result = value
             travel = 0
+            result = value
             open()
             if (settingsController.state.animationsEnabled && !root.cats.skipAnimation && value.reel && value.reel.length)
                 { rouletteStartTimeout.restart(); rouletteAudio.play() }
@@ -399,6 +399,8 @@ Item {
         }
         NumberAnimation { id: spin; target: revealPopup; property: "travel"; from: 0; to: 1; duration: rouletteAudio.duration > 0 ? rouletteAudio.duration : 2167; easing.type: Easing.OutQuint; onFinished: { rouletteAudio.stop(); catController.finishOpening() } }
         MythicEffectField {
+            objectName: "revealMythicEffects"
+            visible: revealPopup.opened && revealPopup.done
             anchors.fill: parent
             animationStyle: revealPopup.result.animationStyle || ""
             effectColor: revealPopup.result.rarityColor || theme.colors.primary
@@ -406,6 +408,14 @@ Item {
             progress: revealPopup.travel
             mode: "reveal"
             opacity: revealPopup.result.animationStyle === "hola-haunting" ? 0.85 : 0.3
+        }
+        RevealCelebration {
+            objectName: "revealConfetti"
+            anchors.fill: parent; z: 15
+            active: revealPopup.opened && revealPopup.done && settingsController.state.animationsEnabled && !root.cats.skipAnimation
+            rarity: Number(revealPopup.result.rarity || 1)
+            accent: revealPopup.result.rarityColor || theme.colors.primary
+            haunting: revealPopup.result.animationStyle === "hola-haunting"
         }
         ColumnLayout {
             anchors.fill: parent; spacing: 14

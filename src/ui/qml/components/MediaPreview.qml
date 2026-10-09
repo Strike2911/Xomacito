@@ -127,7 +127,7 @@ FocusScope {
                 Row {
                     anchors.top: parent.top; anchors.right: parent.right; anchors.margins: 6; spacing: 5
                     XButton { text: Math.round(root.zoom * 100) + "%"; implicitWidth: 48; implicitHeight: 26; leftPadding: 6; rightPadding: 6; compact: true; kind: "secondary"; onClicked: root.resetView(); ToolTip.visible: hovered; ToolTip.text: "Restablecer zoom · Rueda para acercar" }
-                    XButton { text: root.enlarged ? "Reducir" : "Ampliar"; implicitWidth: 72; implicitHeight: 26; compact: true; kind: "secondary"; onClicked: root.toggleExpand(); ToolTip.visible: hovered; ToolTip.text: "Ampliar vista (F / doble clic)" }
+                    XButton { visible: !root.enlarged; text: "Ampliar"; implicitWidth: 72; implicitHeight: 26; compact: true; kind: "secondary"; onClicked: root.toggleExpand(); ToolTip.visible: hovered; ToolTip.text: "Ampliar vista (F / doble clic)" }
                 }
             }
             Item {
@@ -152,9 +152,18 @@ FocusScope {
                 XButton { text: playback.playbackState === MediaPlayer.PlayingState ? "Ⅱ" : "▶"; implicitWidth: 26; implicitHeight: 26; leftPadding: 3; rightPadding: 3; compact: true; enabled: root.hasMedia; onClicked: root.togglePlay(); ToolTip.visible: hovered; ToolTip.text: "Reproducir / pausar (Espacio)" }
                 XButton { id: repeatButton; text: "↻"; implicitWidth: 24; implicitHeight: 26; leftPadding: 3; rightPadding: 3; compact: true; checkable: true; kind: checked ? "primary" : "ghost"; ToolTip.visible: hovered; ToolTip.text: "Repetir" }
                 Text { text: root.clock(playback.position) + " / " + root.clock(playback.duration); Layout.fillWidth: true; color: theme.colors.textMuted; font.pixelSize: 10 }
-                XComboBox { visible: root.width >= 310 || root.enlarged; model: ["0.5×", "1×", "1.5×", "2×"]; currentIndex: 1; Layout.preferredWidth: 57; implicitHeight: 26; compact: true; onActivated: playback.playbackRate = [0.5, 1, 1.5, 2][currentIndex] }
+                XComboBox {
+                    objectName: "previewPlaybackSpeed"
+                    model: ["0.5×", "1×", "1.5×", "2×"]; currentIndex: 1
+                    displayText: "Vel. " + currentText
+                    Layout.preferredWidth: 96; Layout.minimumWidth: 96
+                    implicitHeight: 28; compact: true; leftPadding: 8; rightPadding: 24
+                    Accessible.name: "Velocidad de reproducción: " + currentText
+                    ToolTip.visible: hovered; ToolTip.text: "Velocidad de reproducción"
+                    onActivated: playback.playbackRate = [0.5, 1, 1.5, 2][currentIndex]
+                }
                 XButton { text: sound.muted ? "×♪" : "♪"; implicitWidth: 26; implicitHeight: 26; leftPadding: 2; rightPadding: 2; compact: true; kind: "ghost"; onClicked: sound.muted = !sound.muted; ToolTip.visible: hovered; ToolTip.text: "Silenciar (M)" }
-                XSlider { Layout.preferredWidth: root.enlarged ? 100 : 48; implicitHeight: 22; from: 0; to: 1; value: sound.volume; onMoved: { sound.volume = value; sound.muted = false } }
+                XSlider { visible: body.width >= 360; Layout.preferredWidth: root.enlarged ? 100 : 48; implicitHeight: 22; from: 0; to: 1; value: sound.volume; onMoved: { sound.volume = value; sound.muted = false } }
             }
             XButton { visible: Boolean(root.externalError || root.playbackError); text: "Reintentar"; compact: true; implicitHeight: 26; kind: "ghost"; onClicked: { root.playbackError = ""; root.retryRequested() } }
 
@@ -165,7 +174,15 @@ FocusScope {
         width: parent ? parent.width - 32 : 900; height: parent ? parent.height - 32 : 600
         padding: 14; modal: true; focus: true; closePolicy: Popup.CloseOnEscape
         background: Rectangle { color: theme.colors.surface; radius: 14; border.color: theme.colors.border }
-        contentItem: Item { id: expandedArea }
+        contentItem: ColumnLayout {
+            spacing: 12
+            RowLayout {
+                Layout.fillWidth: true
+                Text { text: root.title || "Vista ampliada"; Layout.fillWidth: true; elide: Text.ElideMiddle; color: theme.colors.text; font.pixelSize: 14; font.weight: Font.DemiBold }
+                XButton { objectName: "closeExpandedPreview"; text: "Cerrar vista · Esc"; compact: true; kind: "secondary"; onClicked: expanded.close() }
+            }
+            Item { id: expandedArea; Layout.fillWidth: true; Layout.fillHeight: true }
+        }
         onClosed: root.forceActiveFocus()
         Keys.onPressed: function(event) {
             if (event.key === Qt.Key_Space) { root.togglePlay(); event.accepted = true }

@@ -1,6 +1,6 @@
 # Xomacito
 
-Versión visible actual: **Xomacito 1.4.0**. Revisión interna de actualización: **4.0.40**.
+Versión visible actual: **Xomacito 1.4.1**. Revisión interna de actualización: **4.0.41**.
 
 Aplicación independiente para Windows y macOS que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike** pero principalmente inspirado en Dowp hecho por Marck.
 
@@ -8,7 +8,7 @@ Aplicación independiente para Windows y macOS que permite descargar, convertir 
 
 [![Descargar Xomacito](https://img.shields.io/badge/Descargar-Xomacito-2ea44f?style=for-the-badge&logo=windows)](https://github.com/Strike2911/Xomacito/releases/latest)
 
-Si ya tienes Xomacito, instala [la actualización ligera 1.4.0](https://github.com/Strike2911/Xomacito/releases/download/v4.0.40/Xomacito-1.4.0-Update-Light.exe). Conserva los componentes, modelos y preferencias existentes. Para una instalación nueva, instala primero el [paquete completo 1.2.10](https://github.com/Strike2911/Xomacito/releases/download/v4.0.29/Xomacito-1.2.10-Setup.exe) y después la actualización 1.4.0. El paquete completo incluye FFmpeg y los componentes principales; los modelos de inteligencia artificial se descargan únicamente cuando se solicitan.
+Si ya tienes Xomacito, instala [la actualización ligera 1.4.1](https://github.com/Strike2911/Xomacito/releases/download/v4.0.41/Xomacito-1.4.1-Update-Light.exe). Conserva los componentes, modelos y preferencias existentes. Para una instalación nueva, instala primero el [paquete completo 1.2.10](https://github.com/Strike2911/Xomacito/releases/download/v4.0.29/Xomacito-1.2.10-Setup.exe) y después la actualización 1.4.1. El paquete completo incluye FFmpeg y los componentes principales; los modelos de inteligencia artificial se descargan únicamente cuando se solicitan.
 
 > Windows puede mostrar una advertencia de SmartScreen porque el instalador todavía no utiliza un certificado comercial de firma de código. Comprueba que el archivo provenga de este repositorio antes de ejecutarlo.
 

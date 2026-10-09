@@ -159,7 +159,7 @@ ColumnLayout {
                 Text { text: "Vista previa y detalles"; color: theme.colors.text; font.pixelSize: 13; font.weight: Font.DemiBold }
                 MediaPreview {
                     id: inspector; compactControls: true; objectName: "libraryInteractivePreview"
-                    Layout.fillWidth: true; Layout.preferredHeight: Math.min(width * 9 / 16 + 91, Math.max(190, page.height * 0.52)); Layout.minimumHeight: 180
+                    Layout.fillWidth: true; Layout.preferredHeight: Math.min(width * 9 / 16 + 91, Math.max(150, page.height * 0.44)); Layout.minimumHeight: 140
                     playerObjectName: "libraryPreviewPlayer"
                     active: page.visible
                     source: page.hasMedia ? page.selected.previewSource || "" : ""
@@ -170,7 +170,7 @@ ColumnLayout {
                     onRetryRequested: reload()
                 }
                 ScrollView {
-                    id: details; objectName: "libraryMetadata"; Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: 125; contentWidth: availableWidth; clip: true
+                    id: details; objectName: "libraryMetadata"; Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: 60; contentWidth: availableWidth; clip: true
                     ScrollBar.vertical: XScrollBar {}
                     ColumnLayout {
                         width: Math.max(0, details.availableWidth - 14); spacing: 5
@@ -194,16 +194,14 @@ ColumnLayout {
                         Text { visible: page.hasMedia; text: page.webMode ? page.selected.pageUrl || "" : page.selected.path || ""; Layout.fillWidth: true; color: theme.colors.textDim; font.pixelSize: 9; wrapMode: Text.WrapAnywhere }
                     }
                 }
-                RowLayout {
-                    visible: page.hasMedia && !page.webMode; Layout.fillWidth: true; spacing: 5
-                    XButton { text: "···"; implicitWidth: 32; leftPadding: 4; rightPadding: 4; compact: true; kind: "ghost"; onClicked: mediaActions.open(); ToolTip.visible: hovered; ToolTip.text: "Ubicación y subclips"
-                        Menu { id: mediaActions
-                            MenuItem { text: "Abrir ubicación"; onTriggered: mediaLibraryController.openSelected() }
-                            MenuItem { text: "Crear subclip"; enabled: page.temporal; onTriggered: { inspector.pause(); trimDialog.open() } }
-                        }
-                    }
-                    XButton { Layout.fillWidth: true; text: "A Premiere"; compact: true; onClicked: page.sendSelection(false) }
-                    XButton { Layout.fillWidth: true; text: "Al cabezal"; compact: true; kind: "secondary"; onClicked: premiereController.send(page.selected.path, true) }
+                GridLayout {
+                    objectName: "libraryLocalActions"
+                    columns: 2; rowSpacing: 6; columnSpacing: 6
+                    visible: page.hasMedia && !page.webMode; Layout.fillWidth: true
+                    XButton { Layout.fillWidth: true; Layout.preferredWidth: 1; text: "Ubicación"; implicitHeight: 30; compact: true; kind: "ghost"; onClicked: mediaLibraryController.openSelected() }
+                    XButton { Layout.fillWidth: true; Layout.preferredWidth: 1; text: "Crear subclip"; implicitHeight: 30; compact: true; kind: "ghost"; enabled: page.temporal; onClicked: { inspector.pause(); trimDialog.open() } }
+                    XButton { Layout.fillWidth: true; Layout.preferredWidth: 1; text: "A Premiere"; implicitHeight: 32; compact: true; onClicked: page.sendSelection(false) }
+                    XButton { Layout.fillWidth: true; Layout.preferredWidth: 1; text: "Al cabezal"; implicitHeight: 32; compact: true; kind: "secondary"; onClicked: premiereController.send(page.selected.path, true) }
                 }
                 RowLayout {
                     visible: page.hasMedia && page.webMode; Layout.fillWidth: true; spacing: 5

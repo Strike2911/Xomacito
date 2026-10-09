@@ -278,7 +278,12 @@ ApplicationWindow {
                 }
                 ColumnLayout {
                     spacing: 2
-                    Text { text: "XOMACITO"; color: theme.colors.text; font.pixelSize: window.denseWindow ? 17 : settingsController.state.compactMode ? 18 : 20; font.weight: Font.Bold; font.letterSpacing: 0.5 }
+                    CatWordmark {
+                        rarity: appController.catRarity; accent: appController.catRarityColor
+                        animationStyle: appController.catAnimationStyle
+                        animated: settingsController.state.animationsEnabled && !catGachaPage.revealOpen
+                        textSize: window.denseWindow ? 17 : settingsController.state.compactMode ? 18 : 20
+                    }
                 }
                 Item { Layout.fillWidth: true }
                 XButton {

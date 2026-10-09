@@ -31,6 +31,7 @@ IDEA_CONTRIBUTORS = [
     "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan", "Nini",
 ]
 PUBLIC_VERSION_BY_INTERNAL = {
+    "4.0.41": "1.4.1",
     "4.0.40": "1.4.0",
     "4.0.32": "1.3.2",
     "4.0.31": "1.3.1",
@@ -54,6 +55,14 @@ PUBLIC_VERSION_BY_INTERNAL = {
 }
 PUBLIC_BUGFIX_NOTE = "- Arreglo de bugs de la versión 1.0."
 RELEASE_NOTICES = {
+    "4.0.41": {
+        "eyebrow": "XOMACITO 1.4.1", "title": "Una vista más clara.",
+        "subtitle": "ACTUALIZACIÓN LIGERA",
+        "message": "Controles de reproducción más claros y ajustes visuales en la biblioteca.",
+        "highlights": ["Vista ampliada con cierre visible y atajo Esc", "Velocidad de reproducción identificada", "Botones de biblioteca mejor distribuidos", "Mejoras visuales y de presentación"],
+        "contributors": IDEA_CONTRIBUTORS, "closing": "Se conservan tu cuenta, colección y preferencias.",
+        "platinumCelebration": False, "smoothMotionPromotion": False,
+    },
     "4.0.40": {
         "eyebrow": "XOMACITO 1.4.0", "title": "Tus medios, más cerca.",
         "subtitle": "MODO RÁPIDO Y PREMIERE",
