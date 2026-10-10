@@ -4,6 +4,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ($LightOnly) {
+    Write-Warning 'El paquete ligero no basta para publicar: los clientes antiguos requieren también el Setup completo. Valida/publica con scripts/publish_release.py.'
+}
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $Python = Join-Path $ProjectRoot '.tools\python311full\python.exe'
 $Spec = Join-Path $ProjectRoot '.build\XomacitoInstaller.spec'

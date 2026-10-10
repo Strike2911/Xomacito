@@ -8,7 +8,15 @@ Aplicación independiente para Windows y macOS que permite descargar, convertir 
 
 [![Descargar Xomacito](https://img.shields.io/badge/Descargar-Xomacito-2ea44f?style=for-the-badge&logo=windows)](https://github.com/Strike2911/Xomacito/releases/latest)
 
-Si ya tienes Xomacito, instala [la actualización ligera 1.4.1](https://github.com/Strike2911/Xomacito/releases/download/v4.0.41/Xomacito-1.4.1-Update-Light.exe). Conserva los componentes, modelos y preferencias existentes. Para una instalación nueva, instala primero el [paquete completo 1.2.10](https://github.com/Strike2911/Xomacito/releases/download/v4.0.29/Xomacito-1.2.10-Setup.exe) y después la actualización 1.4.1. El paquete completo incluye FFmpeg y los componentes principales; los modelos de inteligencia artificial se descargan únicamente cuando se solicitan.
+Para instalar o actualizar desde una versión antigua (incluida 3.3), usa el [instalador completo 1.4.1](https://github.com/Strike2911/Xomacito/releases/download/v4.0.41/Xomacito-1.4.1-Setup.exe). También lo reconoce el botón **Buscar actualización** de los clientes antiguos. Conserva tu cuenta, colección y preferencias; no hace falta desinstalar primero. El paquete incluye FFmpeg y los componentes principales; los modelos de inteligencia artificial se descargan cuando se solicitan.
+
+Las instalaciones recientes también pueden usar [la actualización ligera 1.4.1](https://github.com/Strike2911/Xomacito/releases/download/v4.0.41/Xomacito-1.4.1-Update-Light.exe).
+
+### Publicación compatible con versiones antiguas
+
+Cada release estable de Windows debe incluir el `Xomacito-<versión>-Setup.exe` completo, además del paquete ligero opcional. Los actualizadores 1.6–3.3 solo reconocen el nombre `Setup`; renombrar el paquete ligero no sustituye los componentes que faltan en instalaciones antiguas. Mantén los tags internos `v4.0.x` crecientes aunque la versión comercial sea `1.x`.
+
+Compila con `scripts/build_release.ps1` (sin `-LightOnly` para publicar). Sube los archivos a un borrador y publica con `python scripts/publish_release.py --tag v4.0.41` (sustituye el tag en versiones futuras). Este comando exige el instalador completo, su SHA-256 de GitHub y una versión interna que no retroceda. `--check-only` verifica sin publicar. El workflow **Validate legacy Windows updates** comprueba también los actualizadores históricos después de cada publicación.
 
 > Windows puede mostrar una advertencia de SmartScreen porque el instalador todavía no utiliza un certificado comercial de firma de código. Comprueba que el archivo provenga de este repositorio antes de ejecutarlo.
 
