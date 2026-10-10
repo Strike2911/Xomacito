@@ -32,8 +32,16 @@ def validate_release(release: dict, repository: str = REPO) -> dict:
     if not re.fullmatch(r"sha256:[0-9a-fA-F]{64}", str(asset.get("digest", ""))):
         raise ValueError("GitHub todavía no ofrece un SHA-256 verificable para el instalador completo.")
     url = urlparse(str(asset.get("browser_download_url", "")))
+    expected_path = f"/{repository}/releases/download/{tag}/{asset['name']}"
+    # GitHub gives draft assets an untagged URL until publication. The API
+    # response still identifies their repository and release; published assets
+    # must use the exact stable tag.
+    draft_path = bool(release.get("draft") and re.fullmatch(
+        rf"/{re.escape(repository)}/releases/download/untagged-[0-9a-f]+/{re.escape(asset['name'])}",
+        url.path,
+    ))
     if (url.scheme != "https" or url.netloc.lower() != "github.com"
-            or url.path != f"/{repository}/releases/download/{tag}/{asset['name']}"):
+            or (url.path != expected_path and not draft_path)):
         raise ValueError("El instalador no pertenece a esta publicación oficial.")
     return asset
 

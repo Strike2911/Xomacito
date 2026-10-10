@@ -27,6 +27,20 @@ def test_valid_full_installer_passes():
     assert publisher.validate_release(release())["name"].endswith("-Setup.exe")
 
 
+def test_official_draft_asset_can_be_published_but_stable_needs_exact_tag():
+    payload = release()
+    payload["draft"] = True
+    payload["assets"][0]["browser_download_url"] = payload["assets"][0]["browser_download_url"].replace("v4.0.41", "untagged-0123abcdef")
+    publisher.validate_release(payload)
+    payload["draft"] = False
+    with pytest.raises(ValueError):
+        publisher.validate_release(payload)
+    payload["draft"] = True
+    payload["assets"][0]["browser_download_url"] = payload["assets"][0]["browser_download_url"].replace("Strike2911/Xomacito", "someone/other")
+    with pytest.raises(ValueError):
+        publisher.validate_release(payload)
+
+
 @pytest.mark.parametrize("field,value", [
     ("state", "starter"), ("size", 0), ("size", 2 * 1024**3 + 1),
     ("digest", None), ("digest", "sha256:bad"),
