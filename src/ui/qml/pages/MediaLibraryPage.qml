@@ -302,25 +302,36 @@ ColumnLayout {
         }
     }
     Popup {
-        id: trimDialog; anchors.centerIn: Overlay.overlay; width: Math.min(820, page.width - 30); height: 390; modal: true; padding: 18
+        id: trimDialog; objectName: "clipSelectionDialog"; anchors.centerIn: Overlay.overlay; width: Math.min(820, page.width - 30); height: Math.min(650, Overlay.overlay.height - 28); modal: true; padding: 18
+        onOpened: { inspector.pause(); clipPreview.seek(page.viewState.clipIn) }
+        onClosed: clipPreview.pause()
         background: Rectangle { color: theme.colors.surface; radius: 18; border.color: theme.colors.border }
         ColumnLayout {
             anchors.fill: parent; spacing: 12
             Text { text: "Crear subclip · " + (page.selected.name || ""); Layout.fillWidth: true; elide: Text.ElideRight; color: theme.colors.text; font.pixelSize: 17 }
+            ClipPreview {
+                id: clipPreview; objectName: "clipSelectionPreview"
+                Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: 100; Layout.preferredHeight: 250
+                source: trimDialog.visible ? page.selected.previewSource || "" : ""
+                poster: page.selected.thumbnailSource || ""
+                audioOnly: page.selected.kind === "Audio" || page.viewState.clipMode === "Solo audio"
+                muted: page.viewState.clipMode === "Solo video"
+                inPoint: page.viewState.clipIn; outPoint: page.viewState.clipOut
+            }
             PremiereTimeline {
-                id: timeline; Layout.fillWidth: true; Layout.fillHeight: true
-                duration: page.selected.duration || 0; inPoint: page.viewState.clipIn; outPoint: page.viewState.clipOut; playhead: inspector.mediaPlayer.position / 1000
+                id: timeline; Layout.fillWidth: true; Layout.preferredHeight: 170
+                duration: page.selected.duration || 0; inPoint: page.viewState.clipIn; outPoint: page.viewState.clipOut; playhead: clipPreview.mediaPlayer.position / 1000
                 filmstripSource: page.viewState.filmstripSource; waveformSource: page.viewState.waveformSource; fallbackSource: page.selected.thumbnailSource || ""
                 filmstripBusy: page.viewState.filmstripBusy; waveformBusy: page.viewState.waveformBusy
-                onSeekRequested: function(value) { inspector.pause(); inspector.mediaPlayer.position = value * 1000 }
-                onInPointMoved: function(value) { mediaLibraryController.setValue("clipIn", value); inspector.mediaPlayer.position = value * 1000 }
-                onOutPointMoved: function(value) { mediaLibraryController.setValue("clipOut", value); inspector.mediaPlayer.position = value * 1000 }
+                onSeekRequested: function(value) { clipPreview.seek(value) }
+                onInPointMoved: function(value) { mediaLibraryController.setValue("clipIn", value); clipPreview.seek(value) }
+                onOutPointMoved: function(value) { mediaLibraryController.setValue("clipOut", value); clipPreview.seek(value) }
             }
             XComboBox { Layout.fillWidth: true; model: page.selected.kind === "Audio" ? ["Solo audio"] : ["Video + audio", "Solo video", "Solo audio"]; currentIndex: Math.max(0, model.indexOf(page.viewState.clipMode)); onActivated: mediaLibraryController.setValue("clipMode", currentText) }
             RowLayout {
                 Layout.fillWidth: true
                 Text { Layout.fillWidth: true; text: page.viewState.busy ? page.viewState.status : page.viewState.lastClipPath ? "Subclip guardado en tu biblioteca." : "El original se conserva."; color: theme.colors.textDim; font.pixelSize: 11; wrapMode: Text.WordWrap }
-                XButton { text: "Guardar"; compact: true; enabled: !page.viewState.busy; onClicked: mediaLibraryController.createClip() }
+                XButton { text: "Guardar"; compact: true; enabled: !page.viewState.busy; onClicked: { clipPreview.pause(); mediaLibraryController.createClip() } }
                 XButton { text: "Cerrar"; compact: true; kind: "ghost"; onClicked: trimDialog.close() }
             }
         }
