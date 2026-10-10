@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 from PySide6.QtCore import QObject,QMetaObject,Qt,QUrl
 from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtMultimedia import QVideoSink
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
 from PySide6.QtTest import QTest
@@ -41,6 +42,7 @@ QMetaObject.invokeMethod(preview,"playSelection",Qt.DirectConnection)
 QTest.qWait(150)
 assert preview.property("playing")
 assert 700 <= player.property("position") < 1400
+assert player.property("videoOutput").property("videoSink").videoFrame().isValid()
 QTest.qWait(1100)
 assert not preview.property("playing")
 assert player.property("position") == 1400
