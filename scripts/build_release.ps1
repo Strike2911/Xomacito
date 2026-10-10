@@ -86,6 +86,16 @@ if (-not (Test-Path -LiteralPath $Application)) {
     throw "No existe la aplicación compilada: $Application"
 }
 
+# Never ship a cleanup rule for a component still needed by this build.
+foreach ($CleanupLine in Get-Content -LiteralPath (Join-Path $ProjectRoot 'installer\retired-runtime.iss')) {
+    if ($CleanupLine -match 'Name: "\{app\}\\_internal\\([^\"]+)"') {
+        $RuntimeFile = Join-Path (Join-Path $ProjectRoot 'dist\Xomacito\_internal') $Matches[1]
+        if (Test-Path -LiteralPath $RuntimeFile) {
+            throw "La limpieza intenta quitar un componente incluido en la compilación: $RuntimeFile"
+        }
+    }
+}
+
 $SelfTestProcess = Start-Process -FilePath $Application -ArgumentList '--self-test' `
     -WindowStyle Hidden -Wait -PassThru
 if ($SelfTestProcess.ExitCode -ne 0) {
@@ -127,11 +137,11 @@ foreach ($PackageScript in $PackageScripts) {
     }
 }
 
-$Installer = Join-Path $ProjectRoot 'release\Xomacito-1.4.1-Setup.exe'
+$Installer = Join-Path $ProjectRoot 'release\Xomacito-1.4.2-Setup.exe'
 if (-not $LightOnly -and -not (Test-Path -LiteralPath $Installer)) {
     throw "No se generó el instalador esperado: $Installer"
 }
-$LightInstaller = Join-Path $ProjectRoot 'release\Xomacito-1.4.1-Update-Light.exe'
+$LightInstaller = Join-Path $ProjectRoot 'release\Xomacito-1.4.2-Update-Light.exe'
 if (-not (Test-Path -LiteralPath $LightInstaller)) {
     throw "No se generó la actualización ligera esperada: $LightInstaller"
 }

@@ -165,6 +165,7 @@ class MediaLibraryController(QObject):
     stateChanged = Signal()
     notificationRequested = Signal(str, str, str)
     libraryPathChanged = Signal(str)
+    premiereSetupRequested = Signal()
 
     ROLES = [
         "path", "name", "kind", "duration", "durationLabel", "sizeLabel", "dimensions",
@@ -247,6 +248,8 @@ class MediaLibraryController(QObject):
             "premiereLinkEnabled": bool(
                 settings.get("premiere_auto_import_enabled", False) or _premiere_panel_installed()
             ),
+            "premiereSetupBusy": False,
+            "premiereSetup": {},
             "premierePanelAvailable": (self.project_root / "premiere-panel" / "Xomacito-Link.ccx").is_file(),
         }
         self.refresh()
@@ -938,51 +941,53 @@ class MediaLibraryController(QObject):
 
     @Slot()
     def connectPremiere(self):
-        """Prepara la biblioteca y guía la instalación o apertura del panel UXP."""
-        package = self.project_root / "premiere-panel" / "Xomacito-Link.ccx"
-        panel_installed = _premiere_panel_installed()
-        if not panel_installed and not package.is_file():
-            self.notificationRequested.emit(
-                "error", "Panel no disponible", "Primero hay que compilar Xomacito Link.",
-            )
-            return
-        marker = self.root / ".xomacito-premiere-link.json"
-        marker.write_text(
-            json.dumps(
-                {
-                    "schema": 1,
-                    "enabled": True,
-                    "bin": "Xomacito Import",
-                    "library": str(self.root),
-                    "updatedAt": datetime.now().astimezone().isoformat(),
-                },
-                ensure_ascii=False,
-                indent=2,
-            ) + "\n",
-            encoding="utf-8",
-        )
-        self.settings.set("premiere_auto_import_enabled", True)
-        if panel_installed and not package.is_file():
-            message = (
-                "Reinicia Premiere si estaba abierto y entra a Ventana > Plugins UXP > "
-                "Xomacito Link. El menú >> sólo muestra paneles ya abiertos."
-            )
-            self._set_state(
-                premiereLinkEnabled=True,
-                status="Xomacito Link instalado. Ábrelo desde Ventana > Plugins UXP.",
-            )
-            self.notificationRequested.emit("success", "Xomacito Link instalado", message)
-            return
+        self.premiereSetupRequested.emit()
+        self.checkPremiereSetup()
 
-        self._set_state(
-            premiereLinkEnabled=True,
-            status="Instala o actualiza Xomacito Link, reinicia Premiere y ábrelo desde Ventana > Plugins UXP.",
-        )
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(package)))
-        self.notificationRequested.emit(
-            "success", "Instalador de Xomacito Link abierto",
-            "Al terminar, reinicia Premiere y abre Ventana > Plugins UXP > Xomacito Link.",
-        )
+    @Slot()
+    def checkPremiereSetup(self):
+        self._run_premiere_setup(False)
+
+    @Slot()
+    def installPremierePanel(self):
+        self._run_premiere_setup(True)
+
+    def _run_premiere_setup(self, install):
+        if self._state.get("premiereSetupBusy"):
+            return
+        from src.core.premiere_install import panel_status
+        self._set_state(premiereSetupBusy=True)
+        package = self.project_root / "premiere-panel" / "Xomacito-Link.ccx"
+        self.pool.submit(panel_status, package, install,
+                         on_result=self._premiere_setup_result,
+                         on_error=self._premiere_setup_error)
+
+    def _premiere_setup_result(self, result):
+        self._set_state(premiereSetupBusy=False, premiereSetup=result)
+        # Installation is separate from the live project heartbeat. Never enable
+        # auto-import merely because the user opened an installer.
+
+    def _premiere_setup_error(self, message, detail):
+        self._set_state(premiereSetupBusy=False, premiereSetup={
+            "verified": False, "canInstall": False,
+            "message": "No se pudo comprobar Adobe: " + str(message),
+        })
+
+    @Slot()
+    def openPremierePackage(self):
+        package = self.project_root / "premiere-panel" / "Xomacito-Link.ccx"
+        if not package.is_file() or not QDesktopServices.openUrl(QUrl.fromLocalFile(str(package))):
+            self.notificationRequested.emit("warning", "No se pudo abrir Creative Cloud",
+                                            "Abre Creative Cloud Desktop o usa Instalar desde el asistente.")
+        else:
+            self.notificationRequested.emit("info", "Solicitud enviada a Adobe",
+                                            "Completa la instalación en Creative Cloud y pulsa Comprobar estado. Aún no se ha confirmado la instalación.")
+
+    @Slot()
+    def showPremierePackage(self):
+        from .download_controller import reveal_in_file_manager
+        package = self.project_root / "premiere-panel" / "Xomacito-Link.ccx"
+        reveal_in_file_manager(package)
 
     def shutdown(self):
         return None

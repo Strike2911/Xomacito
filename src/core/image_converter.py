@@ -65,7 +65,6 @@ class ImageConverter:
         self.ffmpeg_processor = ffmpeg_processor
 
         # --- Variables para Lazy Loading de IA ---
-        self.rembg_module = None   # Aquí guardaremos la librería cargada
         self.rembg_sessions = {}   # Aquí guardaremos las sesiones de modelos
         
         # --- Asignar correctamente las variables ---
@@ -118,33 +117,6 @@ class ImageConverter:
         except Exception as e:
             print(f"ERROR buscando Ghostscript: {e}")
             return None, None
-        
-    def _load_rembg_lazy(self, progress_callback=None):
-        """
-        Intenta cargar la librería rembg solo cuando se solicita.
-        Retorna True si se cargó (o ya estaba cargada), False si falló.
-        """
-        if self.rembg_module is not None:
-            return True # Ya estaba cargado en memoria
-
-        print("INFO: Inicializando motor de IA (Rembg)...")
-        
-        if progress_callback:
-            try:
-                # Enviamos None en porcentaje para no mover la barra, solo cambiar el texto
-                progress_callback(None, "Inicializando Motor IA (esto puede tardar unos segundos)...")
-            except Exception:
-                pass 
-        try:
-            import rembg
-            self.rembg_module = rembg
-            return True
-        except ImportError as e:
-            print(f"ERROR CRÍTICO: No se pudo cargar el módulo 'rembg': {e}")
-            return False
-        except Exception as e:
-            print(f"ERROR INESPERADO cargando rembg: {e}")
-            return False
         
     def clear_ai_sessions(self):
         """Libera la memoria de los modelos de IA cargados."""

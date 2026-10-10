@@ -3,7 +3,7 @@
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_dynamic_libs, copy_metadata
 
 
 PROJECT_ROOT = Path(SPECPATH).resolve().parent
@@ -56,12 +56,18 @@ hiddenimports = [
 # Conserva el mismo conjunto funcional validado por el build portable.
 for package in (
     "Cryptodome", "curl_cffi",
-    "rembg", "onnxruntime", "pillow_avif", "yt_dlp_ejs", "yt_dlp",
+    "pillow_avif", "yt_dlp_ejs", "yt_dlp",
 ):
     package_datas, package_binaries, package_hiddenimports = collect_all(package)
     datas += package_datas
     binaries += package_binaries
     hiddenimports += package_hiddenimports
+
+# ONNX inference is called directly. Its training, datasets and conversion tools
+# are not runtime dependencies and used to pull scipy/numba/LLVM into the app.
+binaries += collect_dynamic_libs("onnxruntime")
+datas += copy_metadata("onnxruntime-directml")
+hiddenimports += ["onnxruntime", "onnxruntime.capi.onnxruntime_pybind11_state"]
 
 a = Analysis(
     [str(PROJECT_ROOT / "main.py")],
@@ -69,10 +75,13 @@ a = Analysis(
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
-    hookspath=[],
+    hookspath=[str(PROJECT_ROOT / ".build" / "hooks")],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["tkinter", "customtkinter", "tkinterdnd2", "flask_socketio", "socketio", "engineio", "gevent"],
+    excludes=["tkinter", "customtkinter", "tkinterdnd2", "flask_socketio", "socketio", "engineio", "gevent",
+              "rembg", "pymatting", "numba", "llvmlite", "scipy", "skimage",
+              "onnxruntime.tools", "onnxruntime.training", "onnxruntime.datasets",
+              "PySide6.QtWebEngineCore", "PySide6.QtWebEngineQuick", "PySide6.QtWebEngineWidgets"],
     noarchive=False,
     optimize=1,
 )
@@ -91,6 +100,8 @@ def is_conflicting_top_level_icu(entry):
 
 
 a.binaries = [entry for entry in a.binaries if not is_conflicting_top_level_icu(entry)]
+# QtQml collects every installed QML plugin, even web modules never imported by
+# Xomacito. Remove those inputs before binary dependency analysis via the hook.
 pyz = PYZ(a.pure)
 
 exe = EXE(

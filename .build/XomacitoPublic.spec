@@ -41,7 +41,7 @@ hiddenimports = [
     "xomacito_runtime", "pyarmor_runtime_000000",
 ]
 for package in (
-    "Cryptodome", "curl_cffi", "rembg", "onnxruntime",
+    "Cryptodome", "curl_cffi", "onnxruntime",
     "pillow_avif", "yt_dlp_ejs", "yt_dlp",
 ):
     package_datas, package_binaries, package_hiddenimports = collect_all(package)

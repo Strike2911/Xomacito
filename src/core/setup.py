@@ -41,7 +41,7 @@ def check_and_install_python_dependencies(progress_callback):
     progress_callback("Verificando dependencias de Python...", 5)
     
     import importlib.util
-    required_packages = ['PySide6', 'PIL', 'requests', 'py7zr', 'rembg']
+    required_packages = ['PySide6', 'PIL', 'requests', 'py7zr', 'onnxruntime']
     missing_packages = []
     
     for pkg in required_packages:

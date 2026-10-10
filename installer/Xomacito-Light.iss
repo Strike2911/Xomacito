@@ -1,6 +1,6 @@
 #define MyAppName "Xomacito"
-#define MyAppVersion "4.0.41"
-#define MyAppDisplayVersion "1.4.1"
+#define MyAppVersion "4.0.42"
+#define MyAppDisplayVersion "1.4.2"
 #define MyAppExeName "Xomacito.exe"
 #define ProjectRoot ".."
 #define UninstallKey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{8B474FFD-6C60-4B82-889E-7DD12563E7E5}_is1"
@@ -18,7 +18,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#ProjectRoot}\release
-OutputBaseFilename=Xomacito-1.4.1-Update-Light
+OutputBaseFilename=Xomacito-1.4.2-Update-Light
 SetupIconFile={#ProjectRoot}\Xomacito-icon.ico
 Compression=lzma2/max
 SolidCompression=yes
@@ -29,15 +29,16 @@ RestartApplications=no
 CreateUninstallRegKey=no
 Uninstallable=no
 MinVersion=10.0.17763
-VersionInfoVersion=4.0.41.0
+VersionInfoVersion=4.0.42.0
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppDisplayVersion}
-VersionInfoDescription=Xomacito 1.4.1 - Actualización ligera
+VersionInfoDescription=Xomacito 1.4.2 - Actualización ligera
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [InstallDelete]
+#include "retired-runtime.iss"
 Type: files; Name: "{app}\_internal\assets\progress\cat-siamese-1.png"
 Type: files; Name: "{app}\_internal\assets\progress\cat-siamese-2.png"
 

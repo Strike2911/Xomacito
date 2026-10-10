@@ -217,7 +217,12 @@ class SettingsController(QObject):
         panel = self.project_root / "premiere-panel"
         package = panel / "Xomacito-Link.ccx"
         if package.is_file():
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(package)))
+            opened = QDesktopServices.openUrl(QUrl.fromLocalFile(str(package)))
+            self.notificationRequested.emit(
+                "info" if opened else "warning", "Instalación de Xomacito Link",
+                "Completa la instalación en Adobe. Comprueba el estado desde Biblioteca > Conectar Premiere."
+                if opened else "No se pudo abrir Adobe. Usa Biblioteca > Conectar Premiere para instalar y comprobar el panel.",
+            )
             return
         if panel.is_dir():
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(panel)))

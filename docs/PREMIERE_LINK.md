@@ -1,5 +1,13 @@
 # Xomacito Link: arquitectura y criterios de interfaz
 
+## Instalación y diagnóstico (1.4.2)
+
+En Biblioteca → Conectar Premiere, el asistente consulta el agente oficial de Adobe (UPIA). **Instalar / actualizar** instala el CCX incluido; después vuelve a consultar Adobe para confirmar que Xomacito Link está habilitado y su versión corresponde al paquete. Abrir un archivo CCX por asociación de Windows no cuenta como instalación confirmada.
+
+Requiere Premiere 25.6 o posterior (incluido 26.0), abierto al menos una vez, y Creative Cloud Desktop con sesión iniciada. Tras instalar, reinicia Premiere, abre Ventana → Plugins UXP → Xomacito Link, autoriza la misma carpeta de Biblioteca y abre un proyecto. La conexión se confirma mediante el heartbeat del panel, independientemente de la instalación.
+
+Si Adobe falla, el asistente muestra su código y ofrece volver a comprobar, abrir el CCX manualmente o localizarlo. No activa la autoimportación como consecuencia de abrir el instalador. [Instalación oficial de Adobe](https://developer.adobe.com/premiere-pro/uxp/plugins/distribution/install/).
+
 ## Flujo
 
 1. Xomacito crea `Videos/Xomacito` y la usa como destino común de las descargas nuevas.

@@ -14,6 +14,47 @@ ColumnLayout {
     property string playbackError: ""
     spacing: 10
     onVisibleChanged: if (!visible) inspector.pause()
+    Connections {
+        target: mediaLibraryController
+        function onPremiereSetupRequested() { premiereSetup.open() }
+    }
+    Popup {
+        id: premiereSetup; objectName: "premiereSetupPopup"
+        parent: Overlay.overlay; anchors.centerIn: parent
+        width: Math.min(620, parent.width - 32); height: Math.min(570, parent.height - 32)
+        modal: true; focus: true; padding: 20
+        background: Rectangle { color: theme.colors.surface; radius: 18; border.color: theme.colors.border }
+        ScrollView {
+            anchors.fill: parent; contentWidth: availableWidth; clip: true
+            ColumnLayout {
+                width: parent.width; spacing: 14
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text { text: "Conectar con Premiere"; Layout.fillWidth: true; color: theme.colors.text; font.pixelSize: 20; font.bold: true }
+                    XButton { text: "Cerrar"; compact: true; kind: "ghost"; onClicked: premiereSetup.close() }
+                }
+                Text { Layout.fillWidth: true; text: "1. Instalar Xomacito Link"; font.bold: true; color: theme.colors.text }
+                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: theme.colors.textMuted; text: "Requiere Premiere 25.6 o posterior y Creative Cloud Desktop. El panel viene incluido en Xomacito; Adobe debe instalarlo para que aparezca en Premiere." }
+                BusyIndicator { Layout.alignment: Qt.AlignHCenter; running: page.viewState.premiereSetupBusy; visible: running; implicitHeight: 32 }
+                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: page.viewState.premiereSetup.verified ? theme.colors.accent : theme.colors.text; text: page.viewState.premiereSetupBusy ? "Esperando respuesta del instalador de Adobe…" : page.viewState.premiereSetup.message || "Comprobando instalación…" }
+                RowLayout {
+                    Layout.fillWidth: true
+                    XButton { Layout.fillWidth: true; text: page.viewState.premiereSetup.verified ? "Reinstalar panel" : "Instalar / actualizar"; compact: true; enabled: !page.viewState.premiereSetupBusy && Boolean(page.viewState.premiereSetup.canInstall); onClicked: mediaLibraryController.installPremierePanel() }
+                    XButton { Layout.fillWidth: true; text: "Comprobar estado"; compact: true; kind: "secondary"; enabled: !page.viewState.premiereSetupBusy; onClicked: mediaLibraryController.checkPremiereSetup() }
+                }
+                Text { Layout.fillWidth: true; text: "2. Abrir el panel y vincular"; font.bold: true; color: theme.colors.text }
+                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: theme.colors.textMuted; text: "Reinicia Premiere y abre Ventana > Plugins UXP > Xomacito Link. En el panel, selecciona esta carpeta y abre un proyecto:" }
+                Text { Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; color: theme.colors.text; text: page.viewState.rootPath || "" }
+                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: theme.colors.accent; text: premiereController.state.connected ? "Proyecto conectado a Xomacito." : "Esperando conexión del panel de Premiere." }
+                RowLayout {
+                    Layout.fillWidth: true
+                    XButton { Layout.fillWidth: true; text: "Abrir CCX"; compact: true; kind: "ghost"; enabled: !page.viewState.premiereSetupBusy; onClicked: mediaLibraryController.openPremierePackage() }
+                    XButton { Layout.fillWidth: true; text: "Ver archivo"; compact: true; kind: "ghost"; onClicked: mediaLibraryController.showPremierePackage() }
+                    XButton { Layout.fillWidth: true; text: "Ayuda Adobe"; compact: true; kind: "ghost"; onClicked: Qt.openUrlExternally("https://developer.adobe.com/premiere-pro/uxp/plugins/distribution/install/") }
+                }
+            }
+        }
+    }
     function clock(ms) {
         var seconds = Math.floor(ms / 1000)
         return Math.floor(seconds / 60).toString().padStart(2, "0") + ":" + (seconds % 60).toString().padStart(2, "0")

@@ -57,7 +57,7 @@ hiddenimports = [
     "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtQuickControls2",
     "PySide6.QtMultimedia",
 ]
-for package in ("Cryptodome", "curl_cffi", "rembg", "pymatting", "onnxruntime",
+for package in ("Cryptodome", "curl_cffi", "onnxruntime",
                 "pillow_avif", "yt_dlp_ejs", "yt_dlp"):
     package_data, package_binaries, package_imports = collect_all(package)
     datas += package_data

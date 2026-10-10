@@ -92,7 +92,7 @@ def self_test(resource_root):
     import cairosvg
     from pdf2image import convert_from_path
 
-    for package in ("rawpy", "cv2", "pillow_avif", "onnxruntime", "rembg", "yt_dlp", "yt_dlp_ejs"):
+    for package in ("rawpy", "cv2", "pillow_avif", "onnxruntime", "yt_dlp", "yt_dlp_ejs"):
         importlib.import_module(package)
     if not qVersion():
         raise RuntimeError("Qt no pudo inicializarse.")

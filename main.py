@@ -11,8 +11,8 @@ APP_NAME = "Xomacito"
 # La versión visible forma parte de la edición pública.  UPDATE_VERSION se
 # mantiene numérica para que el instalador de Windows y el actualizador puedan
 # comparar correctamente esta entrega con las instalaciones 3.x anteriores.
-APP_VERSION = "1.4.1"
-UPDATE_VERSION = "4.0.41"
+APP_VERSION = "1.4.2"
+UPDATE_VERSION = "4.0.42"
 
 FROZEN = bool(getattr(sys, "frozen", False))
 PROJECT_ROOT = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
@@ -275,8 +275,22 @@ def _run_self_test() -> int:
         return 0
     try:
         from PySide6.QtCore import qVersion
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtQml import QQmlApplicationEngine
+        from PySide6.QtQuickControls2 import QQuickStyle
+        import cv2
+        import numpy as np
+        import onnxruntime
 
-        if not qVersion():
+        if not qVersion() or "CPUExecutionProvider" not in onnxruntime.get_available_providers():
+            return 1
+        if not cv2.imencode(".png", np.zeros((8, 8, 3), dtype=np.uint8))[0]:
+            return 1
+        QQuickStyle.setStyle("Basic")
+        app = QGuiApplication([])
+        engine = QQmlApplicationEngine()
+        engine.loadData(b'import QtQuick\nimport QtQuick.Controls\nimport QtMultimedia\nApplicationWindow { visible: false; Button { text: "Test" } MediaPlayer {} }')
+        if not engine.rootObjects():
             return 1
     except (ImportError, OSError):
         return 1
