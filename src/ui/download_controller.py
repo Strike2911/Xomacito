@@ -35,7 +35,7 @@ from src.core.downloader import (
 )
 from src.core.exceptions import UserCancelledError
 from src.core.epidemic_sound import is_epidemic_sound_url
-from src.core.video_quality import quality_preserving_selector, validate_download_resolution
+from src.core.video_quality import quality_preserving_selector, validate_download_resolution, video_quality_key
 from src.core.file_naming import next_available_media_stem, next_available_path
 from src.core.processor import FFmpegProcessor, clean_and_convert_vtt_to_srt, pixel_format_has_alpha
 from src.core.thumbnail_export import (
@@ -1132,12 +1132,8 @@ class DownloadController(QObject):
             "logger": Logger(),
             "progress_hooks": [lambda _data: self.cancellation.is_set() and (_ for _ in ()).throw(UserCancelledError("Análisis cancelado."))],
         })
-        if is_youtube_url(url):
-            # El cliente incrustado evita el enlace ANDROID_VR que YouTube
-            # rechaza después con 403 y ahorra ese segundo análisis fallido.
-            options["extractor_args"] = {
-                "youtube": {"player_client": ["web_embedded"]},
-            }
+        # Use yt-dlp's supported default clients for the complete format list.
+        # The embedded player is only an access-error fallback, not a quality filter.
         if not instagram_url:
             options["playlist_items"] = "1"
         cookie, using_cookies = self._cookie_options(url)
@@ -1626,7 +1622,7 @@ class DownloadController(QObject):
             downloaded = True
             if options.get("mode") == "Video+Audio":
                 selected = self._video_map.get(options.get("video_label"), {})
-                if selected.get("height") or selected.get("width"):
+                if any(video_quality_key(selected)):
                     validate_download_resolution(self.ffmpeg.get_local_media_info(input_file), selected)
         if self.cancellation.is_set():
             raise UserCancelledError("Proceso cancelado.")
@@ -1818,11 +1814,7 @@ class DownloadController(QObject):
             "referer": options["url"],
         }
         if is_youtube_url(options.get("url", "")):
-            # Conserva el mismo cliente usado durante el analisis: en pruebas
-            # reales evito URLs CDN que FFmpeg rechazaba con HTTP 403.
-            ydl_options["extractor_args"] = {
-                "youtube": {"player_client": ["web_embedded"]},
-            }
+            # Match analysis: let yt-dlp choose its supported default clients.
             # Los bloques HTTP permiten que yt-dlp renueve la conexion cuando
             # el CDN limita una transferencia larga.
             ydl_options["http_chunk_size"] = 10 * 1024 * 1024

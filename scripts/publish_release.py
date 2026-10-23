@@ -5,11 +5,23 @@ import argparse
 import json
 import re
 import subprocess
+from pathlib import Path
 from urllib.parse import urlparse
 
 from packaging.version import Version
 
 REPO = "Strike2911/Xomacito"
+SECURITY_REVIEW = Path(__file__).resolve().parents[1] / "docs/windows-security-review.json"
+
+
+def validate_security_review(release: dict, review: dict) -> None:
+    """An unresolved detection cannot be cleared by bumping the release version."""
+    tag = str(release.get("tag_name", ""))
+    if tag in review["withdrawn_tags"]:
+        raise ValueError(f"{tag} está retirada por un incidente de seguridad.")
+    if Version(tag.removeprefix("v")) >= Version(review["affected_from"]):
+        if review.get("status") != "resolved" or not str(review.get("resolution", "")).strip():
+            raise ValueError("Publicación suspendida: " + review["reason"])
 
 
 def validate_release(release: dict, repository: str = REPO) -> dict:
@@ -60,6 +72,7 @@ def main():
     release = next((r for page in pages for r in page if r["tag_name"] == args.tag), None)
     if release is None:
         raise ValueError(f"No existe la publicación {args.tag}.")
+    validate_security_review(release, json.loads(SECURITY_REVIEW.read_text(encoding="utf-8")))
     asset = validate_release(release, args.repo)
     latest = json.loads(gh("api", f"repos/{args.repo}/releases/latest"))
     if Version(args.tag.removeprefix("v")) < Version(latest["tag_name"].removeprefix("v")):

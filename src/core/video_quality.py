@@ -1,4 +1,22 @@
 """Keep retries within the video quality the user selected."""
+from fractions import Fraction
+
+
+def video_dimensions(video):
+    return tuple(int(video.get(key) or (video.get("raw") or {}).get(key) or 0)
+                 for key in ("width", "height"))
+
+
+def video_resolution(video):
+    """A portrait 1080×1920 stream is 1080p, just like 1920×1080."""
+    dimensions = video_dimensions(video)
+    return min(dimensions) if all(dimensions) else max(dimensions)
+
+
+def video_quality_key(video):
+    width, height = video_dimensions(video)
+    return (video_resolution(video), width * height,
+            float(video.get("fps") or (video.get("raw") or {}).get("fps") or 0))
 
 
 def quality_preserving_selector(video):
@@ -14,17 +32,32 @@ def quality_preserving_selector(video):
 
 
 def validate_download_resolution(info, selected):
-    expected = sorted(int(selected.get(key) or (selected.get("raw") or {}).get(key) or 0)
-                      for key in ("width", "height"))
-    if not any(expected):
+    expected = sorted(video_dimensions(selected))
+    expected_fps = float(selected.get("fps") or (selected.get("raw") or {}).get("fps") or 0)
+    if not any(expected) and not expected_fps:
         return
     streams = [s for s in (info or {}).get("streams", []) if s.get("codec_type") == "video"
                and not (s.get("disposition") or {}).get("attached_pic")]
-    actual = max((sorted((int(s.get("width") or 0), int(s.get("height") or 0)))
-                  for s in streams), default=[0, 0])
+    stream = max(streams, key=video_quality_key, default={})
+    actual = sorted(video_dimensions(stream))
     if any(wanted and got < wanted for got, wanted in zip(actual, expected)):
         raise RuntimeError(
             f"El archivo recibido tiene {actual[0]}×{actual[1]}, inferior a la resolución "
             f"seleccionada ({expected[0]}×{expected[1]}). No se dará por completada la descarga. "
             "Vuelve a analizar el enlace para renovar los formatos disponibles."
         )
+    if expected_fps:
+        actual_fps = 0.0
+        for field in ("avg_frame_rate", "r_frame_rate"):
+            try:
+                actual_fps = float(Fraction(str(stream.get(field) or "0")))
+            except (ValueError, ZeroDivisionError):
+                continue
+            if actual_fps > 0:
+                break
+        if actual_fps < expected_fps - 0.5:
+            raise RuntimeError(
+                f"El archivo recibido tiene {actual_fps:g} FPS verificables; se seleccionaron "
+                f"{expected_fps:g} FPS. No se dará por completada la descarga. "
+                "Vuelve a analizar el enlace para renovar los formatos disponibles."
+            )

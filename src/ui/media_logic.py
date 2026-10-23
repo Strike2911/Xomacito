@@ -13,6 +13,7 @@ from src.core.constants import (
     VIDEO_EXTENSIONS,
 )
 from src.core.downloader import apply_site_specific_rules
+from src.core.video_quality import video_quality_key, video_resolution
 
 
 def normalize_info(info: dict | None) -> dict | None:
@@ -178,8 +179,10 @@ def build_media_choices(info: dict) -> dict[str, Any]:
             "raw": fmt,
         }
         if kind == "video":
-            height = common["height"]
+            height = video_resolution(common)
             resolution = f"{height}p" if height else str(fmt.get("resolution") or "Video")
+            if common["width"] and common["height"]:
+                resolution += f" ({common['width']}×{common['height']})"
             fps = f" · {common['fps']:.0f} fps" if common["fps"] else ""
             codecs = f"{vcodec}+{acodec}" if common["combined"] else vcodec
             audio_tag = f" · {language_name}" if language_name else ""
@@ -198,8 +201,7 @@ def build_media_choices(info: dict) -> dict[str, Any]:
             audio.append(common)
 
     video.sort(key=lambda item: (
-        -item["height"],
-        -item["fps"],
+        *(-value for value in video_quality_key(item)),
         0 if is_editor_mp4_video(item) else 1,
         -item["tbr"],
     ))

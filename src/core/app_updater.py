@@ -1031,6 +1031,12 @@ def check_for_app_update(
         response = client.get(LATEST_RELEASE_API, headers=REQUEST_HEADERS, timeout=timeout)
         response.raise_for_status()
         release = response.json()
+        if release.get("draft") or release.get("prerelease"):
+            return {
+                "update_available": False,
+                "current_version": str(current),
+                "error": "La publicación recibida está retirada o todavía no es estable.",
+            }
 
         latest_text = str(release.get("tag_name", "")).strip()
         latest = _parsed_version(latest_text)

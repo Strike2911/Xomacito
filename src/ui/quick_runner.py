@@ -7,6 +7,7 @@ from .download_controller import DEFAULT_OPTIONS, DownloadController
 from .media_logic import safe_filename
 from .presets import PREMIERE_AUDIO_PRESET
 from src.core.thumbnail_export import save_premiere_thumbnail
+from src.core.video_quality import video_quality_key, video_resolution
 
 
 class _JobSettings(QObject):
@@ -33,13 +34,15 @@ def choose_video(formats: dict, quality: str) -> str:
         return ""
     limit = int(quality[:-1]) if quality.endswith("p") else 100000
     entries = list(formats.items())
-    eligible = [(key, fmt) for key, fmt in entries if int(fmt.get("height") or 0) <= limit]
+    known = [(key, fmt) for key, fmt in entries if video_resolution(fmt)]
+    entries = known or entries
+    eligible = [(key, fmt) for key, fmt in entries if video_resolution(fmt) <= limit]
     if not eligible:
-        smallest = min(int(fmt.get("height") or 0) for _, fmt in entries)
-        eligible = [(key, fmt) for key, fmt in entries if int(fmt.get("height") or 0) == smallest]
+        smallest = min(video_resolution(fmt) for _, fmt in entries)
+        eligible = [(key, fmt) for key, fmt in entries if video_resolution(fmt) == smallest]
     return max(eligible, key=lambda entry: (
-        int(entry[1].get("height") or 0), bool(entry[1].get("compatible")),
-        float(entry[1].get("fps") or 0), float(entry[1].get("tbr") or 0),
+        *video_quality_key(entry[1]), bool(entry[1].get("compatible")),
+        float(entry[1].get("tbr") or 0),
     ))[0]
 
 
@@ -83,7 +86,17 @@ class _QuickRunner(DownloadController):
             self.pool.submit(self._thumbnail_worker, source, folder, title,
                              on_result=self._operation_success, on_error=self._operation_error)
             return
-        self._set_state(mode=mode, selectedVideo=choose_video(self._video_map, job["quality"]))
+        selected = choose_video(self._video_map, job["quality"])
+        if mode == "Video+Audio" and job["quality"].endswith("p"):
+            actual = video_resolution(self._video_map.get(selected, {}))
+            if actual < int(job["quality"][:-1]):
+                available = f"{actual}p" if actual else "una resolución sin verificar"
+                self._operation_error(
+                    f"Pediste {job['quality']}, pero el sitio solo ofrece {available} para esta descarga. "
+                    "Elige esa calidad o Mejor disponible para continuar; no se bajará automáticamente."
+                )
+                return
+        self._set_state(mode=mode, selectedVideo=selected)
         self._options = deepcopy(DEFAULT_OPTIONS)
         self._options.update(keepOriginal=False, autoSaveThumbnail=job["thumbnail"])
         if job.get('ranges'):

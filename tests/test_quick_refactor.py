@@ -42,7 +42,7 @@ class QuickRefactorTests(unittest.TestCase):
         self.assertTrue(restored['thumbnailOnly'])
         self.assertFalse(restored['thumbnail'])
         self.assertTrue(restored['playlist'])
-        self.assertEqual(restored['quality'], '1080p')
+        self.assertEqual(restored['quality'], 'Mejor disponible')
         self.assertEqual(preferences(restored, 'other'), restored)
         self.assertEqual(saved['quality'], 'bad')
 

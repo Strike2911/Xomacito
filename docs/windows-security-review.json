@@ -1,0 +1,7 @@
+{
+  "status": "open",
+  "affected_from": "4.0.43",
+  "withdrawn_tags": ["v4.0.43", "v4.0.44"],
+  "reason": "Bloqueos de Defender reportados en 1.4.3 y 1.4.4. Muestra original enviada a Microsoft; análisis pendiente.",
+  "resolution": ""
+}

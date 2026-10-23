@@ -1,8 +1,8 @@
 # Xomacito
 
-> La distribución 1.4.3 continúa suspendida por una detección de Microsoft Defender. La versión 1.4.4 corrige el inicio del instalador y la recodificación automática; los análisis locales del runtime y del instalador completo no registraron detecciones, y su instalación y apertura se comprobaron sin nuevas alertas. No hay confirmación de Microsoft sobre la detección anterior.
+> Las versiones Windows 1.4.3 y 1.4.4 están retiradas por bloqueos de Microsoft Defender. El ejecutable original se envió a Microsoft para análisis; el caso sigue pendiente. Los análisis locales sin detecciones no resolvieron el problema en otros equipos. No desactives el antivirus ni añadas exclusiones. La corrección de calidad está en el código fuente, todavía sin un nuevo instalador publicado. [Estado de la investigación](docs/defender-1.4.3-review.md).
 
-Versión visible actual: **Xomacito 1.4.4**. Revisión interna de actualización: **4.0.44**.
+Última publicación pública de Windows: **Xomacito 1.4.2**. Las revisiones **4.0.43** y **4.0.44** no se distribuyen. El código de desarrollo contiene correcciones posteriores a 1.4.4.
 
 Aplicación independiente para Windows y macOS que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike** pero principalmente inspirado en Dowp hecho por Marck.
 
@@ -10,9 +10,9 @@ Aplicación independiente para Windows y macOS que permite descargar, convertir 
 
 [![Descargar Xomacito](https://img.shields.io/badge/Descargar-Xomacito-2ea44f?style=for-the-badge&logo=windows)](https://github.com/Strike2911/Xomacito/releases/latest)
 
-Para instalar o actualizar desde una versión antigua (incluida 3.3), usa el [instalador completo 1.4.4](https://github.com/Strike2911/Xomacito/releases/download/v4.0.44/Xomacito-1.4.4-Setup.exe). También lo reconoce el botón **Buscar actualización** de los clientes antiguos. Conserva tu cuenta, colección y preferencias; no hace falta desinstalar primero. El paquete incluye FFmpeg y los componentes principales; los modelos de inteligencia artificial se descargan cuando se solicitan.
+Las [publicaciones disponibles](https://github.com/Strike2911/Xomacito/releases) indican su versión y archivos. La última publicación pública, 1.4.2, no incluye la nueva corrección de calidad. Los clientes antiguos (incluida 3.3) requieren el instalador completo; el paquete incluye FFmpeg y los componentes principales, mientras que los modelos de inteligencia artificial se descargan cuando se solicitan.
 
-Las instalaciones recientes también pueden usar [la actualización ligera 1.4.4](https://github.com/Strike2911/Xomacito/releases/download/v4.0.44/Xomacito-1.4.4-Update-Light.exe).
+La actualización ligera 1.4.4 también está retirada. Cambiar entre el paquete completo y el ligero no resuelve un bloqueo del mismo ejecutable por Defender.
 
 ### Premiere y tamaño de la aplicación
 
@@ -27,6 +27,8 @@ Cada release estable de Windows debe incluir el `Xomacito-<versión>-Setup.exe` 
 Compila con `scripts/build_release.ps1` (sin `-LightOnly` para publicar). Sube los archivos a un borrador y publica con `python scripts/publish_release.py --tag v4.0.42` (sustituye el tag en versiones futuras). Este comando exige el instalador completo, su SHA-256 de GitHub y una versión interna que no retroceda. `--check-only` verifica sin publicar. El workflow **Validate legacy Windows updates** comprueba también los actualizadores históricos después de cada publicación.
 
 > Windows puede mostrar una advertencia de SmartScreen porque el instalador todavía no utiliza un certificado comercial de firma de código. Comprueba que el archivo provenga de este repositorio antes de ejecutarlo.
+
+El error 225 de antivirus es distinto de la advertencia de reputación de SmartScreen. `scripts/publish_release.py` bloquea nuevas publicaciones Windows desde 4.0.43 mientras `docs/windows-security-review.json` mantenga abierto el incidente. Para cerrar el incidente hay que documentar la investigación y la corrección; cambiar el número de versión o aprobar pruebas funcionales no basta.
 
 ## Descargar para Mac — Mac Version DMG
 

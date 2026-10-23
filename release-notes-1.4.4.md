@@ -1,6 +1,6 @@
 # Xomacito 1.4.4 — corrección de recodificación automática
 
-Actualización para Windows con instalador completo y paquete ligero.
+**Retirada el 23 de octubre de 2026:** usuarios reportaron bloqueos del ejecutable por Windows (error 225) también en esta versión. El archivo original se envió a Microsoft; el análisis está pendiente. No utilizar exclusiones ni desactivar la protección para ejecutar el archivo bloqueado.
 
 - Las descargas de video conservan el archivo recibido. Ya no se convierten automáticamente a H.264/AAC por estar en WEBM, MKV o usar otro códec dentro de MP4.
 - Se mantienen las conversiones solicitadas mediante preset o ajustes avanzados, los recortes precisos y la exportación de audio elegida por el usuario.

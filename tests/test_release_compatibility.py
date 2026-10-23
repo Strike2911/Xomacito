@@ -58,3 +58,22 @@ def test_public_version_cannot_replace_monotonic_internal_tag():
     payload["tag_name"] = "v1.4.1"
     with pytest.raises(ValueError, match="tag interno"):
         publisher.validate_release(payload)
+
+
+@pytest.mark.parametrize("tag", ["v4.0.43", "v4.0.44", "v4.0.45", "v5.0.0"])
+def test_open_security_incident_cannot_be_bypassed_with_a_new_version(tag):
+    review = {"status": "open", "affected_from": "4.0.43", "withdrawn_tags": ["v4.0.43", "v4.0.44"],
+              "reason": "Defender pendiente", "resolution": ""}
+    with pytest.raises(ValueError):
+        publisher.validate_security_review({"tag_name": tag}, review)
+
+
+def test_resolution_requires_evidence_and_keeps_withdrawn_builds_blocked():
+    review = {"status": "resolved", "affected_from": "4.0.43", "withdrawn_tags": ["v4.0.44"],
+              "reason": "Defender pendiente", "resolution": ""}
+    with pytest.raises(ValueError):
+        publisher.validate_security_review({"tag_name": "v4.0.45"}, review)
+    review["resolution"] = "Evidence of the investigation and remediation"
+    publisher.validate_security_review({"tag_name": "v4.0.45"}, review)
+    with pytest.raises(ValueError):
+        publisher.validate_security_review({"tag_name": "v4.0.44"}, review)

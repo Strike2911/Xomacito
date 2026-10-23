@@ -10,7 +10,7 @@ CHOICES = {
     "thumbnailMode": ["Sin miniatura", "Guardar miniatura", "Solo miniatura"],
 }
 DEFAULTS = {
-    "mode": "Video", "quality": "1080p", "audioFormat": "MP3 192",
+    "mode": "Video", "quality": "Mejor disponible", "audioFormat": "MP3 192",
     "outputPath": "", "thumbnail": False, "thumbnailOnly": False,
     "sendPremiere": False, "playlist": False, "postprocess": False,
     "preset": "Web/Móvil - H.264 Normal", "selectedTag": "Sin etiqueta",
