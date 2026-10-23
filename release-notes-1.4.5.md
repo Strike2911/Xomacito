@@ -10,4 +10,6 @@
 
 Validación de la corrección: 205 pruebas aprobadas. Con el enlace reportado se descargaron muestras reales a 1440p y 1080p, ambas a unos 60 FPS, mediante copia de streams. Esto verifica ese enlace en el equipo de prueba; no garantiza el catálogo de todas las cuentas o regiones ni certifica el resultado del antivirus.
 
+Paquetes generados el 23 de octubre de 2026. La comprobación de arranque del programa compilado terminó correctamente. El runtime y ambos instaladores pasaron los análisis locales de Defender sin detecciones; el caso de Microsoft sobre 1.4.4 sigue sin una resolución confirmada aquí.
+
 Revisión interna: 4.0.45. El instalador completo es necesario para versiones antiguas; el ligero requiere una instalación existente con sus componentes.
