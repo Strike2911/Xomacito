@@ -20,13 +20,19 @@ ComboBox {
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
     }
-    indicator: Text {
-        text: "⌄"
-        color: theme.colors.primary
-        font.pixelSize: 17
-        rightPadding: 12
+    indicator: Canvas {
+        width: 12; height: 8
         anchors.right: parent.right
+        anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
+        property color strokeColor: root.enabled ? theme.colors.textMuted : theme.colors.textDim
+        onStrokeColorChanged: requestPaint()
+        onPaint: {
+            var ctx = getContext("2d")
+            ctx.reset(); ctx.strokeStyle = strokeColor; ctx.lineWidth = 1.5
+            ctx.lineCap = "round"; ctx.lineJoin = "round"
+            ctx.beginPath(); ctx.moveTo(2, 2); ctx.lineTo(6, 6); ctx.lineTo(10, 2); ctx.stroke()
+        }
     }
     background: Rectangle {
         radius: 10

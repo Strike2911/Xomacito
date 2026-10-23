@@ -29,8 +29,6 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "keep_original_quick_enabled": True,
     "image_settings": {},
     "upscayl_custom_models": {},
-    "console_enabled": False,
-    "console_wrap": True,
     "keep_ai_models_in_memory": False,
     "show_onnx_warning": True,
     "vector_dpi": 300,

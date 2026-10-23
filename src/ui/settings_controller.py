@@ -11,9 +11,8 @@ from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFileDialog, QInputDialog
 
-from main import BIN_PATH, FFMPEG_BIN_DIR, MODELS_PATH
+from main import BIN_PATH, MODELS_PATH
 
-from src.core.console_handler import ConsoleHandler
 from src.core.downloader import apply_yt_patch, extract_info_resilient
 from src.core.setup import (
     check_and_download_rembg_models,
@@ -36,12 +35,8 @@ from .workers import TaskPool
 
 class SettingsController(QObject):
     stateChanged = Signal()
-    consoleTextChanged = Signal()
     notificationRequested = Signal(str, str, str)
     progressReported = Signal(float, str)
-    consoleChunk = Signal(str)
-    consoleFinished = Signal()
-    secretRequested = Signal()
 
     DEPENDENCY_ROLES = ["key", "name", "installed", "localVersion", "latestVersion", "detail", "action", "updateAvailable"]
     MODEL_ROLES = ["key", "name", "family", "path", "installed", "size"]
@@ -55,7 +50,6 @@ class SettingsController(QObject):
         self.dependencies = ObjectListModel(self.DEPENDENCY_ROLES, self)
         self.models = ObjectListModel(self.MODEL_ROLES, self)
         self._environment: dict[str, Any] = {}
-        self._console_text = "Xomacito Console\nEscribe xomacito help para ver los comandos disponibles.\n"
         if settings.get("progress_cat") == "siamese":
             settings.set("progress_cat", "classic")
         self._state = {
@@ -83,18 +77,9 @@ class SettingsController(QObject):
             "keepAiModels": settings.get("keep_ai_models_in_memory", False),
             "inkscapeEnabled": settings.get("inkscape_enabled", True),
             "inkscapePath": settings.get("inkscape_path", ""),
-            "consoleWrap": settings.get("console_wrap", True),
-            "consoleBusy": False,
             "premierePanelAvailable": (self.project_root / "premiere-panel" / "manifest.json").is_file(),
             "premierePanelPackageAvailable": (self.project_root / "premiere-panel" / "Xomacito-Link.ccx").is_file(),
         }
-        self.console = ConsoleHandler(str(BIN_PATH), FFMPEG_BIN_DIR, str(MODELS_PATH))
-        self.console.connect_callbacks(
-            lambda text, _tag="normal": self.consoleChunk.emit(str(text)),
-            lambda: self.consoleFinished.emit(),
-        )
-        self.consoleChunk.connect(self._append_console)
-        self.consoleFinished.connect(lambda: self._set_state(consoleBusy=False))
         self.progressReported.connect(self._apply_progress)
         self._refresh_local_dependencies()
         self.refreshModels()
@@ -110,10 +95,6 @@ class SettingsController(QObject):
     @Property(QObject, constant=True)
     def modelModel(self):
         return self.models
-
-    @Property(str, notify=consoleTextChanged)
-    def consoleText(self):
-        return self._console_text
 
     def _set_state(self, **values):
         changed = False
@@ -164,7 +145,6 @@ class SettingsController(QObject):
             "keepAiModels": "keep_ai_models_in_memory",
             "inkscapeEnabled": "inkscape_enabled",
             "inkscapePath": "inkscape_path",
-            "consoleWrap": "console_wrap",
         }
         if key in mapping:
             self.settings.set(mapping[key], value)
@@ -490,38 +470,9 @@ class SettingsController(QObject):
             self._set_state(theme="midnight_ocean")
 
     @Slot(str)
-    def executeConsole(self, command):
-        if not command.strip() or self._state["consoleBusy"]:
-            return
-        if " ".join(command.strip().casefold().split()) == "eres dios?":
-            self.secretRequested.emit()
-            return
-        self._set_state(consoleBusy=True)
-        self.console.execute_command(command)
-
-    @Slot()
-    def cancelConsole(self):
-        self.console.cancel_process()
-
-    @Slot()
-    def clearConsole(self):
-        self._console_text = "Xomacito Console\n"
-        self.consoleTextChanged.emit()
-
-    @Slot(str)
     def openUrl(self, url):
         QDesktopServices.openUrl(QUrl(url))
-
-    @Slot(str)
-    def _append_console(self, text):
-        self._console_text += text
-        if len(self._console_text) > 250_000:
-            self._console_text = self._console_text[-200_000:]
-        self.consoleTextChanged.emit()
 
     @Slot(float, str)
     def _apply_progress(self, value, message):
         self._set_state(progress=value, status=message)
-
-    def shutdown(self):
-        self.console.cancel_process()

@@ -55,6 +55,9 @@ class ObjectListModel(QAbstractListModel):
     def update_item(self, row: int, updates: dict):
         if not 0 <= row < len(self._items):
             return
+        updates = {key: value for key, value in updates.items() if self._items[row].get(key) != value}
+        if not updates:
+            return
         self._items[row].update(deepcopy(updates))
         idx = self.index(row, 0)
         roles = [role for role, name in self._role_ids.items() if name in updates]
@@ -78,6 +81,13 @@ class ObjectListModel(QAbstractListModel):
 
     def items(self) -> list[dict]:
         return deepcopy(self._items)
+
+    def find(self, role: str, value) -> int:
+        return next((row for row, item in enumerate(self._items) if item.get(role) == value), -1)
+
+    def values(self, role: str) -> tuple:
+        """Read one column without copying unrelated metadata and output lists."""
+        return tuple(deepcopy(item.get(role)) for item in self._items)
 
     @Slot(int, result="QVariantMap")
     def get(self, row: int):

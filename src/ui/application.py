@@ -196,7 +196,6 @@ class AppController(QObject):
         # aplicación, incluido el primer acceso de una ID recién conectada.
         self.social.stateChanged.connect(self._sync_social_cat_count)
         QTimer.singleShot(0, self._sync_social_cat_count)
-        self.config.secretRequested.connect(self._claim_void_secret)
         self.download.cancelledRequested.connect(play_download_failure_sound)
         self.download.notificationRequested.connect(self._play_download_error)
         self.batch.notificationRequested.connect(self._play_download_error)
@@ -236,11 +235,6 @@ class AppController(QObject):
     @Slot(int)
     def _play_download_completion(self, _completed_items=1):
         play_completion_sound()
-
-    @Slot()
-    def _claim_void_secret(self):
-        self.setPage(4)
-        self.cats.claimVoidSecret()
 
     @Slot(str, str, str)
     def _play_download_error(self, level, title, message):
@@ -599,7 +593,6 @@ class AppController(QObject):
         self.batch.shutdown()
         self.media_library.shutdown()
         self.image_studio.shutdown()
-        self.config.shutdown()
         self.settings.save()
         self.pool.wait_for_done(2000)
 

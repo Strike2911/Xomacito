@@ -36,7 +36,7 @@ ApplicationWindow {
             "page": 7, "target": "page", "icon": "↓",
             "title": "Modo rápido, a tu ritmo",
             "message": "Pega enlaces, elige calidad y descarga. Cada tarea conserva sus ajustes mientras preparas la siguiente.",
-            "actions": ["Busca un título con la lupa o selecciona elementos de una lista.", "Prepara recortes con las tijeras y conversiones en Postprocesar.", "Revisa la actividad, el historial lateral y la carpeta de destino inferior."]
+            "actions": ["Escribe un título para buscar o pega un enlace para descargar.", "Usa Recortar para elegir tramos y Postprocesar para convertir.", "Alterna Descargas e Historial; la carpeta de destino está abajo."]
         },
         {
             "page": 0, "target": "page", "icon": "↓",

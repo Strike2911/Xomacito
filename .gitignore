@@ -47,3 +47,5 @@ presets.json
 Thumbs.db
 desktop.ini
 
+
+.build/quick-refactor/

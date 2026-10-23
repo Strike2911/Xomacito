@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from urllib.parse import urlsplit
 from uuid import uuid4
 import re
 import math
@@ -14,141 +13,18 @@ from PySide6.QtCore import QObject, Property, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QApplication, QFileDialog
 
-from .download_controller import DEFAULT_OPTIONS, DownloadController, reveal_in_file_manager
+from .download_controller import DEFAULT_OPTIONS, reveal_in_file_manager
 from .list_model import ObjectListModel
-from .presets import PREMIERE_AUDIO_PRESET
-from .media_logic import seconds_from_time, safe_filename
+from .media_logic import seconds_from_time
 from src.core.downloader import extract_info_resilient
 from src.core.ytdlp_runtime import configure_ytdlp_options
-from src.core.thumbnail_export import save_premiere_thumbnail
+from .quick_options import ACTIVE_STATUSES, CHOICES, DEFAULTS, input_kind, job_options, output_path, preferences, thumbnail_mode
+from .quick_runner import _JobSettings, _QuickRunner, choose_video
 from .search_preview_controller import SearchPreviewController
 
 
-class _JobSettings(QObject):
-    """A job may read preferences, but must never overwrite the user's controls."""
-    changed = Signal(str, object)
-
-    def __init__(self, source, parent=None):
-        super().__init__(parent)
-        self.source = source
-        self.values = {"download_tags": [], "selected_download_tag": "Sin etiqueta",
-                       "recode_settings": {}, "open_explorer_after_download": False}
-
-    def get(self, key, default=None):
-        return deepcopy(self.values.get(key, self.source.get(key, default)))
-
-    def set(self, key, value):
-        self.values[key] = deepcopy(value)
-        self.changed.emit(key, value)
-
-
-def choose_video(formats: dict, quality: str) -> str:
-    """Keep the requested resolution; prefer an editor-friendly stream at that size."""
-    if not formats:
-        return ""
-    limit = int(quality[:-1]) if quality.endswith("p") else 100000
-    entries = list(formats.items())
-    eligible = [(key, fmt) for key, fmt in entries if int(fmt.get("height") or 0) <= limit]
-    if not eligible:
-        smallest = min(int(fmt.get("height") or 0) for _, fmt in entries)
-        eligible = [(key, fmt) for key, fmt in entries if int(fmt.get("height") or 0) == smallest]
-    return max(eligible, key=lambda entry: (
-        int(entry[1].get("height") or 0), bool(entry[1].get("compatible")),
-        float(entry[1].get("fps") or 0), float(entry[1].get("tbr") or 0),
-    ))[0]
-
-
-class _QuickRunner(DownloadController):
-    finished = Signal(str, str)
-
-    def _process_worker(self, options):
-        self.quick_outputs = []
-        result = super()._process_worker(options)
-        if Path(result).is_file(): self.quick_outputs.append(result)
-        self.quick_outputs = list(dict.fromkeys(path for path in self.quick_outputs if Path(path).is_file()))
-        return result
-
-    def _recode_file(self, *args, **kwargs):
-        result = super()._recode_file(*args, **kwargs)
-        self.quick_outputs.append(str(result))
-        return result
-
-    def _clip_without_recode(self, *args, **kwargs):
-        result = super()._clip_without_recode(*args, **kwargs)
-        self.quick_outputs.append(str(result))
-        return result
-
-    def _resolve_output(self, folder, name, suffix, *, ask=True):
-        # A background queue must not wait for a modal collision prompt.
-        return super()._resolve_output(folder, name, suffix, ask=False)
-
-    def _apply_url_analysis(self, info):
-        if self.cancellation.is_set():
-            self._operation_error("Cancelado")
-            return
-        super()._apply_url_analysis(info)
-        job = self.quick_options
-        mode = "Solo Audio" if job["mode"] == "Audio" or not self._video_map else "Video+Audio"
-        if self._image_post:
-            self._operation_error("Este enlace contiene imágenes. Usa la pestaña Descargar para importarlas.")
-            return
-        if job.get("thumbnailOnly"):
-            self._set_state(busy=True, status="Guardando miniatura…")
-            source, folder, title = self.state['thumbnailSource'], job['outputPath'], self.state['title']
-            self.pool.submit(self._thumbnail_worker, source, folder, title,
-                             on_result=self._operation_success, on_error=self._operation_error)
-            return
-        self._set_state(mode=mode, selectedVideo=choose_video(self._video_map, job["quality"]))
-        self._options = deepcopy(DEFAULT_OPTIONS)
-        self._options.update(keepOriginal=False, autoSaveThumbnail=job["thumbnail"])
-        if job.get('ranges'):
-            self._options.update(fragmentEnabled=True, fragmentRanges=deepcopy(job['ranges']))
-        if mode == "Solo Audio":
-            preset = PREMIERE_AUDIO_PRESET if job["audioFormat"] == "WAV" else "Audio - MP3 " + job["audioFormat"].split()[-1] + "kbps"
-            self._set_state(preset=preset)
-            self._options["applyPreset"] = True
-        elif job.get('postprocess') and job.get('preset'):
-            self._set_state(preset=job['preset'])
-            self._options['applyPreset'] = True
-        fragment_error = self._fragment_error()
-        if fragment_error:
-            self._operation_error(fragment_error)
-            return
-        if self.cancellation.is_set():
-            self._operation_error("Cancelado")
-        else:
-            self.start()
-
-    def _thumbnail_worker(self, source, folder, title):
-        import requests
-        if not source:
-            raise ValueError('El sitio no ofrece una miniatura para este enlace.')
-        if self.cancellation.is_set(): raise ValueError('Cancelado')
-        destination = Path(folder).expanduser()
-        destination.mkdir(parents=True, exist_ok=True)
-        target = self._resolve_output(destination, safe_filename(title), '.jpg', ask=False)
-        if source.startswith('file:'):
-            data = Path(QUrl(source).toLocalFile()).read_bytes()
-        else:
-            response = requests.get(source, timeout=30); response.raise_for_status(); data = response.content
-        if self.cancellation.is_set(): raise ValueError('Cancelado')
-        save_premiere_thumbnail(data, target)
-        self.quick_outputs = [str(target)]
-        return str(target)
-
-    def _operation_success(self, output):
-        super()._operation_success(output)
-        self.finished.emit("Completado", output)
-
-    def _operation_error(self, message, detail=""):
-        cancelled = self.cancellation.is_set() or "cancel" in message.lower()
-        super()._operation_error(message, detail)
-        self.finished.emit("Cancelado" if cancelled else "Error", "")
-
-
 class QuickController(QObject):
-    CHOICES = {"mode": {"Video", "Audio"}, "quality": {"Mejor disponible", "2160p", "1440p", "1080p", "720p", "480p", "360p"},
-               "audioFormat": {"MP3 128", "MP3 192", "MP3 320", "WAV"}}
+    CHOICES = CHOICES
     stateChanged = Signal()
     notificationRequested = Signal(str, str, str)
     successfulDownload = Signal(int)
@@ -157,6 +33,7 @@ class QuickController(QObject):
     premiereRequested = Signal(str, bool)
     cancelledRequested = Signal()
     discoveryReady = Signal()
+    discoveryRequested = Signal()
     ROLES = ["jobId", "url", "title", "detail", "status", "progress", "output", "outputs", "mode", "quality", "thumbnail"]
 
     def __init__(self, project_root, settings, pool, dialogs, presets, version, parent=None):
@@ -164,23 +41,14 @@ class QuickController(QObject):
         self.settings = settings
         self.pool = pool
         self._state = {
-            "url": "", "mode": "Video", "quality": "1080p", "audioFormat": "MP3 192",
-            "outputPath": settings.get("premiere_library_path", str(Path.home() / "Videos" / "Xomacito")),
-            "thumbnail": False, "sendPremiere": False, "running": False, "pending": 0,
-            "thumbnailOnly": False, "playlist": False, "postprocess": False,
-            "preset": "Web/Móvil - H.264 Normal", "selectedTag": "Sin etiqueta", "ranges": [],
+            **preferences(settings.get("quick_mode_preferences", {}),
+                          settings.get("premiere_library_path", str(Path.home() / "Videos" / "Xomacito"))),
+            "url": "", "running": False, "pending": 0, "ranges": [],
             "discovering": False, "discoveryTitle": "", "totalProgress": 0.0,
             "discoveryQuery": "", "discoverySource": "YouTube", "discoverySelected": 0,
             "discoveryHasMore": False, "discoveryPage": 0, "discoveryError": "",
         }
-        saved = settings.get("quick_mode_preferences", {})
-        if not isinstance(saved, dict):
-            saved = {}
-        for key in ("outputPath", "thumbnail", "sendPremiere", "mode", "quality", "audioFormat", "postprocess", "preset", "selectedTag"):
-            if key in saved and type(saved[key]) is type(self._state[key]):
-                if key in self.CHOICES and saved[key] not in self.CHOICES[key]:
-                    continue
-                self._state[key] = saved[key]
+        self._refresh_input()
         self.jobs = ObjectListModel(self.ROLES, self)
         self.history = ObjectListModel(self.ROLES, self)
         self.discovery = ObjectListModel(['url', 'title', 'duration', 'chosen', 'thumbnail', 'channel', 'views', 'isLive'], self)
@@ -201,9 +69,13 @@ class QuickController(QObject):
         self.runner.successfulDownload.connect(self.successfulDownload)
         self.runner.gachaSourceCompleted.connect(self.gachaSourceCompleted)
         self.runner.cancelledRequested.connect(self.cancelledRequested)
+        settings.changed.connect(self._settings_changed)
 
     @Property("QVariantMap", notify=stateChanged)
     def state(self): return self._state
+
+    @Property("QVariantMap", constant=True)
+    def choices(self): return CHOICES
 
     @Property(QObject, constant=True)
     def model(self): return self.jobs
@@ -219,15 +91,45 @@ class QuickController(QObject):
 
     @Slot(str, "QVariant")
     def setValue(self, key, value):
-        allowed = {"url", "mode", "quality", "audioFormat", "outputPath", "thumbnail", "sendPremiere", "thumbnailOnly", "playlist", "postprocess", "preset", "selectedTag"}
-        if key not in allowed:
+        if key == "thumbnailMode" and value in CHOICES[key]:
+            self._state.update(thumbnail=value == CHOICES[key][1], thumbnailOnly=value == CHOICES[key][2])
+        elif key in {*DEFAULTS, "url"} and type(value) is type(self._state[key]):
+            if key in CHOICES and value not in CHOICES[key]:
+                return
+            if self._state[key] == value:
+                return
+            self._state[key] = value
+            if value and key in {"thumbnail", "thumbnailOnly"}:
+                self._state["thumbnail" if key == "thumbnailOnly" else "thumbnailOnly"] = False
+        else:
             return
-        if key in self.CHOICES and value not in self.CHOICES[key]:
-            return
-        if type(value) is not type(self._state[key]): return
-        self._state[key] = value
+        self._refresh_input()
         self.stateChanged.emit()
-        self.settings.set("quick_mode_preferences", {name: self._state[name] for name in allowed - {"url"}})
+        if key != "url":
+            self.settings.set("quick_mode_preferences", {name: self._state[name] for name in DEFAULTS})
+
+    def _refresh_input(self):
+        kind = input_kind(self._state["url"])
+        destination = output_path(self._state, self.settings.get('download_tags', []))
+        self._state.update(inputKind=kind, thumbnailMode=thumbnail_mode(self._state),
+                           effectiveOutputPath=destination, taggedOutput=destination != self._state["outputPath"],
+                           actionLabel="Buscar" if kind == "search" else
+                           "Ver lista" if self._state["playlist"] else "Descargar")
+
+    def _settings_changed(self, key, value):
+        if key == "download_tags":
+            self._refresh_input()
+            self.stateChanged.emit()
+
+    @Slot()
+    def openSearch(self):
+        if self._state['discoverySource'] == 'playlist':
+            self.cancelDiscovery()
+            self.discovery.clear()
+            self._state.update(discoveryQuery="", discoveryPage=0, discoveryHasMore=False, discoverySelected=0)
+        self._state.update(discoverySource="YouTube")
+        self.stateChanged.emit()
+        self.discoveryRequested.emit()
 
     @Slot()
     def paste(self):
@@ -241,42 +143,50 @@ class QuickController(QObject):
 
     @Slot()
     def enqueue(self):
-        if self._state['playlist']:
-            self.discover(self._state['url'], 'playlist')
+        if self._closed:
             return
-        self._enqueue_urls(str(self._state["url"]).split())
+        kind = input_kind(self._state['url'])
+        if kind == 'search':
+            self.discover(self._state['url'], 'YouTube')
+        elif kind == 'links' and self._state['playlist']:
+            if len(self._state['url'].split()) != 1:
+                self.notificationRequested.emit('warning', 'Lista de reproducción', 'Pega un solo enlace para elegir sus videos.')
+                return
+            self.discover(self._state['url'], 'playlist')
+        else:
+            self._enqueue_urls(self._state['url'].split())
 
     def _enqueue_urls(self, values):
         urls = list(dict.fromkeys(values))
-        try:
-            valid = urls and all(urlsplit(url).scheme in {"http", "https"} and urlsplit(url).hostname for url in urls)
-        except ValueError:
-            valid = False
-        if not valid or len(urls) > 50:
+        if self._closed:
+            return
+        if not urls or len(urls) > 50 or any(input_kind(url) != "links" for url in urls):
             self.notificationRequested.emit("warning", "Revisa los enlaces", "Pega entre 1 y 50 enlaces HTTP o HTTPS, separados por espacios o líneas.")
             return
         for url in urls:
-            job = deepcopy(self._state)
-            tag = next((tag for tag in self.settings.get('download_tags', []) if isinstance(tag, dict) and tag.get('name') == job['selectedTag'] and tag.get('folder')), None)
-            if tag: job['outputPath'] = tag['folder']
+            job = job_options(self._state, self.settings.get('download_tags', []))
             job.update(jobId=uuid4().hex, url=url)
             self._pending.append(job)
             self.jobs.append({"jobId": job["jobId"], "url": url, "title": url,
                               "detail": "Esperando turno", "status": "En cola", "progress": 0.0,
                               "output": "", "thumbnail": "", "mode": job["mode"],
-                              "quality": job["audioFormat"] if job["mode"] == "Audio" else job["quality"]})
+                              "quality": "Miniatura" if job["thumbnailOnly"] else job["audioFormat"] if job["mode"] == "Audio" else job["quality"]})
         self._state["url"] = ""
+        self._refresh_input()
+        self.stateChanged.emit()
         self._update_state()
         self._next()
 
     def _update_state(self):
-        rows = self.jobs.items()
-        total = sum(1.0 if row['status'] in {'Completado', 'Error', 'Cancelado'} else max(0, row['progress']) for row in rows) / max(1, len(rows))
-        self._state.update(running=self._active is not None, pending=len(self._pending), totalProgress=total)
-        self.stateChanged.emit()
+        total = sum(1.0 if status not in ACTIVE_STATUSES else max(0, progress)
+                    for status, progress in zip(self.jobs.values("status"), self.jobs.values("progress"))) / max(1, self.jobs.count())
+        changes = dict(running=self._active is not None, pending=len(self._pending), totalProgress=total)
+        if any(self._state[key] != value for key, value in changes.items()):
+            self._state.update(changes)
+            self.stateChanged.emit()
 
     def _index(self, job_id):
-        return next((i for i, row in enumerate(self.jobs.items()) if row["jobId"] == job_id), -1)
+        return self.jobs.find("jobId", job_id)
 
     def _next(self):
         if self._closed or self._active or not self._pending:
@@ -355,24 +265,27 @@ class QuickController(QObject):
 
     @Slot()
     def clearActivity(self):
-        self.jobs.replace([row for row in self.jobs.items() if row['status'] in {'En cola', 'Analizando', 'Descargando'}])
+        self.jobs.replace([row for row in self.jobs.items() if row['status'] in ACTIVE_STATUSES])
         self._update_state()
 
     @Slot()
     def cancelAll(self):
-        for job in list(self._pending): self.cancel(job['jobId'])
+        for job in self._pending:
+            self.jobs.update_item(self._index(job['jobId']), {"status": "Cancelado", "detail": "Cancelado antes de iniciar"})
+        self._pending.clear()
+        self._update_state()
         if self._active: self.cancel(self._active['jobId'])
 
     @Slot(str)
     def removeJob(self, job_id):
         index = self._index(job_id)
         row = self.jobs.item(index)
-        if row and row['status'] not in {'En cola', 'Analizando', 'Descargando'}:
+        if row and row['status'] not in ACTIVE_STATUSES:
             self.jobs.remove(index); self._update_state()
 
     @Slot()
     def openOutputFolder(self):
-        folder = Path(self._state['outputPath']).expanduser()
+        folder = Path(self._state['effectiveOutputPath']).expanduser()
         if folder.is_dir(): QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     @Slot(str, str)
@@ -404,6 +317,7 @@ class QuickController(QObject):
                            discoveryPage=0, discoveryHasMore=False, discoverySelected=0, discoveryError="",
                            discoveryTitle='Lista de reproducción' if source == 'playlist' else 'Resultados de ' + source)
         self.stateChanged.emit()
+        self.discoveryRequested.emit()
         self._request_discovery(1)
 
     @Slot()

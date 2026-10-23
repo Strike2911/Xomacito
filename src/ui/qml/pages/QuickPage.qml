@@ -9,138 +9,137 @@ ColumnLayout {
     objectName: "quickWorkspace"
     property var viewState: quickController.state
     property bool historyOpen: false
-    spacing: 10
+    spacing: 8
     onVisibleChanged: if (!visible) quickController.previewController.close()
-    Connections { target: quickController; function onDiscoveryReady() { discoveryPopup.open() } }
+    Connections { target: quickController; function onDiscoveryRequested() { discoveryPopup.open() } }
     XCard {
-        Layout.fillWidth: true; implicitHeight: quickControls.implicitHeight + 24
+        Layout.fillWidth: true
+        implicitHeight: quickControls.implicitHeight + 20
+        radius: 12
         ColumnLayout {
-            id: quickControls; anchors.fill: parent; anchors.margins: 12; spacing: 8
+            id: quickControls
+            anchors.fill: parent; anchors.margins: 10; spacing: 8
             RowLayout {
-                Layout.fillWidth: true; spacing: 7
-                XButton { text: "⌕"; implicitWidth: 36; leftPadding: 6; rightPadding: 6; compact: true; kind: "secondary"; onClicked: discoveryPopup.open(); ToolTip.visible: hovered; ToolTip.text: "Buscar en YouTube o SoundCloud" }
+                Layout.fillWidth: true; spacing: 8
                 XTextField {
-                    objectName: "quickUrls"; Layout.fillWidth: true; Layout.minimumWidth: 130
-                    text: page.viewState.url; placeholderText: "Pega uno o varios enlaces…"
+                    objectName: "quickUrls"; Layout.fillWidth: true; compact: true
+                    text: page.viewState.url
+                    placeholderText: "Pega un enlace o escribe para buscar en YouTube…"
+                    Accessible.name: "Enlace o búsqueda"
                     onTextEdited: quickController.setValue("url", text)
                     onAccepted: quickController.enqueue()
                 }
-                XButton { text: page.viewState.ranges.length ? "✂ " + page.viewState.ranges.length : "✂"; implicitWidth: 42; leftPadding: 6; rightPadding: 6; compact: true; kind: page.viewState.ranges.length ? "primary" : "secondary"; onClicked: cutsPopup.open(); ToolTip.visible: hovered; ToolTip.text: "Preparar recortes" }
-                XComboBox { Layout.preferredWidth: page.width < 1050 ? 115 : 150; compact: true; model: downloadController.downloadTags; currentIndex: Math.max(0, model.indexOf(page.viewState.selectedTag)); onActivated: quickController.setValue("selectedTag", currentText) }
-                XComboBox { Layout.preferredWidth: 110; compact: true; model: ["Video", "Audio"]; currentIndex: model.indexOf(page.viewState.mode); onActivated: quickController.setValue("mode", currentText) }
-                XComboBox {
-                    Layout.preferredWidth: 128; compact: true
-                    model: page.viewState.mode === "Audio" ? ["MP3 128", "MP3 192", "MP3 320", "WAV"] : ["Mejor disponible", "2160p", "1440p", "1080p", "720p", "480p", "360p"]
-                    currentIndex: Math.max(0, model.indexOf(page.viewState.mode === "Audio" ? page.viewState.audioFormat : page.viewState.quality))
-                    onActivated: quickController.setValue(page.viewState.mode === "Audio" ? "audioFormat" : "quality", currentText)
+                XButton {
+                    objectName: "quickSubmit"; text: page.viewState.actionLabel
+                    compact: true; enabled: page.viewState.inputKind !== "empty" && !page.viewState.discovering
+                    onClicked: quickController.enqueue()
                 }
-                XButton { text: page.viewState.playlist ? "Ver lista" : "Descargar"; compact: true; enabled: page.viewState.url.trim().length > 0 && !page.viewState.discovering; onClicked: quickController.enqueue() }
+                XButton { text: "Buscar medios"; compact: true; kind: "ghost"; onClicked: quickController.openSearch() }
             }
-            RowLayout {
-                Layout.fillWidth: true; spacing: 12
-                XSwitch { text: "Lista de reproducción"; checked: page.viewState.playlist; onToggled: quickController.setValue("playlist", checked) }
-                XSwitch { text: "Miniatura"; checked: page.viewState.thumbnail; enabled: !page.viewState.thumbnailOnly; onToggled: quickController.setValue("thumbnail", checked) }
-                XSwitch { text: "Solo miniatura"; checked: page.viewState.thumbnailOnly; onToggled: quickController.setValue("thumbnailOnly", checked) }
-                Item { Layout.fillWidth: true }
-                Text { visible: page.viewState.discovering; text: "Buscando…"; color: theme.colors.accent; font.pixelSize: 11 }
-                XButton { text: "Postprocesar  ⚙"; compact: true; kind: page.viewState.postprocess || page.viewState.sendPremiere ? "primary" : "ghost"; onClicked: postPopup.open() }
-            }
-        }
-    }
-    RowLayout {
-        Layout.fillWidth: true
-        Text { text: "Actividad"; font.pixelSize: 14; font.weight: Font.DemiBold; color: theme.colors.text }
-        Text { text: page.viewState.pending + " en espera"; font.pixelSize: 11; color: theme.colors.textDim }
-        Item { Layout.fillWidth: true }
-        XButton { text: "Historial"; compact: true; kind: page.historyOpen ? "primary" : "ghost"; onClicked: page.historyOpen = !page.historyOpen }
-        XButton { text: "Cancelar todo"; compact: true; kind: "ghost"; enabled: page.viewState.running || page.viewState.pending > 0; onClicked: quickController.cancelAll() }
-        XButton { text: "Limpiar"; compact: true; kind: "ghost"; onClicked: quickController.clearActivity() }
-    }
-    RowLayout {
-        Layout.fillWidth: true; Layout.fillHeight: true; spacing: 10
-        XCard {
-            Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: 100
-            ListView {
-                id: activity; objectName: "quickActivity"; anchors.fill: parent; anchors.margins: 10; clip: true; spacing: 8
-                model: quickController.model; ScrollBar.vertical: XScrollBar {}
-                delegate: Rectangle {
-                    width: activity.width; height: 100; radius: 12; color: theme.colors.surfaceRaised
-                    RowLayout {
-                        anchors.fill: parent; anchors.margins: 10; spacing: 12
-                        Rectangle {
-                            Layout.preferredWidth: page.historyOpen && page.width < 1100 ? 66 : 108; Layout.fillHeight: true; radius: 7; color: theme.colors.surface; clip: true
-                            Image { anchors.fill: parent; source: model.thumbnail || ""; fillMode: Image.PreserveAspectFit; asynchronous: true; sourceSize.width: 240 }
-                            Text { anchors.centerIn: parent; visible: !model.thumbnail; text: model.mode === "Audio" ? "♫" : "↓"; font.pixelSize: 28; color: theme.colors.accent }
-                        }
-                        ColumnLayout {
-                            Layout.fillWidth: true; spacing: 6
-                            RowLayout {
-                                Layout.fillWidth: true
-                                Text { Layout.fillWidth: true; text: model.title; elide: Text.ElideRight; color: theme.colors.text; font.pixelSize: 13; font.weight: Font.DemiBold }
-                                XButton { visible: ["En cola", "Analizando", "Descargando"].indexOf(model.status) >= 0; text: "Cancelar"; compact: true; kind: "ghost"; implicitWidth: 80; onClicked: quickController.cancel(model.jobId) }
-                                XButton { visible: Boolean(model.output); text: "Abrir"; compact: true; implicitWidth: 58; leftPadding: 6; rightPadding: 6; kind: "ghost"; onClicked: quickController.openResult(model.output) }
-                                XButton { visible: Boolean(model.output); text: "Pr"; compact: true; implicitWidth: 36; leftPadding: 6; rightPadding: 6; kind: "secondary"; onClicked: quickController.sendToPremiere(model.output); ToolTip.visible: hovered; ToolTip.text: "Enviar a Premiere" }
-                                XButton { visible: ["En cola", "Analizando", "Descargando"].indexOf(model.status) < 0; text: "×"; compact: true; implicitWidth: 32; leftPadding: 6; rightPadding: 6; kind: "ghost"; onClicked: quickController.removeJob(model.jobId) }
-                            }
-                            Rectangle {
-                                Layout.fillWidth: true; height: 3; radius: 2; color: theme.colors.border
-                                Rectangle { width: parent.width * Math.max(0, Math.min(1, model.progress)); height: 3; radius: 2; color: model.status === "Error" ? theme.colors.error : theme.colors.accent }
-                            }
-                            Text { Layout.fillWidth: true; text: model.mode + " · " + model.quality + " · " + model.status + " · " + model.detail; elide: Text.ElideRight; color: theme.colors.textDim; font.pixelSize: 10 }
-                        }
+            Flow {
+                objectName: "quickOptions"
+                Layout.fillWidth: true; spacing: 8
+                Repeater {
+                    model: [
+                        {key: "mode", label: "Formato", size: 150},
+                        {key: "quality", label: "Calidad", size: 174},
+                        {key: "thumbnailMode", label: "Miniatura", size: 166}
+                    ]
+                    XComboBox {
+                        required property var modelData
+                        readonly property string optionKey: modelData.key === "quality" && page.viewState.mode === "Audio" ? "audioFormat" : modelData.key
+                        objectName: "quickOption_" + optionKey
+                        width: modelData.size; compact: true
+                        model: quickController.choices[optionKey]
+                        enabled: modelData.key === "thumbnailMode" || !page.viewState.thumbnailOnly
+                        currentIndex: Math.max(0, model.indexOf(page.viewState[optionKey]))
+                        displayText: modelData.key === "mode" && currentText === "Video" ? "Video + audio" : currentText
+                        Accessible.name: modelData.label
+                        ToolTip.visible: hovered; ToolTip.text: modelData.label
+                        onActivated: quickController.setValue(optionKey, currentText)
                     }
                 }
-                Text { anchors.centerIn: parent; visible: activity.count === 0; text: "Sin descargas"; color: theme.colors.textDim; font.pixelSize: 12 }
-            }
-        }
-        XCard {
-            visible: page.historyOpen; Layout.preferredWidth: Math.min(300, page.width * 0.29); Layout.fillHeight: true
-            ColumnLayout {
-                anchors.fill: parent; anchors.margins: 12
-                RowLayout {
-                    Text { text: "Historial"; Layout.fillWidth: true; color: theme.colors.text; font.pixelSize: 14 }
-                    XButton { text: "×"; implicitWidth: 32; leftPadding: 6; rightPadding: 6; compact: true; kind: "ghost"; onClicked: page.historyOpen = false }
-                }
-                ListView {
-                    id: historyList; objectName: "quickHistory"; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; spacing: 5; model: quickController.historyModel
-                    ScrollBar.vertical: XScrollBar {}
-                    delegate: Rectangle {
-                        width: historyList.width; height: 69; radius: 8; color: theme.colors.surfaceRaised
-                        MouseArea { anchors.fill: parent; onClicked: quickController.setValue("url", model.url) }
-                        ColumnLayout {
-                            anchors.fill: parent; anchors.margins: 8; spacing: 3
-                            Text { Layout.fillWidth: true; text: model.title; elide: Text.ElideRight; color: theme.colors.text; font.pixelSize: 11 }
-                            RowLayout {
-                                Text { Layout.fillWidth: true; text: model.mode + " · " + model.quality; color: theme.colors.textDim; font.pixelSize: 9 }
-                                XButton { text: "Abrir"; compact: true; implicitWidth: 56; leftPadding: 6; rightPadding: 6; kind: "ghost"; onClicked: quickController.openResult(model.output) }
-                            }
-                        }
+                CheckBox {
+                    objectName: "quickPlaylist"; text: "Playlist"; height: 36; width: 100
+                    checked: page.viewState.playlist
+                    onToggled: quickController.setValue("playlist", checked)
+                    indicator: Rectangle {
+                        x: 4; y: (parent.height - height) / 2; width: 16; height: 16; radius: 4
+                        color: parent.checked ? theme.colors.primary : theme.colors.surfaceSoft
+                        border.color: parent.activeFocus ? theme.colors.accent : theme.colors.border
+                        Text { anchors.centerIn: parent; text: "✓"; visible: page.viewState.playlist; color: "white"; font.pixelSize: 12 }
                     }
-                    Text { anchors.centerIn: parent; visible: historyList.count === 0; text: "Aún no hay descargas."; color: theme.colors.textDim; font.pixelSize: 11 }
+                    contentItem: Text { text: parent.text; leftPadding: 25; verticalAlignment: Text.AlignVCenter; color: theme.colors.textMuted; font.pixelSize: 11 }
                 }
-                XButton { Layout.fillWidth: true; text: "Borrar historial"; compact: true; kind: "ghost"; onClicked: quickController.clearHistory() }
+                XButton { text: page.viewState.ranges.length ? "Recortes (" + page.viewState.ranges.length + ")" : "Recortar"; compact: true; kind: page.viewState.ranges.length ? "secondary" : "ghost"; onClicked: cutsPopup.open() }
+                XButton { text: "Postprocesar"; compact: true; kind: page.viewState.postprocess || page.viewState.sendPremiere ? "secondary" : "ghost"; onClicked: postPopup.open() }
             }
         }
     }
     XCard {
-        Layout.fillWidth: true; implicitHeight: destination.implicitHeight + 22
+        Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: 140; radius: 12
         ColumnLayout {
-            id: destination; anchors.fill: parent; anchors.margins: 11; spacing: 7
+            anchors.fill: parent; anchors.margins: 10; spacing: 8
             RowLayout {
                 Layout.fillWidth: true
+                XButton { text: "Descargas"; compact: true; kind: page.historyOpen ? "ghost" : "secondary"; onClicked: page.historyOpen = false }
+                XButton { text: "Historial"; compact: true; kind: page.historyOpen ? "secondary" : "ghost"; onClicked: page.historyOpen = true }
+                Text { visible: !page.historyOpen && page.viewState.pending > 0; text: page.viewState.pending + " en cola"; font.pixelSize: 11; color: theme.colors.textDim }
+                Item { Layout.fillWidth: true }
+                XButton { text: "Cancelar todo"; visible: !page.historyOpen; compact: true; kind: "ghost"; enabled: page.viewState.running || page.viewState.pending > 0; onClicked: quickController.cancelAll() }
+                XButton { text: page.historyOpen ? "Borrar historial" : "Limpiar terminadas"; compact: true; kind: "ghost"; onClicked: page.historyOpen ? quickController.clearHistory() : quickController.clearActivity() }
+            }
+            Rectangle { Layout.fillWidth: true; height: 1; color: theme.colors.border }
+            ListView {
+                id: activity; objectName: "quickActivity"
+                Layout.fillWidth: true; Layout.fillHeight: true; clip: true; spacing: 6
+                model: page.historyOpen ? quickController.historyModel : quickController.model
+                ScrollBar.vertical: XScrollBar {}
+                delegate: Rectangle {
+                    width: activity.width - 12; height: 80; radius: 8; color: theme.colors.surfaceRaised
+                    RowLayout {
+                        anchors.fill: parent; anchors.margins: 8; spacing: 10
+                        Rectangle {
+                            Layout.preferredWidth: 96; Layout.fillHeight: true; radius: 6; color: theme.colors.surface; clip: true
+                            Image { anchors.fill: parent; source: model.thumbnail || ""; fillMode: Image.PreserveAspectFit; asynchronous: true; sourceSize.width: 192 }
+                            Text { anchors.centerIn: parent; visible: !model.thumbnail; text: model.mode; font.pixelSize: 11; color: theme.colors.textDim }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true; spacing: 5
+                            Text { Layout.fillWidth: true; text: model.title; elide: Text.ElideRight; color: theme.colors.text; font.pixelSize: 12; font.weight: Font.DemiBold }
+                            Text { Layout.fillWidth: true; text: model.quality + " · " + model.status + (page.historyOpen ? "" : " · " + model.detail); elide: Text.ElideRight; color: model.status === "Error" ? theme.colors.error : theme.colors.textMuted; font.pixelSize: 10 }
+                            Rectangle {
+                                visible: !page.historyOpen; Layout.fillWidth: true; height: 2; radius: 1; color: theme.colors.border
+                                Rectangle { width: parent.width * (model.status === "Completado" ? 1 : Math.max(0, Math.min(1, model.progress))); height: 2; color: theme.colors.accent }
+                            }
+                        }
+                        XButton { visible: ["En cola", "Analizando", "Descargando"].indexOf(model.status) >= 0; text: "Cancelar"; compact: true; kind: "ghost"; onClicked: quickController.cancel(model.jobId) }
+                        XButton { visible: Boolean(model.output); text: "Abrir"; compact: true; kind: "ghost"; onClicked: quickController.openResult(model.output) }
+                        XButton { visible: Boolean(model.output); text: "Premiere"; compact: true; kind: "secondary"; onClicked: quickController.sendToPremiere(model.output) }
+                        XButton { visible: !page.historyOpen && ["En cola", "Analizando", "Descargando"].indexOf(model.status) < 0; text: "Quitar"; compact: true; kind: "ghost"; onClicked: quickController.removeJob(model.jobId) }
+                        XButton { visible: page.historyOpen; text: "Reutilizar"; compact: true; kind: "ghost"; onClicked: { quickController.setValue("url", model.url); page.historyOpen = false } }
+                    }
+                }
+                Text { anchors.centerIn: parent; visible: activity.count === 0; text: page.historyOpen ? "Sin historial" : "Aquí aparecerán tus descargas"; color: theme.colors.textDim; font.pixelSize: 12 }
+            }
+        }
+    }
+    XCard {
+        Layout.fillWidth: true; implicitHeight: destination.implicitHeight + 20; radius: 12
+        ColumnLayout {
+            id: destination; anchors.fill: parent; anchors.margins: 10; spacing: 6
+            RowLayout {
+                Layout.fillWidth: true; spacing: 8
                 Text { text: "Guardar en"; color: theme.colors.textMuted; font.pixelSize: 11 }
-                XTextField { Layout.fillWidth: true; text: page.viewState.outputPath; onEditingFinished: quickController.setValue("outputPath", text) }
-                XButton { text: "Elegir"; compact: true; kind: "secondary"; onClicked: quickController.chooseOutputFolder() }
+                XTextField { objectName: "quickOutput"; Layout.fillWidth: true; compact: true; text: page.viewState.effectiveOutputPath; readOnly: page.viewState.taggedOutput; onEditingFinished: if (!readOnly) quickController.setValue("outputPath", text) }
+                XComboBox { Layout.preferredWidth: 150; compact: true; model: downloadController.downloadTags; currentIndex: Math.max(0, model.indexOf(page.viewState.selectedTag)); Accessible.name: "Etiqueta de destino"; onActivated: quickController.setValue("selectedTag", currentText) }
+                XButton { text: "Cambiar"; compact: true; kind: "ghost"; enabled: !page.viewState.taggedOutput; onClicked: quickController.chooseOutputFolder() }
                 XButton { text: "Abrir carpeta"; compact: true; kind: "ghost"; onClicked: quickController.openOutputFolder() }
             }
             RowLayout {
                 Layout.fillWidth: true
-                Text { Layout.fillWidth: true; text: page.viewState.selectedTag !== "Sin etiqueta" ? "Destino de la etiqueta: " + page.viewState.selectedTag : ""; color: theme.colors.textDim; font.pixelSize: 10 }
-                Text { visible: page.viewState.sendPremiere; text: premiereController.state.connected ? "● Premiere conectado" : "○ Premiere sin conectar"; color: theme.colors.textMuted; font.pixelSize: 10 }
-                Text { text: Math.round(page.viewState.totalProgress * 100) + "%"; color: theme.colors.accent; font.pixelSize: 10 }
-            }
-            Rectangle { Layout.fillWidth: true; height: 3; radius: 2; color: theme.colors.border
-                Rectangle { width: parent.width * page.viewState.totalProgress; height: 3; radius: 2; color: theme.colors.accent }
+                Text { Layout.fillWidth: true; text: page.viewState.running ? "Descargando · " + Math.round(page.viewState.totalProgress * 100) + "%" : "Listo"; color: theme.colors.textDim; font.pixelSize: 10 }
+                Text { visible: page.viewState.sendPremiere; text: premiereController.state.connected ? "Premiere conectado" : "Premiere sin conectar"; color: theme.colors.textMuted; font.pixelSize: 10 }
             }
         }
     }

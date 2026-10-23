@@ -1,6 +1,6 @@
 # Xomacito
 
-Versión visible actual: **Xomacito 1.4.2**. Revisión interna de actualización: **4.0.42**.
+Versión visible actual: **Xomacito 1.4.3**. Revisión interna de actualización: **4.0.43**.
 
 Aplicación independiente para Windows y macOS que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike** pero principalmente inspirado en Dowp hecho por Marck.
 
@@ -8,9 +8,9 @@ Aplicación independiente para Windows y macOS que permite descargar, convertir 
 
 [![Descargar Xomacito](https://img.shields.io/badge/Descargar-Xomacito-2ea44f?style=for-the-badge&logo=windows)](https://github.com/Strike2911/Xomacito/releases/latest)
 
-Para instalar o actualizar desde una versión antigua (incluida 3.3), usa el [instalador completo 1.4.2](https://github.com/Strike2911/Xomacito/releases/download/v4.0.42/Xomacito-1.4.2-Setup.exe). También lo reconoce el botón **Buscar actualización** de los clientes antiguos. Conserva tu cuenta, colección y preferencias; no hace falta desinstalar primero. El paquete incluye FFmpeg y los componentes principales; los modelos de inteligencia artificial se descargan cuando se solicitan.
+Para instalar o actualizar desde una versión antigua (incluida 3.3), usa el [instalador completo 1.4.3](https://github.com/Strike2911/Xomacito/releases/download/v4.0.43/Xomacito-1.4.3-Setup.exe). También lo reconoce el botón **Buscar actualización** de los clientes antiguos. Conserva tu cuenta, colección y preferencias; no hace falta desinstalar primero. El paquete incluye FFmpeg y los componentes principales; los modelos de inteligencia artificial se descargan cuando se solicitan.
 
-Las instalaciones recientes también pueden usar [la actualización ligera 1.4.2](https://github.com/Strike2911/Xomacito/releases/download/v4.0.42/Xomacito-1.4.2-Update-Light.exe).
+Las instalaciones recientes también pueden usar [la actualización ligera 1.4.3](https://github.com/Strike2911/Xomacito/releases/download/v4.0.43/Xomacito-1.4.3-Update-Light.exe).
 
 ### Premiere y tamaño de la aplicación
 
