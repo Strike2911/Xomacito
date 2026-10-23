@@ -1,6 +1,6 @@
 #define MyAppName "Xomacito"
-#define MyAppVersion "4.0.43"
-#define MyAppDisplayVersion "1.4.3"
+#define MyAppVersion "4.0.44"
+#define MyAppDisplayVersion "1.4.4"
 #define MyAppPublisher "Xomacito"
 #define MyAppExeName "Xomacito.exe"
 #define ProjectRoot ".."
@@ -18,7 +18,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#ProjectRoot}\release
-OutputBaseFilename=Xomacito-1.4.3-Setup
+OutputBaseFilename=Xomacito-1.4.4-Setup
 SetupIconFile={#ProjectRoot}\Xomacito-icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName} {#MyAppDisplayVersion}
@@ -26,19 +26,17 @@ Compression=lzma2/fast
 SolidCompression=yes
 WizardStyle=modern dynamic
 WizardSizePercent=110
-; Qt y sus componentes no deben retirarse mientras Xomacito siga abierto.
-; "force" evita dejar un proceso huérfano usando una instalación parcialmente
-; eliminada, incluso durante instalaciones o desinstalaciones silenciosas.
-CloseApplications=force
+; Restart Manager solicita cerrar las aplicaciones que usan estos archivos.
+CloseApplications=yes
 CloseApplicationsFilter=Xomacito.exe,ffmpeg.exe,ffprobe.exe
 RestartApplications=no
 Uninstallable=yes
 CreateUninstallRegKey=yes
 MinVersion=10.0.17763
-VersionInfoVersion=4.0.43.0
+VersionInfoVersion=4.0.44.0
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppDisplayVersion}
-VersionInfoDescription=Xomacito 1.4.3
+VersionInfoDescription=Xomacito 1.4.4
 VersionInfoCompany={#MyAppPublisher}
 
 [Languages]
@@ -68,11 +66,6 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Abrir Xomacito"; WorkingDir: "{
 ; cuando lleva el parámetro privado del actualizador.
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--updated"; WorkingDir: "{app}"; Flags: shellexec skipifnotsilent skipifdoesntexist; Check: IsAutoUpdate
 
-[UninstallRun]
-; Se ejecuta como primer paso del desinstalador. Inno espera a que taskkill
-; termine antes de retirar Qt y el resto del runtime.
-Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM ""{#MyAppExeName}"""; Flags: runhidden; RunOnceId: "StopXomacito"
-
 [UninstallDelete]
 ; Solo elimina datos que crea Xomacito. Los videos y archivos exportados se
 ; guardan fuera de {app} y nunca forman parte de esta limpieza.
@@ -90,31 +83,6 @@ Type: files; Name: "{app}\*.tmp"
 function IsAutoUpdate: Boolean;
 begin
   Result := ExpandConstant('{param:XOMACITOUPDATE|0}') = '1';
-end;
-
-function PrepareToInstall(var NeedsRestart: Boolean): String;
-var
-  ResultCode: Integer;
-begin
-  Result := '';
-  if IsAutoUpdate then
-  begin
-    WizardForm.PreparingLabel.Caption :=
-      'Cerrando Xomacito y preparando los archivos. Esto puede tardar unos segundos...';
-    WizardForm.PreparingLabel.Update;
-    { Puente para actualizar desde 1.6.2: esa versión podía iniciar el }
-    { setup antes de terminar de cerrar. Detenemos la instancia antigua antes }
-    { de que Inno intente reemplazar Xomacito.exe. }
-    Exec(
-      ExpandConstant('{sys}\taskkill.exe'),
-      '/F /IM "{#MyAppExeName}"',
-      '',
-      SW_HIDE,
-      ewWaitUntilTerminated,
-      ResultCode
-    );
-    Sleep(150);
-  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

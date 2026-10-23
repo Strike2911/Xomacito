@@ -1,5 +1,7 @@
 # Xomacito
 
+> La distribución 1.4.3 está suspendida por una detección de Microsoft Defender pendiente de revisión. La corrección 1.4.4 está en preparación y todavía no tiene instaladores validados. No añadas exclusiones para ejecutar la versión bloqueada.
+
 Versión visible actual: **Xomacito 1.4.3**. Revisión interna de actualización: **4.0.43**.
 
 Aplicación independiente para Windows y macOS que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike** pero principalmente inspirado en Dowp hecho por Marck.

@@ -487,27 +487,14 @@ class XomacitoWrapperTests(unittest.TestCase):
             self.assertTrue(first.exists())
             self.assertTrue(second.exists())
 
-    def test_deferred_installer_waits_for_xomacito_before_starting_setup(self):
+    def test_deferred_installer_uses_visible_setup_without_generated_script(self):
         with tempfile.TemporaryDirectory() as directory:
             installer = Path(directory) / "Xomacito Setup.exe"
             launcher = Path(directory) / "launch update.ps1"
             installer.write_bytes(b"MZ")
-
             command = deferred_installer_command(installer, 4321, launcher)
-            script = launcher.read_text(encoding="utf-8-sig")
-
-            self.assertEqual(command[0], "powershell.exe")
-            self.assertIn("4321", command)
-            self.assertIn(str(installer.resolve()), command)
-            self.assertIn("Get-Process -Id $XomacitoProcessId", script)
-            self.assertIn("Stop-Process -Id $XomacitoProcessId", script)
-            self.assertIn("Start-Process -FilePath $InstallerPath", script)
-            self.assertIn("-Wait -PassThru", script)
-            self.assertIn("/XOMACITOUPDATE=1", script)
-
-        application = (ROOT / "src" / "ui" / "application.py").read_text(encoding="utf-8")
-        self.assertIn("deferred_installer_command(path, os.getpid())", application)
-        self.assertNotIn("silent_installer_command", application)
+            self.assertEqual(command, [str(installer.resolve()), "/NORESTART"])
+            self.assertFalse(launcher.exists())
 
     def test_app_installer_rejects_a_wrong_digest(self):
         payload = b"MZinvalid"
@@ -1314,19 +1301,19 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertNotIn("title_fixer.py", spec)
 
         self.assertIn("PrivilegesRequired=lowest", installer)
-        self.assertIn("OutputBaseFilename=Xomacito-1.4.2-Setup", installer)
-        self.assertIn('#define MyAppVersion "4.0.42"', installer)
-        self.assertIn('#define MyAppDisplayVersion "1.4.2"', installer)
+        self.assertIn("OutputBaseFilename=Xomacito-1.4.4-Setup", installer)
+        self.assertIn('#define MyAppVersion "4.0.44"', installer)
+        self.assertIn('#define MyAppDisplayVersion "1.4.4"', installer)
         self.assertIn("AppVersion={#MyAppDisplayVersion}", installer)
         self.assertIn("shellexec postinstall skipifsilent skipifdoesntexist", installer)
-        self.assertIn("CloseApplications=force", installer)
+        self.assertIn("CloseApplications=yes", installer)
         self.assertIn("CloseApplicationsFilter=Xomacito.exe,ffmpeg.exe,ffprobe.exe", installer)
         self.assertNotIn("CloseApplicationsFilter=*.*", installer)
         self.assertIn("Compression=lzma2/fast", installer)
         self.assertIn("SolidCompression=yes", installer)
-        self.assertIn("[UninstallRun]", installer)
-        self.assertIn('{sys}\\taskkill.exe', installer)
-        self.assertIn('/F /IM ""{#MyAppExeName}""', installer)
+        self.assertNotIn("[UninstallRun]", installer)
+        self.assertNotIn('{sys}\\taskkill.exe', installer)
+        self.assertNotIn('/F /IM ""{#MyAppExeName}""', installer)
         self.assertIn("Uninstallable=yes", installer)
         self.assertIn("Desinstalar Xomacito", installer)
         self.assertIn("{uninstallexe}", installer)
@@ -1334,10 +1321,9 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("XOMACITOUPDATE", installer)
         self.assertIn("skipifnotsilent", installer)
         self.assertIn("IsAutoUpdate", installer)
-        self.assertIn("function PrepareToInstall", installer)
-        self.assertIn("ewWaitUntilTerminated", installer)
-        self.assertIn("PreparingLabel.Caption", installer)
-        self.assertIn("Sleep(150)", installer)
+        self.assertNotIn("function PrepareToInstall", installer)
+        self.assertNotIn("ewWaitUntilTerminated", installer)
+        self.assertNotIn("Sleep(150)", installer)
         self.assertIn('Name: "{userappdata}\\Xomacito\\encoder_cache.json"', installer)
         self.assertIn('Name: "{app}\\_internal\\bin\\models"', installer)
         self.assertIn("procedure CurUninstallStepChanged", installer)
@@ -1351,7 +1337,7 @@ class XomacitoWrapperTests(unittest.TestCase):
         public_spec = (ROOT / ".build" / "XomacitoPublic.spec").read_text(encoding="utf-8")
         self.assertIn("is_conflicting_top_level_icu", public_spec)
         self.assertIn('filename == "icuuc.dll"', public_spec)
-        self.assertIn("OutputBaseFilename=Xomacito-1.4.2-Update-Light", light_installer)
+        self.assertIn("OutputBaseFilename=Xomacito-1.4.4-Update-Light", light_installer)
         self.assertIn("CreateUninstallRegKey=no", light_installer)
         self.assertIn("Uninstallable=no", light_installer)
         self.assertIn("function InitializeSetup", light_installer)
@@ -1485,8 +1471,8 @@ class XomacitoWrapperTests(unittest.TestCase):
         self.assertIn("XomacitoInstaller.spec", build_script)
         self.assertIn("Xomacito.iss", build_script)
         self.assertIn("Xomacito-Light.iss", build_script)
-        self.assertIn("release\\Xomacito-1.4.2-Setup.exe", build_script)
-        self.assertIn("release\\Xomacito-1.4.2-Update-Light.exe", build_script)
+        self.assertIn("release\\Xomacito-1.4.4-Setup.exe", build_script)
+        self.assertIn("release\\Xomacito-1.4.4-Update-Light.exe", build_script)
         self.assertIn("Assert-ReadableApplicationSource", build_script)
         self.assertIn("pyarmor_runtime|__pyarmor__|pytransform", build_script)
         self.assertIn('PROJECT_ROOT / "main\\.py"', build_script)

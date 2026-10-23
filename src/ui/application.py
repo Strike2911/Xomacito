@@ -504,12 +504,12 @@ class AppController(QObject):
     def _installer_ready(self, path):
         try:
             command = deferred_installer_command(path, os.getpid())
-            subprocess.Popen(command, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+            subprocess.Popen(command)
         except Exception as error:
             self._update_failed_download(str(error), "")
             return
         self._set_update(progress=1.0, status="Instalador listo. Xomacito se cerrará para actualizar.")
-        self.toastRequested.emit("success", "Actualización lista", "El instalador verificado se abrirá al cerrar Xomacito.")
+        self.toastRequested.emit("success", "Actualización lista", "Sigue los pasos del instalador. Xomacito se cerrará para liberar sus archivos.")
         QTimer.singleShot(650, self.app.quit)
 
     def _update_failed_download(self, message, detail):

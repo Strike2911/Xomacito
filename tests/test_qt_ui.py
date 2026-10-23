@@ -12,7 +12,7 @@ from unittest.mock import patch
 from PIL import Image
 
 from src.core.daily_icon import daily_cat_assets
-from src.ui.download_controller import DownloadController, editor_mp4_fallback_options, reveal_in_file_manager
+from src.ui.download_controller import DownloadController, reveal_in_file_manager
 from src.ui.media_logic import build_media_choices, is_editor_mp4_selection, normalize_info, preferred_merge_container
 from src.ui.application import normalize_clipboard_url
 from src.ui.presets import ALPHA_PRESET, BUILT_IN_PRESETS, resolve_recode_parameters
@@ -1098,21 +1098,6 @@ controller.shutdown()
         self.assertTrue(is_editor_mp4_selection(choices["video"][1], choices["audio"][0]))
         self.assertEqual(preferred_merge_container(choices["video"][1], choices["audio"][0]), "mp4")
         self.assertEqual(choices["video"][1]["formatId"], "mp4-1080")
-
-    def test_webm_fallback_is_transcoded_to_h264_aac_mp4(self):
-        options = editor_mp4_fallback_options({"title": "WEBM", "mode": "Video+Audio"})
-        params, container = resolve_recode_parameters(options)
-        joined = " ".join(params)
-        self.assertEqual(container, ".mp4")
-        self.assertIn("libx264", joined)
-        self.assertIn("aac", joined)
-        self.assertFalse(options["keep_original_file"])
-
-        controller_source = (ROOT / "src" / "ui" / "download_controller.py").read_text(encoding="utf-8")
-        process_worker = controller_source.split("def _process_worker", 1)[1].split("def _download_worker", 1)[0]
-        self.assertIn('Path(input_file).suffix.lower() != ".mp4"', process_worker)
-        self.assertIn("not is_editor_mp4_selection", process_worker)
-        self.assertIn("editor_mp4_fallback_options(options)", process_worker)
 
     def test_trim_preview_reuses_a_complete_native_proxy_for_every_selection(self):
         controller = DownloadController.__new__(DownloadController)

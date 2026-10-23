@@ -1,6 +1,6 @@
 #define MyAppName "Xomacito"
-#define MyAppVersion "4.0.43"
-#define MyAppDisplayVersion "1.4.3"
+#define MyAppVersion "4.0.44"
+#define MyAppDisplayVersion "1.4.4"
 #define MyAppExeName "Xomacito.exe"
 #define ProjectRoot ".."
 #define UninstallKey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{8B474FFD-6C60-4B82-889E-7DD12563E7E5}_is1"
@@ -18,21 +18,21 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#ProjectRoot}\release
-OutputBaseFilename=Xomacito-1.4.3-Update-Light
+OutputBaseFilename=Xomacito-1.4.4-Update-Light
 SetupIconFile={#ProjectRoot}\Xomacito-icon.ico
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern dynamic
-CloseApplications=force
+CloseApplications=yes
 CloseApplicationsFilter=Xomacito.exe,ffmpeg.exe,ffprobe.exe
 RestartApplications=no
 CreateUninstallRegKey=no
 Uninstallable=no
 MinVersion=10.0.17763
-VersionInfoVersion=4.0.43.0
+VersionInfoVersion=4.0.44.0
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppDisplayVersion}
-VersionInfoDescription=Xomacito 1.4.3 - Actualización ligera
+VersionInfoDescription=Xomacito 1.4.4 - Actualización ligera
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
@@ -90,25 +90,4 @@ begin
       mbError,
       MB_OK
     );
-end;
-
-function PrepareToInstall(var NeedsRestart: Boolean): String;
-var
-  ResultCode: Integer;
-begin
-  Result := '';
-  if IsAutoUpdate then
-  begin
-    WizardForm.PreparingLabel.Caption := 'Aplicando únicamente los archivos nuevos…';
-    WizardForm.PreparingLabel.Update;
-    Exec(
-      ExpandConstant('{sys}\taskkill.exe'),
-      '/F /IM "{#MyAppExeName}"',
-      '',
-      SW_HIDE,
-      ewWaitUntilTerminated,
-      ResultCode
-    );
-    Sleep(150);
-  end;
 end;

@@ -55,7 +55,6 @@ from main import UPSCALING_DIR
 from .dialog_broker import DialogBroker
 from .media_logic import (
     build_media_choices,
-    is_editor_mp4_selection,
     normalize_info,
     preferred_merge_container,
     safe_filename,
@@ -168,18 +167,6 @@ def automatic_audio_options(options: dict) -> dict:
     return {**options, **BUILT_IN_PRESETS[preset], "keep_original_file": False,
             "automatic_audio_output": output, "resolution_change_enabled": False,
             "fps_force_enabled": False}
-
-
-def editor_mp4_fallback_options(options: dict) -> dict:
-    """Fuerza un resultado H.264/AAC MP4 si el sitio sólo entregó WEBM/MKV."""
-    compatible = {**options, **BUILT_IN_PRESETS["Web/Móvil - H.264 Máxima"]}
-    compatible.update({
-        "mode": "Video+Audio",
-        "keep_original_file": False,
-        "resolution_change_enabled": False,
-        "fps_force_enabled": False,
-    })
-    return compatible
 
 
 class DownloadController(QObject):
@@ -1675,23 +1662,6 @@ class DownloadController(QObject):
             result = self._clip_without_recode(input_file, options)
             if not options.get("keepOriginalOnClip") and Path(input_file) != Path(result):
                 Path(input_file).unlink(missing_ok=True)
-        elif (
-            downloaded
-            and options.get("mode") == "Video+Audio"
-            and (
-                Path(input_file).suffix.lower() != ".mp4"
-                or not is_editor_mp4_selection(
-                    self._video_map.get(options.get("video_label"), {}),
-                    self._audio_map.get(options.get("audio_label"), {}),
-                )
-            )
-        ):
-            self.progressReported.emit(0.0, "Preparando MP4 compatible con editores…")
-            result = self._recode_file(
-                input_file,
-                editor_mp4_fallback_options(options),
-                downloaded=True,
-            )
         else:
             result = input_file
         if (

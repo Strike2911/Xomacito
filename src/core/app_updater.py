@@ -1204,79 +1204,17 @@ def silent_installer_command(installer_path: str | Path) -> list[str]:
     ]
 
 
-_DEFERRED_INSTALLER_SCRIPT = r"""param(
-    [Parameter(Mandatory=$true)][int]$XomacitoProcessId,
-    [Parameter(Mandatory=$true)][string]$InstallerPath
-)
-
-$ErrorActionPreference = 'Stop'
-
-# Wait for the application to finish normally. If shutdown gets stuck, force
-# only the exact process that requested this already-authorized update.
-for ($attempt = 0; $attempt -lt 300; $attempt++) {
-    if ($null -eq (Get-Process -Id $XomacitoProcessId -ErrorAction SilentlyContinue)) {
-        break
-    }
-    Start-Sleep -Milliseconds 100
-}
-
-if ($null -ne (Get-Process -Id $XomacitoProcessId -ErrorAction SilentlyContinue)) {
-    Stop-Process -Id $XomacitoProcessId -Force -ErrorAction SilentlyContinue
-    Wait-Process -Id $XomacitoProcessId -ErrorAction SilentlyContinue
-}
-
-if (-not (Test-Path -LiteralPath $InstallerPath -PathType Leaf)) {
-    exit 2
-}
-
-$installerArguments = @(
-    '/SILENT',
-    '/SP-',
-    '/CLOSEAPPLICATIONS',
-    '/NORESTART',
-    '/XOMACITOUPDATE=1'
-)
-$setup = Start-Process -FilePath $InstallerPath -ArgumentList $installerArguments `
-    -WindowStyle Hidden -Wait -PassThru
-$setupExitCode = $setup.ExitCode
-
-if ($setupExitCode -eq 0) {
-    Remove-Item -LiteralPath $InstallerPath -Force -ErrorAction SilentlyContinue
-}
-Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
-exit $setupExitCode
-"""
-
-
 def deferred_installer_command(
     installer_path: str | Path,
     xomacito_process_id: int,
     launcher_path: str | Path | None = None,
 ) -> list[str]:
-    """Crea un lanzador que espera el cierre real de Xomacito antes de instalar."""
-    if sys.platform == "darwin":
-        return ["/usr/bin/open", str(Path(installer_path).resolve())]
-    installer = Path(installer_path).resolve()
-    if launcher_path is None:
-        launcher = installer.parent / f"xomacito-update-{uuid.uuid4().hex[:12]}.ps1"
-    else:
-        launcher = Path(launcher_path).resolve()
-    launcher.parent.mkdir(parents=True, exist_ok=True)
-    launcher.write_text(_DEFERRED_INSTALLER_SCRIPT, encoding="utf-8-sig")
+    """Open the verified installer visibly; no generated scripts or forced exit.
 
-    return [
-        "powershell.exe",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-WindowStyle",
-        "Hidden",
-        "-File",
-        str(launcher),
-        "-XomacitoProcessId",
-        str(int(xomacito_process_id)),
-        "-InstallerPath",
-        str(installer),
-    ]
+    Legacy parameters remain for callers. Inno's Restart Manager handles files
+    in use with the user's confirmation instead of killing processes by name.
+    """
+    installer = Path(installer_path).resolve()
+    if sys.platform == "darwin":
+        return ["/usr/bin/open", str(installer)]
+    return [str(installer), "/NORESTART"]
