@@ -14,3 +14,12 @@ Artefactos para revisión por Microsoft:
 
 Portal oficial: https://www.microsoft.com/en-us/wdsi/filesubmission
 No se ha enviado una muestra todavía. Se necesita revisión del fabricante antes de restaurar la distribución como segura.
+
+## Validación local de 1.4.4 — 22 de octubre de 2026
+
+Se incorporaron las correcciones descritas al código de 1.4.4, junto con la eliminación de la conversión de video no solicitada. Las pruebas automatizadas relevantes aprobaron (99). Tras actualizar las definiciones de Defender a 1.461.158.0, se analizaron el runtime, el instalador completo y el ligero sin detecciones. El instalador completo terminó correctamente y la aplicación instalada abrió como Xomacito 1.4.4, sin nuevos eventos de detección 1116 durante esa comprobación. No se desactivó Defender ni se añadieron exclusiones.
+
+Estos resultados corresponden al equipo de prueba; no son un dictamen de Microsoft ni invalidan la detección de 1.4.3, que permanece retirada.
+
+- Xomacito-1.4.4-Setup.exe: SHA256 87963d0fa085b4e71d520a65195a8cbc5fb86f59a0b63d9b95d423c20c980b0e
+- Xomacito-1.4.4-Update-Light.exe: SHA256 9cea70d3f5c6526bb5727019ce996eb0bb690e44fe564cd5191dce60dbe4f22a

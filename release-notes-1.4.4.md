@@ -1,6 +1,6 @@
 # Xomacito 1.4.4 — corrección de recodificación automática
 
-Borrador: código corregido; sin instaladores ni distribución automática hasta completar la revisión de seguridad por la detección de Defender en 1.4.3.
+Actualización para Windows con instalador completo y paquete ligero.
 
 - Las descargas de video conservan el archivo recibido. Ya no se convierten automáticamente a H.264/AAC por estar en WEBM, MKV o usar otro códec dentro de MP4.
 - Se mantienen las conversiones solicitadas mediante preset o ajustes avanzados, los recortes precisos y la exportación de audio elegida por el usuario.
@@ -8,4 +8,6 @@ Borrador: código corregido; sin instaladores ni distribución automática hasta
 
 La corrección afecta a Descargar y Modo rápido, que comparten el procesamiento. No promete eliminar el consumo de CPU de conversiones o recortes solicitados.
 
-Revisión interna prevista: 4.0.44. No hay instalador validado disponible todavía.
+Validación: 99 pruebas automatizadas aprobadas. El runtime y el instalador completo se analizaron con Microsoft Defender actualizado sin detecciones. La instalación y apertura de 1.4.4 en el equipo de prueba no produjeron nuevas alertas. Esto no constituye una confirmación de Microsoft sobre la detección anterior; 1.4.3 continúa retirada.
+
+Revisión interna: 4.0.44. Para versiones antiguas, usa el instalador completo; el paquete ligero requiere una instalación existente con sus componentes.
