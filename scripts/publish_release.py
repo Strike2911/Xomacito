@@ -19,6 +19,15 @@ def validate_security_review(release: dict, review: dict) -> None:
     tag = str(release.get("tag_name", ""))
     if tag in review["withdrawn_tags"]:
         raise ValueError(f"{tag} está retirada por un incidente de seguridad.")
+    # An owner-approved release exception does not close the investigation.
+    # Approval is limited to one tag and its exact uploaded assets.
+    approval = review.get("approved_releases", {}).get(tag, {})
+    assets = release.get("assets", [])
+    if (approval.get("authorization") and approval.get("assets") and assets
+            and all(a.get("state") == "uploaded" for a in assets)
+            and len(assets) == len(approval["assets"])
+            and {a.get("name"): a.get("digest") for a in assets} == approval["assets"]):
+        return
     if Version(tag.removeprefix("v")) >= Version(review["affected_from"]):
         if review.get("status") != "resolved" or not str(review.get("resolution", "")).strip():
             raise ValueError("Publicación suspendida: " + review["reason"])

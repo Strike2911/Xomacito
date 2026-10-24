@@ -3,5 +3,16 @@
   "affected_from": "4.0.43",
   "withdrawn_tags": ["v4.0.43", "v4.0.44"],
   "reason": "Bloqueos de Defender reportados en 1.4.3 y 1.4.4. Muestra original enviada a Microsoft; análisis pendiente.",
-  "resolution": ""
+  "resolution": "",
+  "approved_releases": {
+    "v4.0.45": {
+      "authorization": "2026-10-23: el propietario pidió publicar 1.4.5 después de informarle que el dictamen de Microsoft seguía pendiente. Excepción para la corrección de calidad; no declara resuelto el error 225.",
+      "evidence": "Caso 42c3617b-35eb-4d4a-860e-4e5885ca7aa8: In progress, final Pending; Current detection: No malware detected en Cloud y Client (1.461.171.0). Runtime e instaladores 1.4.5 sin detecciones locales.",
+      "assets": {
+        "Xomacito-1.4.5-Setup.exe": "sha256:805c64a8e695bfd02855a734972711baff0a2146df21fe2df5fd64f11c263e2e",
+        "Xomacito-1.4.5-Update-Light.exe": "sha256:70265dfb46f54db20bd1157c098365304044d35f486efded4d29220d111e0ef1",
+        "Xomacito-Link.ccx": "sha256:d3c373250bc7abf7e83eca1488e7540ec429fe09ff37de1426c9c1ef1fba49fe"
+      }
+    }
+  }
 }

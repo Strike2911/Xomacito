@@ -35,3 +35,11 @@ Se retiró v4.0.44 y se verificó que el endpoint público de actualización vue
 Con autorización del propietario se envió a Microsoft Security Intelligence el ejecutable original (17.496.531 bytes; SHA256 009f40663451ff706a6f5792a563553353b628b746b2b9fd8abf38473991a645), acompañado de los antecedentes y del comportamiento del actualizador. El portal confirmó la recepción con estado Submitted / Pending. La firma Authenticode del ejecutable es inexistente; eso no demuestra la causa del error 225. No hay certificado de firma disponible en el almacén del usuario.
 
 La publicación queda suspendida en `scripts/publish_release.py` mediante `docs/windows-security-review.json` hasta documentar la resolución de esta investigación. Se conserva el instalador original para reproducibilidad; una prueba funcional o un análisis local limpio no cierran por sí solos el incidente.
+
+## Publicación de la corrección de calidad 1.4.5 — 23 de octubre de 2026
+
+Se consultó el caso 42c3617b-35eb-4d4a-860e-4e5885ca7aa8: estado In progress, dictamen final Pending, detección actual No malware detected tanto en Cloud como en Client (definiciones 1.461.171.0). No hay dictamen final que confirme falso positivo ni una corrección del error 225 en todos los equipos.
+
+Después de informarle que el dictamen seguía pendiente, el propietario pidió publicar la actualización 1.4.5. Se registra una excepción limitada a v4.0.45 y los SHA-256 exactos de sus tres archivos en `windows-security-review.json`. La investigación permanece abierta y 1.4.3/1.4.4 continúan retiradas. Las notas de publicación explican expresamente esta limitación.
+
+El runtime y ambos instaladores 1.4.5 se analizaron localmente sin detecciones. Se comprobó el arranque compilado y la corrección de calidad con muestras reales de 1440p y 1080p a unos 60 FPS. Esta versión contiene cambios funcionales de calidad; no se alteró el empaquetado para eludir detecciones ni se desactivó ninguna protección del sistema.

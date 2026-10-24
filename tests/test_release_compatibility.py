@@ -77,3 +77,32 @@ def test_resolution_requires_evidence_and_keeps_withdrawn_builds_blocked():
     publisher.validate_security_review({"tag_name": "v4.0.45"}, review)
     with pytest.raises(ValueError):
         publisher.validate_security_review({"tag_name": "v4.0.44"}, review)
+
+
+@pytest.mark.parametrize("change", [None, "digest", "tag", "extra", "state", "authorization", "withdrawn"])
+def test_owner_exception_only_accepts_exact_authorized_release(change):
+    payload = release()
+    payload["tag_name"] = "v4.0.45"
+    approval = {"authorization": "Owner requested publication with investigation pending",
+                "assets": {a["name"]: a["digest"] for a in payload["assets"]}}
+    review = {"status": "open", "affected_from": "4.0.43", "withdrawn_tags": [],
+              "reason": "Pending", "resolution": "", "approved_releases": {"v4.0.45": approval}}
+    if change == "digest":
+        payload["assets"][0]["digest"] = "sha256:" + "b" * 64
+    elif change == "tag":
+        payload["tag_name"] = "v4.0.46"
+    elif change == "extra":
+        payload["assets"].append(dict(payload["assets"][0], name="other.exe"))
+    elif change == "state":
+        payload["assets"][0]["state"] = "starter"
+    elif change == "authorization":
+        approval["authorization"] = ""
+    elif change == "withdrawn":
+        review["withdrawn_tags"] = ["v4.0.45"]
+    if change:
+        with pytest.raises(ValueError):
+            publisher.validate_security_review(payload, review)
+    else:
+        publisher.validate_security_review(payload, review)
+        assert review["status"] == "open"
+        assert not review["resolution"]

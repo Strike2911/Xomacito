@@ -1,8 +1,8 @@
 # Xomacito
 
-> Las versiones Windows 1.4.3 y 1.4.4 están retiradas por bloqueos de Microsoft Defender. El ejecutable original se envió a Microsoft para análisis; el caso sigue pendiente. Los análisis locales sin detecciones no resolvieron el problema en otros equipos. No desactives el antivirus ni añadas exclusiones. La corrección de calidad está en el código fuente, todavía sin un nuevo instalador publicado. [Estado de la investigación](docs/defender-1.4.3-review.md).
+> Las versiones Windows 1.4.3 y 1.4.4 están retiradas por bloqueos de Microsoft Defender. La 1.4.5 corrige la calidad de descarga; no confirma una solución al error 225. Microsoft muestra «No malware detected» para la muestra original de 1.4.4, con dictamen final todavía pendiente. No desactives el antivirus ni añadas exclusiones. [Estado de la investigación](docs/defender-1.4.3-review.md).
 
-Última publicación pública de Windows: **Xomacito 1.4.2**. Las revisiones **4.0.43** y **4.0.44** no se distribuyen. El código de desarrollo contiene correcciones posteriores a 1.4.4.
+Última publicación pública de Windows: **Xomacito 1.4.5** (revisión interna **4.0.45**). Las revisiones **4.0.43** y **4.0.44** no se distribuyen.
 
 Aplicación independiente para Windows y macOS que permite descargar, convertir y preparar contenido multimedia desde una interfaz moderna. Xomacito fue creado por **Strike** pero principalmente inspirado en Dowp hecho por Marck.
 
@@ -10,9 +10,9 @@ Aplicación independiente para Windows y macOS que permite descargar, convertir 
 
 [![Descargar Xomacito](https://img.shields.io/badge/Descargar-Xomacito-2ea44f?style=for-the-badge&logo=windows)](https://github.com/Strike2911/Xomacito/releases/latest)
 
-Las [publicaciones disponibles](https://github.com/Strike2911/Xomacito/releases) indican su versión y archivos. La última publicación pública, 1.4.2, no incluye la nueva corrección de calidad. Los clientes antiguos (incluida 3.3) requieren el instalador completo; el paquete incluye FFmpeg y los componentes principales, mientras que los modelos de inteligencia artificial se descargan cuando se solicitan.
+La [versión 1.4.5](https://github.com/Strike2911/Xomacito/releases/tag/v4.0.45) incluye la corrección de calidad de YouTube, la selección de resolución y FPS y la validación del archivo descargado, sin recodificación automática no solicitada. Los clientes antiguos (incluida 3.3) requieren el instalador completo; el paquete incluye FFmpeg y los componentes principales, mientras que los modelos de inteligencia artificial se descargan cuando se solicitan.
 
-La actualización ligera 1.4.4 también está retirada. Cambiar entre el paquete completo y el ligero no resuelve un bloqueo del mismo ejecutable por Defender.
+La actualización ligera 1.4.5 requiere una instalación existente con sus componentes. Cambiar entre el paquete completo y el ligero no resuelve un bloqueo del mismo ejecutable por Defender.
 
 ### Premiere y tamaño de la aplicación
 
@@ -28,7 +28,7 @@ Compila con `scripts/build_release.ps1` (sin `-LightOnly` para publicar). Sube l
 
 > Windows puede mostrar una advertencia de SmartScreen porque el instalador todavía no utiliza un certificado comercial de firma de código. Comprueba que el archivo provenga de este repositorio antes de ejecutarlo.
 
-El error 225 de antivirus es distinto de la advertencia de reputación de SmartScreen. `scripts/publish_release.py` bloquea nuevas publicaciones Windows desde 4.0.43 mientras `docs/windows-security-review.json` mantenga abierto el incidente. Para cerrar el incidente hay que documentar la investigación y la corrección; cambiar el número de versión o aprobar pruebas funcionales no basta.
+El error 225 de antivirus es distinto de la advertencia de reputación de SmartScreen. `scripts/publish_release.py` bloquea nuevas publicaciones Windows desde 4.0.43 mientras `docs/windows-security-review.json` mantenga abierto el incidente, salvo una autorización del propietario registrada para un tag y sus hashes exactos. La excepción de 4.0.45 permite distribuir la corrección de calidad y no cierra el incidente. Las versiones retiradas permanecen bloqueadas. Para cerrar el incidente hay que documentar la investigación y la corrección; cambiar el número de versión o aprobar pruebas funcionales no basta.
 
 ## Descargar para Mac — Mac Version DMG
 
