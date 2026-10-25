@@ -98,7 +98,10 @@ class BridgeTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
-        self.bridge = PremiereController(SimpleNamespace(root=self.root))
+        from tests.test_media_library import ImmediatePool
+        self.bridge = PremiereController(SimpleNamespace(root=self.root, pool=ImmediatePool(), linkPaths=Mock()))
+        self.bridge.preparation.processor_factory = lambda: SimpleNamespace(get_local_media_info=lambda p: {
+            'streams': [{'index': 0, 'codec_type': 'video', 'codec_name': 'h264'}]})
         self.media = self.root / 'toma con espacios.mp4'; self.media.write_bytes(b'media')
         self.folder = self.root / '.xomacito-link'; self.folder.mkdir()
     def tearDown(self):

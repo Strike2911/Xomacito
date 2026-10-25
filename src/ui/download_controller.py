@@ -61,6 +61,7 @@ from .media_logic import (
     seconds_from_time,
 )
 from .presets import ALPHA_PRESET, PREMIERE_AUDIO_PRESET, BUILT_IN_PRESETS, PresetStore, resolve_recode_parameters
+from src.core.premiere_media import ORIGINAL, PREMIERE, DELIVERIES, prepare_for_premiere
 from .settings_store import SettingsStore
 from .waveform import render_waveform, waveform_target
 from .filmstrip import filmstrip_target, render_filmstrip
@@ -69,6 +70,7 @@ from .workers import TaskPool
 
 
 DEFAULT_OPTIONS: dict[str, Any] = {
+    "videoDelivery": ORIGINAL,
     "audioOutputFormat": "MP3",
     "downloadSubtitles": False,
     "cleanSubtitle": True,
@@ -268,6 +270,7 @@ class DownloadController(QObject):
         self._analysis_info: dict | None = None
         self._image_post: dict | None = None
         self._active_worker = None
+        self._process_outputs = []
         self._current_counts_as_download = False
         self._last_download_was_partial = False
         self._partial_download_start = 0.0
@@ -340,13 +343,21 @@ class DownloadController(QObject):
 
     @Slot(str, "QVariant")
     def setOption(self, key: str, value):
+        if key == "videoDelivery" and value not in DELIVERIES:
+            return
         if key == "preciseClip":
             value = True
         if key not in self._options or self._options.get(key) == value:
             return
         self._options[key] = value
+        if key == "videoDelivery" and value == PREMIERE:
+            self._options.update(applyPreset=False, recodeVideoEnabled=False, recodeAudioEnabled=False,
+                                 fpsForceEnabled=False, resolutionChangeEnabled=False)
+        elif key in {"applyPreset", "recodeVideoEnabled", "recodeAudioEnabled"} and value:
+            self._options["videoDelivery"] = ORIGINAL
         self.optionsChanged.emit()
         persisted = {
+            "videoDelivery": self._options["videoDelivery"],
             "audioOutputFormat": self._options["audioOutputFormat"],
             "keep_original": self._options["keepOriginal"],
             "video_codec": self._options["recodeCodecName"],
@@ -1612,7 +1623,10 @@ class DownloadController(QObject):
         return options
 
     def _process_worker(self, options: dict) -> str:
+        self._process_outputs = []
         options = automatic_audio_options(options)
+        if options.get("videoDelivery") == PREMIERE:
+            options = dict(options, keepOriginalOnClip=True, keep_original_file=True)
         input_file = options.get("local_file")
         downloaded = False
         if self._image_post:
@@ -1642,7 +1656,7 @@ class DownloadController(QObject):
                 result = self._recode_file(input_file, partial_options, downloaded=False)
             else:
                 result = self._clip_without_recode(input_file, partial_options)
-            if Path(input_file) != Path(result):
+            if options.get("videoDelivery") != PREMIERE and Path(input_file) != Path(result):
                 Path(input_file).unlink(missing_ok=True)
         elif options.get("fragmentEnabled") and options.get("fragmentRanges"):
             result = self._process_multiple_fragments(input_file, options, downloaded)
@@ -1667,6 +1681,14 @@ class DownloadController(QObject):
             and options.get("thumbnail_url")
         ):
             result = self._embed_audio_thumbnail(result, options["thumbnail_url"])
+        if options.get("videoDelivery") == PREMIERE and options.get("mode") == "Video+Audio" and not options.get("extractFramesEnabled"):
+            outputs = self._process_outputs or [result]
+            prepared = [prepare_for_premiere(path, options["output_path"], self.ffmpeg,
+                        self.cancellation, self._ffmpeg_progress) for path in outputs]
+            if hasattr(self, "quick_outputs"):
+                self.quick_outputs = prepared
+            self._process_outputs = prepared
+            result = prepared[0] if len(prepared) == 1 else str(Path(options["output_path"]))
         return result
 
     @staticmethod
@@ -1993,6 +2015,7 @@ class DownloadController(QObject):
         return str(output)
 
     def _process_multiple_fragments(self, input_file: str, options: dict, downloaded: bool) -> str:
+        self._process_outputs = []
         ranges = [item for item in options.get("fragmentRanges", []) if isinstance(item, dict)]
         if not ranges:
             raise RuntimeError("No hay fragmentos en la lista.")
@@ -2013,12 +2036,13 @@ class DownloadController(QObject):
                 "title": f"{base_title}_fragmento_{index:02d}",
             })
             if options.get("recode_video_enabled") or options.get("recode_audio_enabled"):
-                self._recode_file(str(source), fragment_options, downloaded=False)
+                fragment_output = self._recode_file(str(source), fragment_options, downloaded=False)
             else:
-                self._clip_without_recode(
+                fragment_output = self._clip_without_recode(
                     str(source), fragment_options,
                     output_stem=fragment_options["title"],
                 )
+            self._process_outputs.append(fragment_output)
         if downloaded and not options.get("keepOriginalOnClip") and source.exists():
             source.unlink(missing_ok=True)
         self.progressReported.emit(1.0, f"{len(ranges)} fragmentos completados.")
@@ -2027,6 +2051,11 @@ class DownloadController(QObject):
     def _clip_without_recode(
         self, input_file: str, options: dict, *, output_stem: str | None = None,
     ) -> str:
+        if options.get("videoDelivery") == PREMIERE and options.get("mode") == "Video+Audio":
+            return prepare_for_premiere(input_file, options["output_path"], self.ffmpeg,
+                self.cancellation, self._ffmpeg_progress,
+                trim=(seconds_from_time(options.get("startTime")), seconds_from_time(options.get("endTime"))),
+                stem=output_stem or options["title"] + "_fragmento_Premiere")
         source = Path(input_file)
         audio_only = options.get("mode") == "Solo Audio"
         output_suffix = ".m4a" if audio_only else ".mp4"
@@ -2197,9 +2226,7 @@ class DownloadController(QObject):
         return next_available_path(desired)
 
     def _ffmpeg_progress(self, percent, message):
-        value = float(percent or 0)
-        if value > 1:
-            value /= 100.0
+        value = float(percent or 0) / 100.0
         self.progressReported.emit(max(0.0, min(1.0, value)), str(message or "Procesando…"))
 
     @Slot(float, str)
@@ -2209,7 +2236,10 @@ class DownloadController(QObject):
     def _operation_success(self, output: str):
         completed_download = self._current_counts_as_download
         self._set_state(busy=False, progress=1.0, status="Proceso completado.", lastOutput=output)
-        self.outputReady.emit(output)
+        outputs = getattr(self, "_process_outputs", []) or [output]
+        self._process_outputs = []
+        for path in outputs:
+            self.outputReady.emit(path)
         self.notificationRequested.emit("success", "Proceso completado", output)
         if completed_download:
             self.successfulDownload.emit(1)

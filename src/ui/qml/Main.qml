@@ -1826,6 +1826,7 @@ ApplicationWindow {
     }
     Connections {
         target: dialogBroker
+        function onDismissed(requestId) { if (window.dialogRequestId === requestId) dialogPopup.close() }
         function onRequested(requestId, kind, title, message, options, defaultValue) { window.dialogRequestId = requestId; window.dialogOptions = options; dialogPopup.dialogKind = kind; dialogPopup.dialogTitle = title; dialogPopup.dialogMessage = message; dialogPopup.defaultValue = defaultValue; dialogInput.text = defaultValue; dialogPopup.open() }
     }
 }

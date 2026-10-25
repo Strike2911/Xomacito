@@ -232,6 +232,7 @@ ColumnLayout {
                             }
                         }
                         Text { visible: page.hasMedia; text: page.selected.metadataSummary || ""; Layout.fillWidth: true; color: theme.colors.textDim; font.pixelSize: 10; wrapMode: Text.WordWrap }
+                        Text { visible: !!page.selected.premiereIssue; text: page.selected.premiereIssue || ""; Layout.fillWidth: true; color: theme.colors.textMuted; font.pixelSize: 11; wrapMode: Text.WordWrap }
                         Text { visible: page.hasMedia; text: page.webMode ? page.selected.pageUrl || "" : page.selected.path || ""; Layout.fillWidth: true; color: theme.colors.textDim; font.pixelSize: 9; wrapMode: Text.WrapAnywhere }
                     }
                 }
@@ -239,6 +240,12 @@ ColumnLayout {
                     objectName: "libraryLocalActions"
                     columns: 2; rowSpacing: 6; columnSpacing: 6
                     visible: page.hasMedia && !page.webMode; Layout.fillWidth: true
+                    XButton {
+                        Layout.fillWidth: true; Layout.columnSpan: 2; compact: true; kind: "secondary"
+                        visible: page.selected.kind === "Video" || premiereController.state.preparing
+                        text: premiereController.state.preparing ? "Cancelar preparación · " + Math.round(premiereController.state.preparationProgress * 100) + "%" : "Preparar para Premiere"
+                        onClicked: premiereController.state.preparing ? premiereController.cancelPreparation() : premiereController.prepare(page.selected.path)
+                    }
                     XButton { Layout.fillWidth: true; Layout.preferredWidth: 1; text: "Ubicación"; implicitHeight: 30; compact: true; kind: "ghost"; onClicked: mediaLibraryController.openSelected() }
                     XButton { Layout.fillWidth: true; Layout.preferredWidth: 1; text: "Crear subclip"; implicitHeight: 30; compact: true; kind: "ghost"; enabled: page.temporal; onClicked: { inspector.pause(); trimDialog.open() } }
                     XButton { Layout.fillWidth: true; Layout.preferredWidth: 1; text: "A Premiere"; implicitHeight: 32; compact: true; onClicked: page.sendSelection(false) }

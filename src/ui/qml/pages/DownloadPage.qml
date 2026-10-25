@@ -290,6 +290,24 @@ Item {
                         objectName: "downloadOutputFields"
                         Layout.fillWidth: true
                         spacing: page.denseLayout ? 5 : 7
+                        RowLayout {
+                            visible: !viewState.imagePost && viewState.mode === "Video+Audio"
+                            Layout.fillWidth: true
+                            XComboBox {
+                                objectName: "videoDeliveryCombo"; Layout.preferredWidth: 205; compact: true
+                                model: ["Original · sin convertir", "Premiere · alta calidad"]
+                                currentIndex: Math.max(0, model.indexOf(options.videoDelivery))
+                                Accessible.name: "Destino del video"
+                                onActivated: downloadController.setOption("videoDelivery", currentText)
+                            }
+                            Text {
+                                Layout.fillWidth: true; font.pixelSize: 10; wrapMode: Text.WordWrap; color: theme.colors.textMuted
+                                text: options.videoDelivery === "Premiere · alta calidad"
+                                    ? "Copia compatible si hace falta. Conserva resolución, FPS y original. Convertir usa CPU; HDR ocupa más espacio."
+                                    : options.applyPreset || options.recodeVideoEnabled || options.recodeAudioEnabled ? "Conversión manual activa: el perfil seleccionado determina la calidad."
+                                    : "Sin conversión. VP9/AV1 requieren preparar una copia para Premiere."
+                            }
+                        }
                         LabeledControl {
                             Layout.fillWidth: true; compact: page.denseLayout; label: "Título de salida"
                             XTextField { Layout.fillWidth: true; compact: page.denseLayout; text: viewState.title; onEditingFinished: downloadController.setValue("title", text) }

@@ -111,18 +111,23 @@ async function walk(folder, output = [], depth = 0) {
 
 async function libraryItems(folder) {
   const items = await walk(folder, []);
-  const paths = new Set(items.map((item) => item.path));
+  const paths = new Map(items.map((item) => [pathKey(item.path), item]));
   try {
     const manifest = JSON.parse(await (await folder.getEntry(".xomacito-library.json")).read());
     if (manifest.schema !== 1 || !Array.isArray(manifest.items)) return items;
     for (const row of manifest.items) {
-      if (!row || typeof row.path !== "string" || paths.has(row.path)) continue;
+      if (!row || typeof row.path !== "string") continue;
+      const existing = paths.get(pathKey(row.path));
+      if (existing) {
+        existing.premiereIssue = String(row.premiereIssue || "");
+        continue;
+      }
       const ext = extension(row.path);
       if (!MEDIA_EXTENSIONS.has(ext)) continue;
       const kind = kindForExtension(ext);
       items.push({ name: String(row.name || row.path), path: row.path, extension: ext, kind,
-        binName: binForItem(row.path, kind), linked: true });
-      paths.add(row.path);
+        binName: binForItem(row.path, kind), linked: true, premiereIssue: String(row.premiereIssue || "") });
+      paths.set(pathKey(row.path), items[items.length - 1]);
     }
   } catch (_error) { /* Standalone panel still works without a desktop manifest. */ }
   return items;
@@ -390,9 +395,15 @@ async function ensureImported(project, item, index = null) {
   const root = await project.getRootItem();
   let projectItem = index ? index.get(pathKey(mediaPath)) : await findProjectItem(root, mediaPath);
   if (projectItem) return projectItem;
+  if (item.premiereIssue) throw new Error(item.premiereIssue + " En Xomacito, abre Biblioteca y usa Preparar para Premiere.");
   const targetBin = await ensureCategoryBin(project, item.binName);
-  const imported = await project.importFiles([mediaPath], true, targetBin, false);
-  if (!imported) throw new Error("Premiere rechazó la importación del archivo.");
+  try {
+    const imported = await project.importFiles([mediaPath], true, targetBin, false);
+    if (!imported) throw new Error("Premiere rechazó el archivo.");
+  } catch (error) {
+    throw new Error("No se pudo importar " + (item.name || mediaPath) + ". " + String(error)
+      + " Si indica VP9, vp09 o AV1, usa Biblioteca → Preparar para Premiere en Xomacito; renombrar a MP4 no cambia el códec.");
+  }
   projectItem = await findProjectItem(targetBin, mediaPath);
   if (!projectItem) throw new Error("El archivo se importó, pero no se pudo localizar en el proyecto.");
   if (index) index.set(pathKey(mediaPath), projectItem);
@@ -520,7 +531,7 @@ async function processBridge() {
     currentProjectId = projectIdentity(project);
     renderConnection();
     const identity = currentProjectId;
-    await writeBridgeJson(folder, "heartbeat.json", { time: Date.now() / 1000, project: projectName, projectId: identity, autoImport: autoSyncEnabled, protocol: 2, version: "1.6.0" });
+    await writeBridgeJson(folder, "heartbeat.json", { time: Date.now() / 1000, project: projectName, projectId: identity, autoImport: autoSyncEnabled, protocol: 2, version: "1.6.1" });
     const entries = await folder.getEntries();
     const names = new Set(entries.map((entry) => entry.name));
     for (const entry of entries) {

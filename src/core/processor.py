@@ -648,6 +648,8 @@ class FFmpegProcessor:
             print("---------------------------------")
             creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             error_output_buffer = []
+            if os.name == 'nt' and options.get('low_priority'):
+                creationflags |= subprocess.BELOW_NORMAL_PRIORITY_CLASS
             process = subprocess.Popen(command,stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='ignore', creationflags=creationflags)
             self.current_process = process
 

@@ -1,16 +1,19 @@
 """Quick-mode preferences and input rules, shared by the UI and job queue."""
 from copy import deepcopy
 from urllib.parse import urlsplit
+from src.core.premiere_media import DELIVERIES, ORIGINAL
 
 
 CHOICES = {
     "mode": ["Video", "Audio"],
+    "videoDelivery": DELIVERIES,
     "quality": ["Mejor disponible", "2160p", "1440p", "1080p", "720p", "480p", "360p"],
     "audioFormat": ["MP3 128", "MP3 192", "MP3 320", "WAV"],
     "thumbnailMode": ["Sin miniatura", "Guardar miniatura", "Solo miniatura"],
 }
 DEFAULTS = {
     "mode": "Video", "quality": "Mejor disponible", "audioFormat": "MP3 192",
+    "videoDelivery": ORIGINAL,
     "outputPath": "", "thumbnail": False, "thumbnailOnly": False,
     "sendPremiere": False, "playlist": False, "postprocess": False,
     "preset": "Web/Móvil - H.264 Normal", "selectedTag": "Sin etiqueta",

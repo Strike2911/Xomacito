@@ -31,6 +31,16 @@ def quality_preserving_selector(video):
     return f"bestvideo{bounds}+bestaudio/best{bounds}"
 
 
+def prefer_equivalent_editor_stream(best, formats):
+    """Prefer native editing only at the same dimensions and frame-rate class."""
+    width, height = video_dimensions(best)
+    fps = video_quality_key(best)[2]
+    equivalents = [fmt for fmt in formats if fmt.get("compatible")
+                   and video_dimensions(fmt) == (width, height)
+                   and abs(video_quality_key(fmt)[2] - fps) <= 0.5]
+    return max(equivalents, key=lambda fmt: float(fmt.get("tbr") or 0), default=best)
+
+
 def validate_download_resolution(info, selected):
     expected = sorted(video_dimensions(selected))
     expected_fps = float(selected.get("fps") or (selected.get("raw") or {}).get("fps") or 0)

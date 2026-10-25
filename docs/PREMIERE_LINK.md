@@ -10,6 +10,8 @@ Si Adobe falla, el asistente muestra su código y ofrece volver a comprobar, abr
 
 ## Flujo
 
+La preparación de códecs y sus pruebas están documentadas en [la revisión del 25 de octubre](premiere-codec-review-2026-10-25.md). En la fuente actual, **Premiere · alta calidad** prepara una copia cuando hace falta; **Original · sin convertir** conserva los streams descargados. Biblioteca ofrece **Preparar para Premiere** para archivos existentes. El envío manual comprueba códecs antes de crear una solicitud; la autoimportación no convierte archivos incompatibles por su cuenta.
+
 1. Xomacito crea `Videos/Xomacito` y la usa como destino común de las descargas nuevas.
 2. Biblioteca Premiere acepta carpetas arrastradas, analiza de forma recursiva audio y video, conserva metadatos locales y genera miniaturas en una carpeta oculta.
 3. El recortador nunca modifica el original. Crea un MP4 H.264/AAC para video o un WAV PCM de 24 bits para audio dentro de `Recortes`.

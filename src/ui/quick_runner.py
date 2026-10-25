@@ -7,7 +7,7 @@ from .download_controller import DEFAULT_OPTIONS, DownloadController
 from .media_logic import safe_filename
 from .presets import PREMIERE_AUDIO_PRESET
 from src.core.thumbnail_export import save_premiere_thumbnail
-from src.core.video_quality import video_quality_key, video_resolution
+from src.core.video_quality import video_quality_key, video_resolution, prefer_equivalent_editor_stream
 
 
 class _JobSettings(QObject):
@@ -40,10 +40,12 @@ def choose_video(formats: dict, quality: str) -> str:
     if not eligible:
         smallest = min(video_resolution(fmt) for _, fmt in entries)
         eligible = [(key, fmt) for key, fmt in entries if video_resolution(fmt) == smallest]
-    return max(eligible, key=lambda entry: (
+    best = max(eligible, key=lambda entry: (
         *video_quality_key(entry[1]), bool(entry[1].get("compatible")),
         float(entry[1].get("tbr") or 0),
-    ))[0]
+    ))[1]
+    best = prefer_equivalent_editor_stream(best, [fmt for _, fmt in eligible])
+    return next(key for key, fmt in eligible if fmt is best)
 
 
 class _QuickRunner(DownloadController):
@@ -99,6 +101,7 @@ class _QuickRunner(DownloadController):
         self._set_state(mode=mode, selectedVideo=selected)
         self._options = deepcopy(DEFAULT_OPTIONS)
         self._options.update(keepOriginal=False, autoSaveThumbnail=job["thumbnail"])
+        self._options["videoDelivery"] = job.get("videoDelivery", DEFAULT_OPTIONS["videoDelivery"])
         if job.get('ranges'):
             self._options.update(fragmentEnabled=True, fragmentRanges=deepcopy(job['ranges']))
         if mode == "Solo Audio":

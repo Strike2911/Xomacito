@@ -601,7 +601,7 @@ Item {
                                     ? ["MP3 · 320 kbps", "MP3 · 192 kbps",
                                         "M4A · AAC", "OPUS · Original"]
                                     : ["Mejor Calidad (Auto)", "4K", "1080p",
-                                        "720p", "480p", "Mejor Compatible"]
+                                        "720p", "480p", "H.264 nativo (puede limitar calidad)"]
                                 currentIndex: Math.max(0, find(
                                     selected.quality || viewState.globalQuality))
                                 onActivated: selected.jobId

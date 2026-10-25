@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 import uuid
 
 from PySide6.QtCore import QObject, Signal, Slot
@@ -10,6 +11,7 @@ class DialogBroker(QObject):
     """Puente no bloqueante para QML y bloqueante sólo para el worker solicitante."""
 
     requested = Signal(str, str, str, str, "QVariantList", str)
+    dismissed = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -24,6 +26,7 @@ class DialogBroker(QObject):
         options: list[str] | None = None,
         default: str = "",
         timeout: float | None = None,
+        cancellation_event=None,
     ) -> str:
         request_id = uuid.uuid4().hex
         event = threading.Event()
@@ -31,7 +34,14 @@ class DialogBroker(QObject):
         with self._lock:
             self._pending[request_id] = (event, response)
         self.requested.emit(request_id, kind, title, message, options or [], default)
-        event.wait(timeout)
+        if cancellation_event is None:
+            event.wait(timeout)
+        else:
+            deadline = time.monotonic() + timeout if timeout is not None else None
+            while not event.wait(0.1):
+                if cancellation_event.is_set() or (deadline is not None and time.monotonic() >= deadline):
+                    self.dismissed.emit(request_id)
+                    break
         with self._lock:
             self._pending.pop(request_id, None)
         return response["value"]
