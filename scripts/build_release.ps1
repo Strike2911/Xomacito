@@ -137,11 +137,11 @@ foreach ($PackageScript in $PackageScripts) {
     }
 }
 
-$Installer = Join-Path $ProjectRoot 'release\Xomacito-1.4.5-Setup.exe'
+$Installer = Join-Path $ProjectRoot 'release\Xomacito-1.4.6-Setup.exe'
 if (-not $LightOnly -and -not (Test-Path -LiteralPath $Installer)) {
     throw "No se generó el instalador esperado: $Installer"
 }
-$LightInstaller = Join-Path $ProjectRoot 'release\Xomacito-1.4.5-Update-Light.exe'
+$LightInstaller = Join-Path $ProjectRoot 'release\Xomacito-1.4.6-Update-Light.exe'
 if (-not (Test-Path -LiteralPath $LightInstaller)) {
     throw "No se generó la actualización ligera esperada: $LightInstaller"
 }

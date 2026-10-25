@@ -1,4 +1,12 @@
-# Revisión de seguridad pendiente — 1.4.3 y 1.4.4
+# Revisión de seguridad — 1.4.3 y 1.4.4
+
+## Resultado final aportado el 25 de octubre de 2026
+
+El propietario compartió las capturas del caso **42c3617b-35eb-4d4a-860e-4e5885ca7aa8**: determinación final **Not malware**, sin detección actual en Cloud ni Client (definiciones 1.461.171.0). El analista confirma que los archivos enviados no cumplen los criterios de malware ni de aplicaciones potencialmente no deseadas y que se retiró la detección. La muestra original 1.4.4 corresponde al SHA256 `009f40663451ff706a6f5792a563553353b628b746b2b9fd8abf38473991a645`.
+
+Se registra esa resolución en `windows-security-review.json`. Se limita a la muestra investigada: no certifica compilaciones posteriores ni significa que todos los equipos hayan actualizado sus firmas. 1.4.3 y 1.4.4 siguen retiradas y sus tags permanecen bloqueados. No se han desactivado protecciones ni añadido exclusiones.
+
+Las secciones siguientes conservan la cronología y el estado conocido en cada fecha.
 
 Estado al 23 de octubre de 2026: ambas publicaciones están retiradas. Microsoft recibió el ejecutable original 1.4.4 para investigación; el análisis está pendiente. La validación local del 22 de octubre no reprodujo los bloqueos reportados por otros usuarios. Las secciones siguientes conservan la cronología, no certifican la seguridad del programa.
 
