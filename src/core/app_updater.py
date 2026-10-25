@@ -31,6 +31,8 @@ IDEA_CONTRIBUTORS = [
     "BlackBull", "Eduardito3d", "Gako", "Ale", "Rykozio", "Maog", "Zane", "Nuan", "Nini",
 ]
 PUBLIC_VERSION_BY_INTERNAL = {
+    "4.0.46": "1.4.6",
+    "4.0.45": "1.4.5",
     "4.0.42": "1.4.2",
     "4.0.41": "1.4.1",
     "4.0.40": "1.4.0",
@@ -56,6 +58,15 @@ PUBLIC_VERSION_BY_INTERNAL = {
 }
 PUBLIC_BUGFIX_NOTE = "- Arreglo de bugs de la versión 1.0."
 RELEASE_NOTICES = {
+    "4.0.46": {
+        "eyebrow": "XOMACITO 1.4.6", "title": "Prepara tus videos para Premiere.",
+        "subtitle": "COMPATIBILIDAD Y CALIDAD",
+        "message": "Elige Premiere · alta calidad para crear una copia compatible cuando haga falta, conservando resolución, FPS y original.",
+        "highlights": ["Preparar para Premiere desde Biblioteca", "Conversión cancelable con uso limitado de CPU",
+                       "La cola respeta la calidad de videos verticales", "Xomacito Link 1.6.1 con avisos de códecs"],
+        "contributors": IDEA_CONTRIBUTORS, "closing": "Original · sin convertir sigue disponible. La conversión de alta calidad no es sin pérdida.",
+        "platinumCelebration": False, "smoothMotionPromotion": False,
+    },
     "4.0.42": {
         "eyebrow": "XOMACITO 1.4.2", "title": "Más ligero. Mejor conectado.",
         "subtitle": "PREMIERE Y OPTIMIZACIÓN",

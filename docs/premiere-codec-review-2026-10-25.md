@@ -1,6 +1,6 @@
 # Revisión de calidad e importación en Premiere — 25 de octubre de 2026
 
-Estado: corrección local sobre la fuente de 1.4.5. No publicada ni instalada como nueva versión.
+Estado: corrección integrada en `main` mediante la PR #24, incluida en la preparación de Xomacito 1.4.6 (revisión interna 4.0.46). La publicación de instaladores se registra en las notas de esa versión.
 
 ## Fallo reproducido
 
