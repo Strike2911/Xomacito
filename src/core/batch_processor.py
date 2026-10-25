@@ -23,6 +23,7 @@ from src.core.exceptions import UserCancelledError
 from src.core.file_naming import next_available_media_stem
 from src.core.video_upscaler import VideoUpscaler
 from src.core.thumbnail_export import save_premiere_thumbnail
+from src.core.video_quality import video_quality_key, validate_download_resolution
 from main import UPSCALING_DIR
 
 from src.core.constants import (
@@ -751,24 +752,17 @@ class QueueManager:
         selector = "best" 
         
         if mode == "Video+Audio":
-            if "Mejor Compatible" in quality_setting:
-                # Buscar H.264 (avc1) y AAC (mp4a) en contenedor MP4
-                # Fallback a best si no encuentra MP4 exacto
-                selector = "bestvideo[ext=mp4][vcodec^=avc]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
-            elif "4K" in quality_setting:
-                selector = "bestvideo[ext=mp4][height=2160]+bestaudio[ext=m4a]/best[ext=mp4][height=2160]/bestvideo[height=2160]+bestaudio/best[height=2160]/best"
-            elif "1080p" in quality_setting:
-                selector = "bestvideo[ext=mp4][height=1080]+bestaudio[ext=m4a]/best[ext=mp4][height=1080]/bestvideo[height=1080]+bestaudio/best[height=1080]/best"
-            elif "720p" in quality_setting:
-                selector = "bestvideo[ext=mp4][height=720]+bestaudio[ext=m4a]/best[ext=mp4][height=720]/bestvideo[height=720]+bestaudio/best[height=720]/best"
-            elif "480p" in quality_setting:
-                selector = "bestvideo[ext=mp4][height=480]+bestaudio[ext=m4a]/best[ext=mp4][height=480]/bestvideo[height=480]+bestaudio/best[height=480]/best"
+            resolution = next((pixels for label, pixels in (("4K", 2160), ("1080p", 1080), ("720p", 720), ("480p", 480)) if label in quality_setting), None)
+            if "Mejor Compatible" in quality_setting or "H.264 nativo" in quality_setting:
+                selector = "bestvideo[ext=mp4][vcodec^=avc]+bestaudio[ext=m4a]/best[ext=mp4][vcodec^=avc]"
+            elif resolution:
+                # Both orientations, with no unbounded fallback to low quality.
+                filters = (f"[height={resolution}][width>={resolution}]", f"[width={resolution}][height>={resolution}]")
+                selector = "/".join([f"bestvideo{bound}+bestaudio" for bound in filters]
+                                    + [f"best{bound}" for bound in filters])
             else:
-                # Mejor Calidad (Auto)
-                selector = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo+bestaudio/best"
-
-            # MP4 es la salida preferida. Si los streams del sitio no son
-            # compatibles, yt-dlp usa MKV y la interfaz lo anuncia de antemano.
+                selector = "bestvideo+bestaudio/best"
+            # The container is not a promise of Premiere codec compatibility.
             options['merge_output_format'] = "mp4/mkv"
 
         elif mode == "Solo Audio":
@@ -965,20 +959,10 @@ class QueueManager:
             self.ui_callback(job.job_id, "NO_AUDIO", "Este ítem no tiene audio.")
             return # Salir de la ejecución del job
 
-        # --- INICIO DE LA CORRECCIÓN 1 ---
-        # Lógica de fallback mejorada para encontrar el formato "✨"
-        
+        # The map is sorted by actual dimensions/FPS. Do not jump down to
+        # the first compatible codec, which used to silently choose 360p.
         if v_label == "-" or v_label not in job_video_formats:
-            v_opts = list(job_video_formats.keys())
-            if v_opts:
-                default_video_selection = v_opts[0] # Fallback por si no hay "✨"
-                for option in v_opts:
-                    if "✨" in option:
-                        default_video_selection = option
-                        break
-                v_label = default_video_selection
-            else:
-                v_label = "-"
+            v_label = next(iter(job_video_formats), "-")
 
         if a_label == "-" or a_label not in job_audio_formats:
             a_opts = list(job_audio_formats.keys())
@@ -1206,6 +1190,9 @@ class QueueManager:
                             final_filepath = candidate
                             print(f"DEBUG: Ruta corregida por búsqueda (Audio): {final_filepath}")
                             break
+
+            if mode == 'Video+Audio' and v_format_dict:
+                validate_download_resolution(self.main_app.ffmpeg_processor.get_local_media_info(final_filepath), v_format_dict)
 
             # --- INICIO DE LA LÓGICA DE RECODIFICACIÓN ---
             
@@ -1839,7 +1826,7 @@ class QueueManager:
         
         # Ordenar Video
         video_entries.sort(key=lambda e: (
-            -(e['format'].get('height') or 0),      
+            *(-value for value in video_quality_key(e['format'])),
             1 if "[Combinado]" in e['label'] else 0, 
             0 if "✨" in e['label'] else 1,         
             -(e['format'].get('tbr') or 0)          

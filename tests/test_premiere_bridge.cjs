@@ -16,7 +16,7 @@ class Folder {
 const context=vm.createContext({ require: () => ({storage:{localFileSystem:{}},entrypoints:{setup(){}}}),
   localStorage:{getItem(){return null;}}, setInterval(){return 1;}, clearInterval(){}, console });
 vm.runInContext(fs.readFileSync('premiere-panel/index.js','utf8') + `
-  globalThis.test = { processBridge, libraryItems, pathKey, automaticTimelineFor,
+  globalThis.test = { processBridge, libraryItems, pathKey, automaticTimelineFor, ensureImported,
     autoOptions(enabled, images=false){ autoTimeline=enabled; timelineImages=images; },
     setFolder(value){ libraryFolder=value; },
     setProject(value){ activeProject=async()=>value; },
@@ -41,6 +41,14 @@ vm.runInContext(fs.readFileSync('premiere-panel/index.js','utf8') + `
   const external='D:/Material externo/audio.wav';
   root.files.set('.xomacito-library.json',new File('.xomacito-library.json',JSON.stringify({schema:1,items:[{path:external,name:'audio.wav'},{path:external,name:'repetido.wav'},{path:'D:/script.exe'}]})));
   const linked=await context.test.libraryItems(root);assert.equal(linked.length,1);assert.equal(linked[0].path,external);
+  const local = new File('vp9.mp4'); local.nativePath='C:/Media/vp9.mp4'; root.files.set(local.name,local);
+  root.files.set('.xomacito-library.json',new File('.xomacito-library.json',JSON.stringify({schema:1,items:[
+    {path:'c:/media/VP9.mp4',premiereIssue:'El video usa VP9'},
+    {path:external,name:'audio.wav'}, {path:external.toLowerCase(),name:'duplicate.wav'}]})));
+  const merged=await context.test.libraryItems(root);
+  assert.equal(merged.length,2,'Manifest merges case-insensitive Windows paths without duplicates');
+  const vp9=merged.find(item=>item.name==='vp9.mp4');
+  await assert.rejects(context.test.ensureImported({getRootItem:async()=>({}),importFiles:()=>{throw Error('must not import');}},vp9,new Map()),/Preparar para Premiere/);
   assert.equal(context.test.pathKey('C:\\Media\\Prueba.mp4'),context.test.pathKey('c:/media/prueba.mp4'));
   assert.notEqual(context.test.pathKey('/Volumes/Media/A.mp4'),context.test.pathKey('/Volumes/Media/a.mp4'));
   context.test.autoOptions(true);

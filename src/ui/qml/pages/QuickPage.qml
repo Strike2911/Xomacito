@@ -43,12 +43,14 @@ ColumnLayout {
                     model: [
                         {key: "mode", label: "Formato", size: 150},
                         {key: "quality", label: "Calidad", size: 174},
+                        {key: "videoDelivery", label: "Destino del video", size: 205},
                         {key: "thumbnailMode", label: "Miniatura", size: 166}
                     ]
                     XComboBox {
                         required property var modelData
                         readonly property string optionKey: modelData.key === "quality" && page.viewState.mode === "Audio" ? "audioFormat" : modelData.key
                         objectName: "quickOption_" + optionKey
+                        visible: optionKey !== "videoDelivery" || page.viewState.mode === "Video"
                         width: modelData.size; compact: true
                         model: quickController.choices[optionKey]
                         enabled: modelData.key === "thumbnailMode" || !page.viewState.thumbnailOnly
@@ -73,6 +75,14 @@ ColumnLayout {
                 }
                 XButton { text: page.viewState.ranges.length ? "Recortes (" + page.viewState.ranges.length + ")" : "Recortar"; compact: true; kind: page.viewState.ranges.length ? "secondary" : "ghost"; onClicked: cutsPopup.open() }
                 XButton { text: "Postprocesar"; compact: true; kind: page.viewState.postprocess || page.viewState.sendPremiere ? "secondary" : "ghost"; onClicked: postPopup.open() }
+            }
+            Text {
+                Layout.fillWidth: true; visible: page.viewState.mode === "Video" && !page.viewState.thumbnailOnly
+                text: page.viewState.videoDelivery === "Premiere · alta calidad"
+                    ? "Para Premiere: copia de alta calidad si hace falta; conserva resolución, FPS y original. Convertir usa CPU; HDR/10 bits ocupa más espacio."
+                    : page.viewState.postprocess ? "Se convertirá con el preset seleccionado en Postprocesar. Su perfil determina la calidad de salida."
+                    : "Original: no convierte. Algunos videos de YouTube usan VP9/AV1 y no se importan directamente en Premiere."
+                color: theme.colors.textMuted; font.pixelSize: 10; wrapMode: Text.WordWrap
             }
         }
     }

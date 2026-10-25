@@ -13,7 +13,7 @@ from src.core.constants import (
     VIDEO_EXTENSIONS,
 )
 from src.core.downloader import apply_site_specific_rules
-from src.core.video_quality import video_quality_key, video_resolution
+from src.core.video_quality import video_quality_key, video_resolution, prefer_equivalent_editor_stream
 
 
 def normalize_info(info: dict | None) -> dict | None:
@@ -211,6 +211,10 @@ def build_media_choices(info: dict) -> dict[str, Any]:
         0 if is_editor_mp4_audio(item) else 1 if item["compatible"] else 2,
         -(item["abr"] or item["tbr"]),
     ))
+    if video:
+        preferred = prefer_equivalent_editor_stream(video[0], video)
+        video.remove(preferred)
+        video.insert(0, preferred)
     # Display labels are selection keys in the controllers. Keep every stream
     # distinct even when dimensions, codec and file-size metadata are identical.
     for entries in (video, audio):

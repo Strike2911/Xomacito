@@ -99,7 +99,7 @@ class AppController(QObject):
             self.project_root, self.settings, self.pool, self.download.ffmpeg, self
         )
         self.quick = QuickController(self.project_root, self.settings, self.pool, self.dialogs, self.presets, self.update_version, self)
-        self.premiere = PremiereController(self.media_library, self)
+        self.premiere = PremiereController(self.media_library, self, dialogs=self.dialogs)
         self.image_studio = ImageController(self.project_root, self.settings, self.pool, self.update_version, self)
         self.config = SettingsController(self.project_root, self.settings, self.theme, self.pool, self)
         self.cats = CatGachaController(self.project_root, self.settings, self)

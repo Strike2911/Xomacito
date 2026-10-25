@@ -14,6 +14,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFileDialog
 
 from src.core.processor import FFmpegProcessor
+from src.core.premiere_media import compatibility_issue
 
 from .list_model import ObjectListModel
 from .filmstrip import filmstrip_target, render_filmstrip
@@ -174,6 +175,7 @@ class MediaLibraryController(QObject):
         "sizeBytesLabel", "frameRate", "pixelFormat", "videoProfile", "videoBitrate",
         "audioBitrate", "totalBitrate", "sampleRate", "channels", "metadataSummary",
         "metadataCount", "category", "searchText", "isFavorite",
+        "premiereIssue",
     ]
     LIBRARY_ROW_ROLES = [
         "rowType", "folderPath", "folderName", "folderCount", "folderColor",
@@ -369,6 +371,7 @@ class MediaLibraryController(QObject):
                 not path.is_file()
                 or path.suffix.lower() not in SUPPORTED_MEDIA
                 or ".xomacito-thumbnails" in path.parts
+                or any(part.startswith(".xomacito-prepare-") for part in path.parts)
             ):
                 continue
             try:
@@ -381,7 +384,8 @@ class MediaLibraryController(QObject):
                     continue
                 info = self.ffmpeg.get_local_media_info(str(path)) or {}
                 streams = list(info.get("streams") or [])
-                video = next((stream for stream in streams if stream.get("codec_type") == "video"), None)
+                video = next((stream for stream in streams if stream.get("codec_type") == "video"
+                              and not (stream.get("disposition") or {}).get("attached_pic")), None)
                 audio = next((stream for stream in streams if stream.get("codec_type") == "audio"), None)
                 is_image = path.suffix.lower() in IMAGE_MEDIA
                 kind = "Imagen" if is_image else "Video" if video else "Audio"
@@ -437,6 +441,7 @@ class MediaLibraryController(QObject):
                     "category": category,
                     "searchText": search_text,
                     "isFavorite": favorite,
+                    "premiereIssue": compatibility_issue(info, path) if not is_image else "",
                 })
                 next_cache[signature] = dict(rows[-1])
             except (OSError, ValueError, subprocess.SubprocessError):

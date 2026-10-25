@@ -39,3 +39,29 @@ def test_file_check_accepts_rotation_and_ignores_cover():
     with pytest.raises(RuntimeError):
         validate_download_resolution({"streams": [dict(codec_type="video", width=1920,height=1080,
             disposition={"attached_pic": 1})]}, dict(width=1920,height=1080))
+
+
+@pytest.mark.parametrize("fps,compatible_size,expected", [(59.94, (1920, 1080), "native"),
+    (30, (1920, 1080), "source"), (60, (1280, 720), "source"), (60, (1080, 1920), "source")])
+def test_native_editor_preference_never_trades_dimensions_or_frame_rate(fps, compatible_size, expected):
+    from src.core.video_quality import prefer_equivalent_editor_stream
+    formats = {"source": dict(width=1920, height=1080, fps=60),
+               "native": dict(width=compatible_size[0], height=compatible_size[1], fps=fps, compatible=True)}
+    assert prefer_equivalent_editor_stream(formats["source"], formats.values()) is formats[expected]
+
+
+@pytest.mark.parametrize("width,height,label", [(1920, 1080, "1080p"), (1080, 1920, "1080p"),
+                                              (2160, 3840, "4K")])
+def test_playlist_quality_filters_preserve_landscape_and_portrait(width, height, label):
+    from src.core.batch_processor import QueueManager
+    options = {}
+    QueueManager._apply_playlist_quality(None, options, "Video+Audio", label)
+    audio = stream("audio", 0, 0, 0, "none", "opus")
+    low = stream("low", width//3, height//3, 30, "avc1", "mp4a", "mp4")
+    desired = stream("desired", width, height, 60)
+    with load_ytdlp().YoutubeDL({"quiet": True}) as ydl:
+        selector = ydl.build_format_selector(options["format_selector"])
+        def select(formats):
+            return list(selector(dict(formats=formats, has_merged_format=False, incomplete_formats=False)))
+        assert select([audio, low, desired])[0]["requested_formats"][0]["format_id"] == "desired"
+        assert select([audio, low]) == []

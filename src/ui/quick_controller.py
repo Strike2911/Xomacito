@@ -20,6 +20,7 @@ from src.core.downloader import extract_info_resilient
 from src.core.ytdlp_runtime import configure_ytdlp_options
 from .quick_options import ACTIVE_STATUSES, CHOICES, DEFAULTS, input_kind, job_options, output_path, preferences, thumbnail_mode
 from .quick_runner import _JobSettings, _QuickRunner, choose_video
+from src.core.premiere_media import ORIGINAL, PREMIERE
 from .search_preview_controller import SearchPreviewController
 
 
@@ -99,6 +100,10 @@ class QuickController(QObject):
             if self._state[key] == value:
                 return
             self._state[key] = value
+            if key == "videoDelivery" and value == PREMIERE:
+                self._state["postprocess"] = False
+            elif key == "postprocess" and value:
+                self._state["videoDelivery"] = ORIGINAL
             if value and key in {"thumbnail", "thumbnailOnly"}:
                 self._state["thumbnail" if key == "thumbnailOnly" else "thumbnailOnly"] = False
         else:

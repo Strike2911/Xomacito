@@ -11,18 +11,24 @@ from uuid import uuid4
 from PySide6.QtCore import QObject, Property, QTimer, Signal, Slot
 
 from .media_library_controller import SUPPORTED_MEDIA
+from .premiere_preparation import PremierePreparation
 
 
 class PremiereController(QObject):
     stateChanged = Signal()
     notificationRequested = Signal(str, str, str)
 
-    def __init__(self, library, parent=None):
+    def __init__(self, library, parent=None, dialogs=None):
         super().__init__(parent)
         self.library = library
         self._state = {"connected": False, "project": "", "status": "Abre Xomacito Link en Premiere y vincula esta biblioteca.", "pending": 0}
         self._pending = {}
         self._pending_paths = {}
+        self.preparation = PremierePreparation(library, dialogs, self)
+        self.preparation.ready.connect(self._prepared_ready)
+        self.preparation.notice.connect(self.notificationRequested)
+        self.preparation.progress.connect(self._preparation_progress)
+        self._state.update(preparing=False, preparationProgress=0.0)
         self.timer = QTimer(self)
         self.timer.setInterval(1500)
         self.timer.timeout.connect(self.poll)
@@ -82,6 +88,49 @@ class PremiereController(QObject):
 
     @Slot("QVariantList", bool)
     def sendMany(self, paths, timeline=False, automatic=False):
+        self.poll()
+        if not self._state["connected"]:
+            self.notificationRequested.emit("warning", "Conecta Premiere", "Abre Xomacito Link en Premiere y elige la misma carpeta de Biblioteca.")
+            return
+        targets = list(dict.fromkeys(str(Path(path).resolve()) for path in paths))
+        if not targets or len(targets) > 500 or any(not Path(p).is_file() or Path(p).suffix.lower() not in SUPPORTED_MEDIA for p in targets):
+            self.notificationRequested.emit("warning", "Archivo no disponible", "Selecciona archivos multimedia terminados.")
+            return
+        if timeline and len(targets) != 1:
+            self.notificationRequested.emit("warning", "Selecciona un archivo", "La inserción en V1/A1 admite un archivo por envío.")
+            return
+        self.preparation.enqueue(targets, {"timeline": timeline, "automatic": automatic,
+            "projectId": self._state.get("projectId", ""), "project": self._state["project"]})
+
+    @Slot(str)
+    def prepare(self, path):
+        if Path(path).is_file() and Path(path).suffix.lower() in SUPPORTED_MEDIA:
+            self.preparation.enqueue([str(Path(path).resolve())], {"prepareOnly": True})
+
+    @Slot()
+    def cancelPreparation(self):
+        self.preparation.cancel()
+
+    def _preparation_progress(self, value, message):
+        self._set(preparing=self.preparation.active is not None, preparationProgress=value, status=message)
+
+    def _prepared_ready(self, paths, context):
+        if not paths:
+            return
+        self.library.linkPaths(paths)
+        if context.get("prepareOnly"):
+            self.notificationRequested.emit("success", "Listo para Premiere", "Archivo verificado y disponible en Biblioteca. El original se conserva.")
+            return
+        self.poll()
+        if (self._state.get("projectId", "") != context.get("projectId", "")
+                or self._state["project"] != context.get("project")):
+            self.notificationRequested.emit("warning", "Cambió el proyecto", "La copia está lista. Vuelve a enviarla al proyecto correcto.")
+            return
+        if context.get("automatic") and not self._state.get("autoImport"):
+            return
+        self._send_prepared(paths, context["timeline"], context["automatic"])
+
+    def _send_prepared(self, paths, timeline=False, automatic=False):
         targets = list(dict.fromkeys(str(Path(path).resolve()) for path in paths))
         if not targets or len(targets) > 500 or any(not Path(path).is_file() or Path(path).suffix.lower() not in SUPPORTED_MEDIA for path in targets):
             if automatic:
@@ -165,4 +214,5 @@ class PremiereController(QObject):
                 pass
 
     def shutdown(self):
+        self.preparation.shutdown()
         self.timer.stop()
