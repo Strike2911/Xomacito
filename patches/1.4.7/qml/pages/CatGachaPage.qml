@@ -1,0 +1,724 @@
+import QtQuick
+import QtMultimedia
+import QtQuick.Controls
+import QtQuick.Layouts
+import "../components"
+
+Item {
+    id: root
+    property int section: 0
+    property bool showContents: false
+    property bool showNightContents: false
+    property bool dense: height <= 650
+    readonly property bool wide: width >= 900
+    readonly property bool revealOpen: revealPopup.opened
+    signal revealFinished()
+    readonly property var cats: catController.state
+    property string search: ""
+    property int rarityFilter: 0
+    onSearchChanged: catController.setInventoryFilter(search, rarityFilter)
+    onRarityFilterChanged: catController.setInventoryFilter(search, rarityFilter)
+
+    ColumnLayout {
+        anchors.fill: parent; spacing: root.dense ? 8 : 12
+        RowLayout {
+            Layout.fillWidth: true
+            ColumnLayout {
+                spacing: 3
+                Text { text: "PERSONALIZACIÓN"; color: theme.colors.primary; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1.2 }
+            }
+            Item { Layout.fillWidth: true }
+            XCard {
+                implicitWidth: 144; implicitHeight: root.dense ? 46 : 58; cardColor: theme.colors.surfaceRaised
+                Column {
+                    anchors.centerIn: parent; spacing: 2
+                    Text { text: root.cats.wallet || "$0.00"; color: theme.colors.success; font.pixelSize: 23; font.bold: true }
+                    Text { text: "SALDO VIRTUAL"; color: theme.colors.textMuted; font.pixelSize: 9; font.letterSpacing: 1 }
+                }
+            }
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            XButton { objectName: "catBoxesTab"; compact: root.dense; text: "Cajas"; kind: root.section === 0 ? "primary" : "secondary"; onClicked: root.section = 0 }
+            XButton { objectName: "catInventoryTab"; compact: root.dense; text: "Mis gatos · " + root.cats.ownedCount; kind: root.section === 1 ? "primary" : "secondary"; onClicked: root.section = 1 }
+            XButton { objectName: "customPersonalizationTab"; compact: root.dense; text: "Temas"; kind: root.section === 2 ? "primary" : "secondary"; onClicked: root.section = 2 }
+            Item { Layout.fillWidth: true }
+            XButton {
+                objectName: "catSkipAnimationToggle"
+                visible: root.section !== 2
+                compact: root.dense
+                text: checked ? "✓ Omitir animación" : "Omitir animación"
+                checkable: true; checked: root.cats.skipAnimation || false
+                kind: checked ? "primary" : "ghost"
+                onClicked: catController.setSkipAnimation(checked)
+                Accessible.description: "Conservar esta preferencia para todas las aperturas"
+            }
+            Text { visible: !root.dense && root.section !== 2; text: "10 descargas válidas = $1.00 virtual"; color: theme.colors.textMuted; font.pixelSize: 11 }
+        }
+        XCard {
+            objectName: "progressCatSettings"
+            visible: root.section !== 2
+            Layout.fillWidth: true
+            implicitHeight: 62
+            RowLayout {
+                anchors.fill: parent; anchors.margins: 10; spacing: 12
+                ProgressCat { Layout.preferredWidth: 58; Layout.preferredHeight: 39; animated: true }
+                ColumnLayout {
+                    Layout.fillWidth: true; spacing: 3
+                    Text { text: "Gatito de descarga"; color: theme.colors.text; font.pixelSize: 12; font.bold: true }
+                    Text { text: "Tu compañero en la barra de progreso"; color: theme.colors.textMuted; font.pixelSize: 10 }
+                }
+                XComboBox {
+                    objectName: "progressCatSelector"
+                    Layout.preferredWidth: 180
+                    compact: true
+                    model: ["Gris · Clásico", "Naranja"]
+                    currentIndex: ["classic", "orange"].indexOf(settingsController.state.progressCat || "classic")
+                    onActivated: settingsController.setValue("progressCat", ["classic", "orange"][currentIndex])
+                }
+            }
+        }
+        XCard {
+            visible: root.section === 1
+            Layout.fillWidth: true; implicitHeight: root.dense ? 72 : 86; cardColor: theme.colors.surfaceRaised
+            RowLayout {
+                anchors.fill: parent; anchors.margins: 12; spacing: 16
+                CatAvatar { Layout.preferredWidth: 60; Layout.preferredHeight: 60; source: root.cats.equippedSource; rarity: root.cats.equippedRarity; rarityColor: root.cats.equippedColor; animationStyle: root.cats.equippedAnimationStyle; effectLevel: root.cats.equippedEffectLevel; animatedEffects: settingsController.state.animationsEnabled }
+                ColumnLayout {
+                    Layout.fillWidth: true; spacing: 3
+                    Text { text: "GATO EQUIPADO"; color: theme.colors.textMuted; font.pixelSize: 9; font.bold: true }
+                    Text { text: root.cats.equippedName; color: theme.colors.text; font.pixelSize: 16; font.bold: true }
+                    Text { text: root.cats.equippedStars; color: root.cats.equippedColor; font.pixelSize: 11 }
+                }
+                ColumnLayout {
+                    Layout.preferredWidth: Math.min(330, root.width * 0.3); spacing: 6
+                    Text { text: "PRÓXIMO $1.00  ·  " + root.cats.downloadProgress + "/10"; color: theme.colors.textMuted; font.pixelSize: 10; font.bold: true }
+                    Rectangle {
+                        Layout.fillWidth: true; height: 6; radius: 3; color: theme.colors.backgroundAlt
+                        Rectangle { width: parent.width * root.cats.downloadProgressRatio; height: parent.height; radius: 3; color: theme.colors.primary }
+                    }
+                    Text { text: "Faltan " + root.cats.downloadsUntilRoll + " descargas válidas"; color: theme.colors.textMuted; font.pixelSize: 10 }
+                }
+                ColumnLayout {
+                    spacing: 3
+                    Text { text: root.cats.ownedUniqueCount + " especies · " + root.cats.ownedCount + " gatos"; color: theme.colors.text; font.pixelSize: 12 }
+                    Text { text: "Valor de colección: " + root.cats.inventoryValue; color: theme.colors.success; font.pixelSize: 11 }
+                }
+            }
+        }
+
+        CustomThemePage {
+            visible: root.section === 2
+            Layout.fillWidth: true; Layout.fillHeight: true
+        }
+        ScrollView {
+            id: boxesScroll
+            visible: root.section === 0
+            Layout.fillWidth: true; Layout.fillHeight: true
+            contentWidth: availableWidth; clip: true
+            ScrollBar.vertical: XScrollBar {}
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ColumnLayout {
+                width: boxesScroll.availableWidth - 12; spacing: 14
+                XCard {
+                    Layout.fillWidth: true; implicitHeight: nightLayout.implicitHeight + 40
+                    border.color: "#895039"
+                    GridLayout {
+                        id: nightLayout
+                        columns: root.wide ? 2 : 1
+                        columnSpacing: 28; rowSpacing: 20
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.margins: 20
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: root.wide ? root.width * 0.4 : -1
+                            Layout.minimumWidth: root.wide ? root.width * 0.4 : 0
+                            Layout.maximumWidth: root.wide ? root.width * 0.4 : Infinity
+                            Layout.preferredHeight: root.wide ? 272 : 212
+                            Layout.alignment: Qt.AlignTop
+                            radius: 16; clip: true
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: "#201A2D" }
+                                GradientStop { position: 0.6; color: "#492B36" }
+                                GradientStop { position: 1; color: "#181923" }
+                            }
+                            Text { anchors.left: parent.left; anchors.top: parent.top; anchors.margins: 18; text: "XOMACITO / COLECCIÓN 002"; color: "#E8BE9F"; font.pixelSize: 10; font.letterSpacing: 2 }
+                            Row {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.top: parent.top; anchors.topMargin: root.wide ? 66 : 40; spacing: root.wide ? 16 : 24
+                                Repeater {
+                                    model: root.cats.nightFeatured || []
+                                    Column {
+                                        required property var modelData
+                                        spacing: 7
+                                        Rectangle {
+                                            width: root.wide ? Math.max(70, Math.min(98, root.width * 0.072)) : 86; height: width; radius: 12
+                                            color: "#29202C"; border.width: 2; border.color: "#E8B78E"
+                                            Image { anchors.fill: parent; anchors.margins: 7; source: modelData.source; fillMode: Image.PreserveAspectFit; asynchronous: true }
+                                        }
+                                        Text { width: parent.width; text: modelData.name.replace("GATO ", ""); color: "#FFF3FC"; font.pixelSize: 11; font.bold: true; horizontalAlignment: Text.AlignHCenter }
+                                        Text { width: parent.width; text: modelData.stars; color: modelData.rarityColor; font.pixelSize: 10; horizontalAlignment: Text.AlignHCenter }
+                                    }
+                                }
+                            }
+                            Text { anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: 13; text: "NOCHE DE ENTIERRO"; color: "#FFFFFF"; font.pixelSize: root.wide ? 25 : 23; font.bold: true; font.letterSpacing: 2 }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true; Layout.alignment: Qt.AlignTop
+                            spacing: 14
+                            Text { text: "NOCHE DE ENTIERRO"; color: "#FFBB79"; font.pixelSize: 11; font.bold: true; font.letterSpacing: 1.5 }
+                            Text { Layout.fillWidth: true; text: "ALL MY FELLAS!!"; color: theme.colors.text; font.pixelSize: 25; font.bold: true; wrapMode: Text.WordWrap }
+                            Text { Layout.fillWidth: true; text: "Xomas, Megas y Spike lideran esta colección de " + (root.cats.nightContents || []).length + " gatos. Cada apertura entrega un gato; pueden salir repetidos."; color: theme.colors.textMuted; font.pixelSize: 13; lineHeight: 1.2; wrapMode: Text.WordWrap }
+                            RowLayout {
+                                Layout.fillWidth: true; spacing: 10
+                                XButton { objectName: "catBox_night"; text: "Abrir Noche de Entierro · $1.00"; enabled: !root.cats.opening && root.cats.walletCents >= 100; onClicked: catController.openBox("night") }
+                            }
+                            Text { Layout.fillWidth: true; text: root.cats.downloadProgress + "/10 descargas para tu próximo $1.00 virtual"; color: theme.colors.textMuted; font.pixelSize: 11 }
+                            Rectangle {
+                                Layout.fillWidth: true; height: 5; radius: 3; color: theme.colors.backgroundAlt
+                                Rectangle { height: parent.height; width: parent.width * root.cats.downloadProgressRatio; radius: 3; color: "#DDA476" }
+                            }
+                            XButton { text: root.showNightContents ? "Ocultar contenido y probabilidades" : "Ver contenido y probabilidades"; compact: true; kind: "ghost"; onClicked: root.showNightContents = !root.showNightContents }
+                        }
+                    }
+                }
+                Text { visible: root.showNightContents; Layout.fillWidth: true; text: root.cats.boxes && root.cats.boxes.length > 1 ? root.cats.boxes[1].odds : ""; color: theme.colors.textMuted; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                Text { visible: root.showNightContents; Layout.fillWidth: true; text: "Mítico: 0.2% total, repartido entre Xomas, Megas, Spike, The Focus Cat y Black Bull (0.04% cada uno). Cada apertura es independiente."; color: theme.colors.textMuted; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                Flow {
+                    visible: root.showNightContents
+                    Layout.fillWidth: true; Layout.preferredHeight: visible ? implicitHeight : 0
+                    spacing: 8
+                    Repeater {
+                        model: root.showNightContents ? (root.cats.nightContents || []) : []
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: 146; height: 148; radius: 12
+                            color: theme.colors.surfaceRaised; border.color: modelData.rarityColor
+                            Column {
+                                anchors.fill: parent; anchors.margins: 9; spacing: 4
+                                Image { width: parent.width; height: 67; source: modelData.source; fillMode: Image.PreserveAspectFit; asynchronous: true }
+                                Text { width: parent.width; text: modelData.name; color: theme.colors.text; font.pixelSize: 10; elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter }
+                                Text { width: parent.width; text: modelData.stars; color: modelData.rarityColor; font.pixelSize: 10; horizontalAlignment: Text.AlignHCenter }
+                                Text { width: parent.width; text: modelData.odds + " · " + modelData.price; color: theme.colors.textMuted; font.pixelSize: 10; horizontalAlignment: Text.AlignHCenter }
+                            }
+                        }
+                    }
+                }
+                XCard {
+                    Layout.fillWidth: true; implicitHeight: ogLayout.implicitHeight + 40
+                    border.color: "#9276B8"
+                    GridLayout {
+                        id: ogLayout
+                        columns: root.wide ? 2 : 1
+                        columnSpacing: 28; rowSpacing: 20
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.margins: 20
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: root.wide ? root.width * 0.4 : -1
+                            Layout.minimumWidth: root.wide ? root.width * 0.4 : 0
+                            Layout.maximumWidth: root.wide ? root.width * 0.4 : Infinity
+                            Layout.preferredHeight: root.wide ? 272 : 212
+                            Layout.alignment: Qt.AlignTop
+                            radius: 16; clip: true
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: "#151C34" }
+                                GradientStop { position: 0.6; color: "#33244C" }
+                                GradientStop { position: 1; color: "#101924" }
+                            }
+                            Text { anchors.left: parent.left; anchors.top: parent.top; anchors.margins: 18; text: "XOMACITO / COLECCIÓN 001"; color: "#C7B0E5"; font.pixelSize: 10; font.letterSpacing: 2 }
+                            Row {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.top: parent.top; anchors.topMargin: root.wide ? 66 : 40; spacing: root.wide ? 16 : 24
+                                Repeater {
+                                    model: root.cats.ogFeatured || []
+                                    Column {
+                                        required property var modelData
+                                        spacing: 7
+                                        Rectangle {
+                                            width: root.wide ? Math.max(70, Math.min(98, root.width * 0.072)) : 86; height: width; radius: 12
+                                            color: "#202034"; border.width: 2; border.color: "#EDB5FF"
+                                            Image { anchors.fill: parent; anchors.margins: 7; source: modelData.source; fillMode: Image.PreserveAspectFit; asynchronous: true }
+                                        }
+                                        Text { width: parent.width; text: modelData.name.replace("GATO ", ""); color: "#FFF3FC"; font.pixelSize: 11; font.bold: true; horizontalAlignment: Text.AlignHCenter }
+                                    }
+                                }
+                            }
+                            Text { anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: 13; text: "OG COLECCIÓN"; color: "#FFFFFF"; font.pixelSize: root.wide ? 25 : 23; font.bold: true; font.letterSpacing: 2 }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true; Layout.alignment: Qt.AlignTop
+                            spacing: 14
+                            Text { text: "OG COLECCIÓN"; color: "#D3ABFF"; font.pixelSize: 11; font.bold: true; font.letterSpacing: 1.5 }
+                            Text { Layout.fillWidth: true; text: "Los originales, juntos."; color: theme.colors.text; font.pixelSize: 25; font.bold: true; wrapMode: Text.WordWrap }
+                            Text { Layout.fillWidth: true; text: "Strike, Player y Zarking son los únicos míticos de esta caja. Cada apertura entrega un gato; pueden salir repetidos."; color: theme.colors.textMuted; font.pixelSize: 13; lineHeight: 1.2; wrapMode: Text.WordWrap }
+                            RowLayout {
+                                Layout.fillWidth: true; spacing: 10
+                                XButton { objectName: "catBox_og"; text: "Abrir OG · $1.00"; enabled: !root.cats.opening && root.cats.walletCents >= 100; onClicked: catController.openBox("og") }
+                                XButton { objectName: "catRollButton"; text: root.cats.dailyAvailable ? "Regalo diario · Gratis" : "Regalo usado hoy"; kind: "secondary"; enabled: root.cats.dailyAvailable && !root.cats.opening; onClicked: catController.openBox("daily") }
+                            }
+                            Text { Layout.fillWidth: true; text: root.cats.downloadProgress + "/10 descargas para tu próximo $1.00 virtual"; color: theme.colors.textMuted; font.pixelSize: 11 }
+                            Rectangle {
+                                Layout.fillWidth: true; height: 5; radius: 3; color: theme.colors.backgroundAlt
+                                Rectangle { height: parent.height; width: parent.width * root.cats.downloadProgressRatio; radius: 3; color: "#B596DD" }
+                            }
+                            XButton { text: root.showContents ? "Ocultar contenido y probabilidades" : "Ver contenido y probabilidades"; compact: true; kind: "ghost"; onClicked: root.showContents = !root.showContents }
+                        }
+                    }
+                }
+                Text { visible: root.showContents; Layout.fillWidth: true; text: root.cats.boxes && root.cats.boxes.length ? root.cats.boxes[0].odds : ""; color: theme.colors.textMuted; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                Text { visible: root.showContents; Layout.fillWidth: true; text: "Mítico: 0.2% total, repartido por igual entre los tres. Cada apertura es independiente."; color: theme.colors.textMuted; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                Flow {
+                    visible: root.showContents
+                    Layout.fillWidth: true; Layout.preferredHeight: visible ? implicitHeight : 0
+                    spacing: 8
+                    Repeater {
+                        model: root.showContents ? (root.cats.ogContents || []) : []
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: 146; height: 148; radius: 12
+                            color: theme.colors.surfaceRaised; border.color: modelData.rarityColor
+                            Column {
+                                anchors.fill: parent; anchors.margins: 9; spacing: 4
+                                Image { width: parent.width; height: 67; source: modelData.source; fillMode: Image.PreserveAspectFit; asynchronous: true }
+                                Text { width: parent.width; text: modelData.name; color: theme.colors.text; font.pixelSize: 10; elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter }
+                                Text { width: parent.width; text: modelData.stars; color: modelData.rarityColor; font.pixelSize: 10; horizontalAlignment: Text.AlignHCenter }
+                                Text { width: parent.width; text: modelData.odds + " · " + modelData.price; color: theme.colors.textMuted; font.pixelSize: 10; horizontalAlignment: Text.AlignHCenter }
+                            }
+                        }
+                    }
+                }
+                Text { Layout.fillWidth: true; text: "10 descargas válidas = $1.00 virtual. Conservas tus gatos, saldo y descargas. Los precios son virtuales, sin compras ni retiros de dinero real."; color: theme.colors.textMuted; font.pixelSize: 11; wrapMode: Text.WordWrap }
+            }
+        }
+        RowLayout {
+            visible: root.section === 1; Layout.fillWidth: true
+            XTextField { Layout.fillWidth: true; placeholderText: "Buscar entre mis gatos…"; onTextEdited: root.search = text }
+            XComboBox { Layout.preferredWidth: 190; model: ["Todas las rarezas", "1★ Común", "2★ Peculiar", "3★ Raro", "4★ Épico", "5★ Legendario", "6★ Mítico"]; onActivated: root.rarityFilter = currentIndex }
+            Text { text: collectionGrid.count + " especies"; color: theme.colors.textMuted; font.pixelSize: 11 }
+        }
+        GridView {
+            id: collectionGrid
+            objectName: "catCollectionGrid"
+            visible: root.section === 1
+            Layout.fillWidth: true; Layout.fillHeight: true; clip: true
+            model: catController.inventoryModel
+            cellWidth: width / Math.max(1, Math.floor(width / 190)); cellHeight: 248
+            ScrollBar.vertical: XScrollBar {}
+            Text { anchors.centerIn: parent; visible: collectionGrid.count === 0; text: "No hay gatos que coincidan con tu búsqueda."; color: theme.colors.textMuted }
+            delegate: Item {
+                id: catCard
+                required property var model
+                readonly property var modelData: model
+                readonly property bool onScreen: root.visible && root.section === 1 && y + height >= collectionGrid.contentY && y <= collectionGrid.contentY + collectionGrid.height
+                width: collectionGrid.cellWidth; height: collectionGrid.cellHeight
+                XCard {
+                    anchors.fill: parent; anchors.margins: 5; border.color: catCard.modelData.equipped ? catCard.modelData.rarityColor : theme.colors.border
+                    ColumnLayout {
+                        anchors.fill: parent; anchors.margins: 10; spacing: 6
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text { text: catCard.modelData.stars; color: catCard.modelData.rarityColor; font.pixelSize: 10 }
+                            Item { Layout.fillWidth: true }
+                            Text { text: "×" + catCard.modelData.quantity; color: theme.colors.text; font.pixelSize: 12; font.bold: true }
+                        }
+                        CatAvatar { Layout.alignment: Qt.AlignHCenter; Layout.preferredWidth: 80; Layout.preferredHeight: 80; source: catCard.modelData.source; rarity: catCard.modelData.rarity; rarityColor: catCard.modelData.rarityColor; animationStyle: catCard.modelData.animationStyle; effectLevel: catCard.modelData.effectLevel; animatedEffects: catCard.onScreen && !revealPopup.opened && settingsController.state.animationsEnabled }
+                        Text { Layout.fillWidth: true; text: catCard.modelData.name; color: theme.colors.text; font.pixelSize: 11; font.bold: true; elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter }
+                        Text { Layout.alignment: Qt.AlignHCenter; text: catCard.modelData.price + " / gato"; color: theme.colors.success; font.pixelSize: 12 }
+                        XButton { Layout.fillWidth: true; compact: true; implicitHeight: 28; text: catCard.modelData.equipped ? "Equipado" : "Equipar"; kind: "secondary"; enabled: !catCard.modelData.equipped; onClicked: catController.equip(catCard.modelData.catId) }
+                        XButton { Layout.fillWidth: true; compact: true; implicitHeight: 28; text: "Vender 1 · " + catCard.modelData.price; kind: "ghost"; enabled: catCard.modelData.canSell; onClicked: catController.sellCat(catCard.modelData.catId) }
+                    }
+                }
+            }
+        }
+        Text { visible: root.section === 1; Layout.fillWidth: true; text: "La última copia de tu gato equipado se conserva. Equipa otro para venderlo. Las auras y los descubrimientos se mantienen."; color: theme.colors.textMuted; font.pixelSize: 10 }
+    }
+
+    Popup {
+        id: revealPopup
+        objectName: "catRevealPopup"
+        parent: Overlay.overlay; anchors.centerIn: parent
+        width: Math.min(900, parent ? parent.width - 32 : 850)
+        height: Math.min(530, parent ? parent.height - 32 : 500)
+        modal: true; focus: true; padding: 22
+        closePolicy: Popup.NoAutoClose
+        property var result: ({})
+        property real travel: 0
+        property real presentation: 1
+        onDoneChanged: { if (done) { presentation = settingsController.state.animationsEnabled ? 0 : 1; if (settingsController.state.animationsEnabled) resultEntrance.restart() } }
+        NumberAnimation { id: resultEntrance; target: revealPopup; property: "presentation"; from: 0; to: 1; duration: 240; easing.type: Easing.OutCubic }
+        Rectangle {
+            anchors.fill: parent; radius: 20; z: 20
+            visible: revealPopup.opened && revealPopup.done && revealPopup.result.animationStyle === "hola-haunting"
+            color: "#080308"
+            property real arrival: 0
+            opacity: settingsController.state.animationsEnabled ? (arrival > 0.8 ? (1-arrival)*5 : 1) : 0
+            onVisibleChanged: { if (visible && settingsController.state.animationsEnabled && !root.cats.skipAnimation) haunting.start(); else arrival = 1 }
+            NumberAnimation on arrival { id: haunting; from: 0; to: 1; duration: 2400 }
+            Image {
+                anchors.centerIn: parent
+                width: Math.min(parent.width, parent.height) * (0.18 + parent.arrival * 0.95); height: width
+                source: revealPopup.result.source || ""
+                fillMode: Image.PreserveAspectFit
+                opacity: Math.min(1, parent.arrival * 2)
+            }
+            Text { anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: 25; text: "NO ESTABAS SOLO."; color: "#F56A73"; font.letterSpacing: 5; font.pixelSize: 16 }
+        }
+        readonly property bool done: travel >= 1
+        readonly property bool resultCanSell: (root.cats.inventoryItems || []).some(function(cat) { return cat.catId === revealPopup.result.catId && cat.canSell })
+        onClosed: { rouletteStartTimeout.stop(); rouletteAudio.stop(); spin.stop(); resultEntrance.stop(); catController.finishOpening(); root.revealFinished() }
+        background: Rectangle { objectName: "catRevealBorder"; radius: 22; color: theme.colors.backgroundAlt; border.color: revealPopup.done ? revealPopup.result.rarityColor || theme.colors.primary : theme.colors.border; border.width: 2 }
+        function reveal(value) {
+            travel = 0
+            result = value
+            open()
+            if (settingsController.state.animationsEnabled && !root.cats.skipAnimation && value.reel && value.reel.length)
+                { rouletteStartTimeout.restart(); rouletteAudio.play() }
+            else {
+                travel = 1
+                catController.finishOpening()
+            }
+        }
+        MediaPlayer {
+            id: rouletteAudio; objectName: "rouletteAudio"
+            source: Qt.resolvedUrl("../../../../assets/sfx/roulette-gamble.wav")
+            audioOutput: AudioOutput { objectName: "rouletteOutput"; volume: 0.8 }
+            onPlaybackStateChanged: {
+                if (playbackState === MediaPlayer.PlayingState && revealPopup.opened && !revealPopup.done) {
+                    rouletteStartTimeout.stop()
+                    spin.restart()
+                }
+            }
+            onMediaStatusChanged: {
+                if (mediaStatus === MediaPlayer.EndOfMedia && revealPopup.opened && !revealPopup.done) {
+                    spin.stop(); revealPopup.travel = 1; catController.finishOpening()
+                }
+            }
+            onErrorOccurred: {
+                if (revealPopup.opened && !revealPopup.done) { rouletteStartTimeout.stop(); spin.restart() }
+            }
+        }
+        Timer {
+            id: rouletteStartTimeout; interval: 3000
+            onTriggered: { rouletteAudio.stop(); if (revealPopup.opened && !revealPopup.done) spin.restart() }
+        }
+        NumberAnimation { id: spin; target: revealPopup; property: "travel"; from: 0; to: 1; duration: rouletteAudio.duration > 0 ? rouletteAudio.duration : 2167; easing.type: Easing.OutQuint; onFinished: { rouletteAudio.stop(); catController.finishOpening() } }
+        MythicEffectField {
+            objectName: "revealMythicEffects"
+            visible: revealPopup.opened && revealPopup.done
+            anchors.fill: parent
+            animationStyle: revealPopup.result.animationStyle || ""
+            effectColor: revealPopup.result.rarityColor || theme.colors.primary
+            active: revealPopup.opened && revealPopup.done && settingsController.state.animationsEnabled
+            progress: revealPopup.travel
+            mode: "reveal"
+            opacity: revealPopup.result.animationStyle === "hola-haunting" ? 0.85 : 0.3
+        }
+        RevealCelebration {
+            objectName: "revealConfetti"
+            anchors.fill: parent; z: 15
+            active: revealPopup.opened && revealPopup.done && settingsController.state.animationsEnabled && !root.cats.skipAnimation
+            rarity: Number(revealPopup.result.rarity || 1)
+            accent: revealPopup.result.rarityColor || theme.colors.primary
+            haunting: revealPopup.result.animationStyle === "hola-haunting"
+        }
+        ColumnLayout {
+            anchors.fill: parent; spacing: 14
+            RowLayout {
+                Layout.fillWidth: true
+                Text { Layout.fillWidth: true; text: revealPopup.done ? "Resultado de tu caja" : "Abriendo " + (revealPopup.result.boxName || "regalo") + "…"; color: theme.colors.text; font.pixelSize: 22; font.bold: true }
+                XButton {
+                    objectName: "catRevealSkipToggle"
+                    text: checked ? "✓ Omitir animación" : "Omitir animación"
+                    checkable: true; checked: root.cats.skipAnimation || false
+                    kind: checked ? "primary" : "ghost"
+                    onClicked: {
+                        catController.setSkipAnimation(checked)
+                        if (checked) { rouletteStartTimeout.stop(); rouletteAudio.stop(); spin.stop(); revealPopup.travel = 1; catController.finishOpening() }
+                    }
+                }
+            }
+            Rectangle {
+                id: reelViewport
+                Layout.fillWidth: true; Layout.preferredHeight: 152; visible: !revealPopup.done && (revealPopup.result.reel || []).length > 0; clip: true; radius: 12; color: theme.colors.surface
+                Row {
+                    x: reelViewport.width / 2 - (2 + (Number(revealPopup.result.winningIndex || 34) - 2) * revealPopup.travel) * 146 - 69
+                    y: 9; spacing: 8
+                    Repeater {
+                        model: revealPopup.result.reel || []
+                        Rectangle {
+                            required property var modelData
+                            width: 138; height: 134; radius: 10; color: theme.colors.surfaceRaised
+                            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 4; color: modelData.rarityColor }
+                            Column {
+                                anchors.centerIn: parent; width: parent.width - 12; spacing: 5
+                                Image { anchors.horizontalCenter: parent.horizontalCenter; width: 78; height: 78; source: modelData.source; fillMode: Image.PreserveAspectFit }
+                                Text { width: parent.width; text: modelData.name; color: theme.colors.text; font.pixelSize: 9; elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter }
+                                Text { anchors.horizontalCenter: parent.horizontalCenter; text: modelData.price; color: modelData.rarityColor; font.pixelSize: 11 }
+                            }
+                        }
+                    }
+                }
+                Rectangle { anchors.horizontalCenter: parent.horizontalCenter; width: 3; height: parent.height; color: "#FFD75E" }
+                Text { anchors.horizontalCenter: parent.horizontalCenter; text: "▼"; color: "#FFD75E"; font.pixelSize: 21 }
+            }
+            Rectangle {
+                objectName: "catRevealCard"
+                Layout.fillWidth: true; Layout.fillHeight: true
+                visible: revealPopup.done
+                radius: 18; border.color: Qt.alpha(revealPopup.result.rarityColor || theme.colors.primary, 0.5)
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0; color: Qt.tint(theme.colors.surface, Qt.alpha(revealPopup.result.rarityColor || theme.colors.primary, 0.16)) }
+                    GradientStop { position: 1; color: theme.colors.surface }
+                }
+                opacity: revealPopup.presentation
+                scale: 0.97 + revealPopup.presentation * 0.03
+                RowLayout {
+                    anchors.fill: parent; anchors.margins: 22; spacing: 24
+                    CatAvatar {
+                        Layout.preferredWidth: Math.min(150, Math.max(70, parent.height - 20)); Layout.preferredHeight: Layout.preferredWidth
+                        source: revealPopup.result.source || ""; rarity: Number(revealPopup.result.rarity || 1)
+                        rarityColor: revealPopup.result.rarityColor || theme.colors.primary
+                        animationStyle: revealPopup.result.animationStyle || "standard"
+                        effectLevel: Number(revealPopup.result.effectLevel || 0)
+                        animatedEffects: revealPopup.opened && revealPopup.done && settingsController.state.animationsEnabled
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true; spacing: 9
+                        Text {
+                            objectName: "catRevealOwnership"
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap
+                            text: revealPopup.result.isNew ? "NUEVO · PRIMER DESCUBRIMIENTO" : revealPopup.result.isDuplicate ? "REPETIDO · +1 COPIA" : "DE VUELTA EN TU COLECCIÓN"
+                            color: revealPopup.result.rarityColor || theme.colors.primary; font.pixelSize: 12; font.bold: true
+                        }
+                        Text { Layout.fillWidth: true; text: revealPopup.result.name || ""; color: theme.colors.text; font.pixelSize: 26; font.bold: true; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight }
+                        Text { text: (revealPopup.result.stars || "") + "   ·   " + (revealPopup.result.price || "") + " virtual"; color: revealPopup.result.rarityColor || theme.colors.primary; font.pixelSize: 16 }
+                        Text {
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 12; color: theme.colors.textMuted
+                            text: revealPopup.result.animationStyle === "hola-haunting" ? "HALLOWEEN 2026 · Encontraste al visitante secreto." : revealPopup.result.isNew ? "Un nuevo rostro para tu colección." : revealPopup.result.isDuplicate ? "Puedes conservar esta copia, equiparla o vender una." : "Ya lo habías descubierto. Ahora vuelve a acompañarte."
+                        }
+                    }
+                }
+            }
+            RowLayout {
+                visible: revealPopup.done; Layout.fillWidth: true; spacing: 10
+                Repeater {
+                    model: [
+                        { label: "COPIAS EN TU INVENTARIO", value: String(revealPopup.result.quantity || 1), detail: String(revealPopup.result.quantityBefore || 0) + " antes · +1 recibida" },
+                        { label: "AURA", value: String(revealPopup.result.effectLevel || 0) + " / 5", detail: revealPopup.result.effectName || "Inicial" },
+                        { label: "ÁLBUM OG", value: String(revealPopup.result.collectionDiscovered || 0) + " / " + String(revealPopup.result.collectionTotal || 0), detail: revealPopup.result.isNew ? "+1 descubrimiento" : "Descubrimientos conservados" }
+                    ]
+                    Rectangle {
+                        required property var modelData
+                        Layout.fillWidth: true; Layout.preferredHeight: 76
+                        radius: 12; color: theme.colors.surface; border.color: theme.colors.border
+                        ColumnLayout {
+                            anchors.fill: parent; anchors.margins: 10; spacing: 3
+                            Text { Layout.fillWidth: true; text: modelData.label; color: theme.colors.textMuted; font.pixelSize: 9; elide: Text.ElideRight }
+                            Text { text: modelData.value; color: theme.colors.text; font.pixelSize: 20; font.bold: true }
+                            Text { Layout.fillWidth: true; text: modelData.detail; color: theme.colors.textMuted; font.pixelSize: 10; elide: Text.ElideRight }
+                        }
+                    }
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true; enabled: revealPopup.done
+                XButton { text: "Vender · " + (revealPopup.result.price || ""); kind: "success"; enabled: revealPopup.resultCanSell; onClicked: { if (catController.sellCat(revealPopup.result.catId)) revealPopup.close() } }
+                Item { Layout.fillWidth: true }
+                XButton { objectName: "catRevealEquipButton"; text: "Equipar ahora"; kind: "secondary"; onClicked: { catController.equip(revealPopup.result.catId); revealPopup.close() } }
+                XButton { objectName: "catRevealContinueButton"; text: "Conservar"; onClicked: revealPopup.close() }
+            }
+        }
+    }
+    Item {
+        id: equipCelebration
+        objectName: "catEquipCelebration"
+        anchors.fill: parent
+        z: 500
+        visible: opacity > 0
+        opacity: 0
+        property var result: ({})
+        property real pulseScale: 0.5
+        readonly property bool voidCat: result.animationStyle === "hola-haunting"
+        readonly property bool arcaneMage: result.animationStyle === "arcane-mage"
+        readonly property bool playeraPrismatic: result.animationStyle === "playera-prismatic"
+        readonly property bool zarkingCyber: result.animationStyle === "zarking-cyber"
+        readonly property bool blackbullNoir: result.animationStyle === "blackbull-noir"
+        readonly property bool strikeApex: result.animationStyle === "strike-apex"
+        readonly property bool mythicCat: Number(result.rarity || 1) >= 6
+        readonly property color effectColor: voidCat ? "#A83848" : result.rarityColor || theme.colors.primary
+        readonly property string equipTitle: voidCat ? "ALGO TE ESTÁ MIRANDO" : strikeApex
+                                                ? "CORONA SUPREMA ACTIVADA"
+                                                : arcaneMage
+                                                ? "PACTO ARCANO COMPLETADO"
+                                                : playeraPrismatic
+                                                  ? "¡FIESTA PRISMÁTICA ACTIVADA!"
+                                                  : zarkingCyber
+                                                    ? "NÚCLEO ZARKING SINCRONIZADO"
+                                                    : blackbullNoir
+                                                      ? "BLACK BULL ENTRA AL CLUB"
+                                                    : "GATO EQUIPADO"
+
+        function celebrate(value) {
+            result = value
+            if (!settingsController.state.animationsEnabled)
+                return
+            opacity = 0
+            pulseScale = 0.5
+            equipSequence.restart()
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: equipCelebration.voidCat ? "#FC030105" : equipCelebration.strikeApex
+                   ? "#EB170400"
+                   : equipCelebration.arcaneMage
+                   ? "#D90A001A"
+                   : equipCelebration.playeraPrismatic
+                     ? "#D91D0A2D"
+                     : equipCelebration.zarkingCyber
+                       ? "#E0000718"
+                       : equipCelebration.blackbullNoir ? "#EB100900" : "#A8000710"
+        }
+
+        MythicEffectField {
+            anchors.fill: parent
+            animationStyle: equipCelebration.result.animationStyle || ""
+            effectColor: equipCelebration.effectColor
+            active: equipCelebration.visible && settingsController.state.animationsEnabled
+            progress: equipCelebration.pulseScale
+            mode: "equip"
+        }
+
+        Item {
+            anchors.centerIn: parent
+            width: Math.min(parent.width, parent.height) * (equipCelebration.mythicCat ? 0.54 : 0.4)
+            height: width
+            scale: equipCelebration.pulseScale
+
+            Repeater {
+                model: equipCelebration.voidCat ? 0 : equipCelebration.arcaneMage ? 3 : 1
+                Rectangle {
+                    required property int index
+                    anchors.centerIn: parent
+                    width: parent.width - index * 42
+                    height: width
+                    radius: width / 2
+                    color: "transparent"
+                    border.width: equipCelebration.arcaneMage ? 4 - index : 2
+                    border.color: index === 1 ? "#FFF2A8" : equipCelebration.effectColor
+                    opacity: 0.38 + index * 0.12
+                    RotationAnimation on rotation {
+                        running: equipCelebration.visible && equipCelebration.arcaneMage
+                        from: index % 2 ? 360 : 0
+                        to: index % 2 ? 0 : 360
+                        duration: 1800 + index * 650
+                        loops: Animation.Infinite
+                    }
+                }
+            }
+
+            Repeater {
+                model: equipCelebration.voidCat ? 0 : equipCelebration.arcaneMage ? 18 : 8
+                Text {
+                    required property int index
+                    readonly property var glyphs: ["✦", "◇", "✧", "☾", "✶", "✺"]
+                    text: glyphs[index % glyphs.length]
+                    color: index % 3 ? equipCelebration.effectColor : "#FFF2A8"
+                    font.pixelSize: equipCelebration.arcaneMage ? 16 + index % 3 * 3 : 11
+                    x: parent.width / 2 + Math.cos(index * Math.PI * 2 / (equipCelebration.arcaneMage ? 18 : 8))
+                       * (parent.width / 2 - 12) - width / 2
+                    y: parent.height / 2 + Math.sin(index * Math.PI * 2 / (equipCelebration.arcaneMage ? 18 : 8))
+                       * (parent.height / 2 - 12) - height / 2
+                }
+            }
+
+            Image {
+                anchors.centerIn: parent
+                visible: equipCelebration.voidCat
+                source: equipCelebration.result.source || ""
+                width: parent.width * 0.8; height: width
+                fillMode: Image.PreserveAspectFit
+                opacity: 0.2 + equipCelebration.pulseScale * 0.65
+                scale: 0.85 + equipCelebration.pulseScale * 0.3
+            }
+            CatAvatar {
+                visible: !equipCelebration.voidCat
+                anchors.centerIn: parent
+                width: equipCelebration.mythicCat ? 150 : 104
+                height: width
+                source: equipCelebration.result.source || ""
+                rarity: Number(equipCelebration.result.rarity || 1)
+                rarityColor: equipCelebration.effectColor
+                animationStyle: equipCelebration.result.animationStyle || "standard"
+                effectLevel: Number(equipCelebration.result.effectLevel || 0)
+                animatedEffects: equipCelebration.visible
+            }
+        }
+
+        Column {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: root.dense ? 36 : 54
+            spacing: 5
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: equipCelebration.equipTitle
+                color: equipCelebration.arcaneMage ? "#FFF2A8" : equipCelebration.effectColor
+                font.pixelSize: equipCelebration.mythicCat ? 18 : 13
+                font.weight: Font.Bold
+                font.letterSpacing: 2
+            }
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: equipCelebration.result.name || ""
+                color: theme.colors.text
+                font.pixelSize: equipCelebration.mythicCat ? 28 : 20
+                font.weight: Font.Bold
+            }
+        }
+
+        SequentialAnimation {
+            id: equipSequence
+            ParallelAnimation {
+                NumberAnimation {
+                    target: equipCelebration
+                    property: "opacity"
+                    from: 0
+                    to: 1
+                    duration: equipCelebration.mythicCat ? 360 : 180
+                }
+                NumberAnimation {
+                    target: equipCelebration
+                    property: "pulseScale"
+                    from: 0.5
+                    to: 1
+                    duration: equipCelebration.voidCat ? 2200 : equipCelebration.strikeApex ? 1450 : equipCelebration.playeraPrismatic ? 760 : equipCelebration.zarkingCyber ? 620 : equipCelebration.blackbullNoir ? 1120 : equipCelebration.arcaneMage ? 980 : 420
+                    easing.type: equipCelebration.voidCat ? Easing.InCubic : equipCelebration.playeraPrismatic
+                                 ? Easing.OutBounce
+                                 : equipCelebration.zarkingCyber
+                                   ? Easing.OutExpo
+                                   : equipCelebration.blackbullNoir
+                                     ? Easing.OutQuint
+                                     : equipCelebration.arcaneMage ? Easing.OutElastic : Easing.OutBack
+                }
+            }
+            PauseAnimation { duration: equipCelebration.voidCat ? 1500 : equipCelebration.mythicCat ? 1250 : 500 }
+            NumberAnimation {
+                target: equipCelebration
+                property: "opacity"
+                to: 0
+                duration: equipCelebration.mythicCat ? 520 : 260
+            }
+        }
+    }
+
+    Connections {
+        target: catController
+        function onRevealRequested(result) { revealPopup.reveal(result) }
+        function onEquippedRequested(result) { equipCelebration.celebrate(result) }
+    }
+}

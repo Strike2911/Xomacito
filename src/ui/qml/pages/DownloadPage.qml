@@ -300,12 +300,21 @@ Item {
                                 Accessible.name: "Destino del video"
                                 onActivated: downloadController.setOption("videoDelivery", currentText)
                             }
+                            XButton {
+                                objectName: "prepareDownloadForPremiere"
+                                compact: true; text: "Para Premiere"
+                                visible: options.videoDelivery !== "Premiere · alta calidad"
+                                enabled: !viewState.busy
+                                onClicked: downloadController.setOption("videoDelivery", "Premiere · alta calidad")
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Convierte AV1/VP9 al terminar y conserva el original, la resolución y los FPS."
+                            }
                             Text {
                                 Layout.fillWidth: true; font.pixelSize: 10; wrapMode: Text.WordWrap; color: theme.colors.textMuted
                                 text: options.videoDelivery === "Premiere · alta calidad"
                                     ? "Copia compatible si hace falta. Conserva resolución, FPS y original. Convertir usa CPU; HDR ocupa más espacio."
                                     : options.applyPreset || options.recodeVideoEnabled || options.recodeAudioEnabled ? "Conversión manual activa: el perfil seleccionado determina la calidad."
-                                    : "Sin conversión. VP9/AV1 requieren preparar una copia para Premiere."
+                                    : "AV1/VP9 originales: pulsa Para Premiere para obtener una copia compatible."
                             }
                         }
                         LabeledControl {

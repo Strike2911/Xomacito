@@ -1,2 +1,3 @@
 scripts/build_mac.sh text eol=lf
 scripts/make_mac_icon.sh text eol=lf
+patches/1.4.7/** text eol=lf

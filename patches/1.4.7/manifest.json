@@ -1,0 +1,51 @@
+{
+  "version": "1.4.7",
+  "files": [
+    {
+      "path": "components\\WallpaperImage.qml",
+      "before": null,
+      "after": "0a003ca6eadaac0ad9f2df17d944074d45496ff2aca725b47aacb6d3679f9a39"
+    },
+    {
+      "path": "Main.qml",
+      "before": "81b16d3ea10760d84b9047f217c3b74d1d783998862f64d506ef6c5ca8588a70",
+      "after": "8a368bd03b9378719c1411604f2c19f6c227ca5b8d7afc304cfd65b64d57d531"
+    },
+    {
+      "path": "pages\\CatGachaPage.qml",
+      "before": "49f86e05184c83718c6a3d1bbcefe437f4a8ffbcb6404ff2b109d3b1f6a1ebf1",
+      "after": "74c6fa7526ccad732a175845491b9f3c08b430c519f10ee7c4c44fc8d028acd5"
+    },
+    {
+      "path": "pages\\CustomThemePage.qml",
+      "before": "a4e728a269395af801f5cf659e47088dcee1941a2a403b5014d56ebc6b26d4ec",
+      "after": "0ab09842fc73e65a215113594bbb9e0304f6084e8519210cb1365c5c1cea456e"
+    },
+    {
+      "path": "pages\\DownloadPage.qml",
+      "before": "c76434174cbc34bd0423eb3204a5662b716043e5d580d33e9216ed7d49abfe33",
+      "after": "92bd70f5ba265b194ca47626cc61a454ace9d863d1977edb745fab359d3252ed"
+    },
+    {
+      "path": "pages\\PersonalizationPage.qml",
+      "before": "0ca5e28292c1b89dd557759cfafb60e0a941b329a1e699597e3044e555c7380b",
+      "after": "2e91e04b6271da099e21392bb646d1da89677e8cbd6f1cd7774833101658b302"
+    },
+    {
+      "path": "pages\\QuickPage.qml",
+      "before": "9f1612167cee9511dc04a9de9b72dd6ebfa3d0d77a9d7e033e9b55e0c6d0f0fe",
+      "after": "60fd132429dbd70792daa386c3978910104f9d86c9c4842c945ccde3be684983"
+    },
+    {
+      "path": "wallpaper\\qmldir",
+      "before": null,
+      "after": "fb7bda3f2199d6e23bc7c62f90b6d03bedb50ff53b109084911143464e4c2445"
+    },
+    {
+      "path": "wallpaper\\WallpaperLayout.qml",
+      "before": null,
+      "after": "4b921d0ad5e8609d695ee2a12453e3438b6db7c6ece6de22bc062178d8724625"
+    }
+  ],
+  "executableSha256": "8e573139cc8eae068b83d0555c56fa07e25f5fde1aae731fa329a0d73a66214b"
+}
