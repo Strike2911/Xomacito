@@ -33,6 +33,12 @@ El script modifica exclusivamente los archivos QML del manifiesto. No cambia los
 
 La salida **Premiere · alta calidad** ya disponible en Xomacito usa FFmpeg: AV1/VP9 SDR de 8 bits → H.264 CRF 18; HDR/10 bits o transparencia → ProRes cuando corresponde. La conversión puede tardar y aumentar el tamaño; H.264 CRF 18 es compresión con pérdida de alta calidad. El original se conserva. [Formatos admitidos por Adobe](https://helpx.adobe.com/premiere/desktop/organize-media/import-files/supported-file-formats.html).
 
+## Error de Unicode al registrar la conversión
+
+Durante el diagnóstico se inició la aplicación con stdout redirigido a un archivo. El registro del comando FFprobe usó la codificación ANSI de Windows y falló al imprimir el selector de emoji U+FE0F presente en el nombre del video. El error `charmap` se produjo en el registro, antes de convertir; no indica un fallo del códec.
+
+La instalación se volvió a iniciar normalmente, sin redirigir stdout. En el fuente se añadió `src/core/diagnostics.py` y se aplicó a los mensajes de `processor.py`: los caracteres no representables se escapan sólo en el registro; las rutas y argumentos reales conservan Unicode. También se tolera la ausencia o cierre del destino de diagnóstico. **Esta protección Python está en el parche de código y requiere una nueva compilación; el ZIP QML no modifica el ejecutable instalado.**
+
 ## Publicación y mantenimiento
 
 La [release v4.0.47](https://github.com/Strike2911/Xomacito/releases/tag/v4.0.47) distribuye 1.4.7, pero su tag apunta a `d5426f7`, cuyo `main.py` todavía declara 1.4.6. No se encontró el fuente Python completo de la compilación instalada. Por eso esta carpeta contiene las versiones QML completas recuperadas de la instalación y corregidas, sin sustituir el EXE ni retroceder al código 1.4.6.
@@ -45,7 +51,7 @@ El encuadre se guarda mediante Qt Settings en la categoría `WallpaperLayout`, c
 
 ## Validación
 
-- 78 pruebas aprobadas: preparación para Premiere, conservación del original, selección/calidad de video, flujo rápido y geometría/preferencias de Descargar. Incluyen conversiones reales AV1, VP9, recorte, remultiplexado y HDR con FFmpeg instalado.
+- 83 pruebas aprobadas: preparación para Premiere, conservación del original, selección/calidad de video, flujo rápido, geometría/preferencias de Descargar y registro Unicode. Incluyen conversiones reales AV1 y VP9 con nombres que contienen U+FE0F, emoji y japonés bajo stdout CP1252 estricto; también recorte, remultiplexado y HDR con FFmpeg instalado.
 - Instalador del parche probado en una copia aislada: verificar, aplicar, verificar otra vez, restaurar los originales byte por byte y rechazar archivos modificados. Los finales de línea de esta carpeta se fijan en LF para conservar las sumas del manifiesto al clonar en Windows.
 - QML cargado sin errores. Prueba adicional contra el `ThemeController` real extraído del EXE 1.4.7: cambio de paleta conserva imagen/opacidad; nueva imagen al 50 %; cancelar no cambia ajustes; zoom/posición compartidos; geometría a 960, 1280 y 1600 px; sin advertencias QML. Requiere Python 3.12, PySide6, Pillow, PyInstaller y las dependencias del proyecto:
 

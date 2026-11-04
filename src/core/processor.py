@@ -7,6 +7,7 @@ import re
 import sys
 import time
 from .exceptions import UserCancelledError
+from .diagnostics import diagnostic_print as print
 from .constants import FORMAT_MUXER_MAP
 from main import FFMPEG_BIN_DIR
 
