@@ -2,6 +2,7 @@
 """Lanzador ligero que abre la distribución portable independiente."""
 
 from pathlib import Path
+import runpy
 
 
 PROJECT_ROOT = Path(SPECPATH).resolve().parent
@@ -28,6 +29,7 @@ exe = EXE(
     a.datas,
     [],
     name="XomacitoLauncher",
+    version=runpy.run_path(str(PROJECT_ROOT / "scripts" / "windows_version_info.py"))["make_version_info"](PROJECT_ROOT, "Xomacito Launcher"),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

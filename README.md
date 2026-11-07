@@ -120,6 +120,17 @@ los errores de arranque, en `~/Library/Logs/Xomacito-startup-error.log`.
 
 ## Código fuente
 
+El código propio se publica bajo [licencia MIT](LICENSE).
+Consulta el [alcance y las licencias de terceros](docs/licensing.md).
+
+## Code signing policy
+
+La integración con SignPath Foundation está **en preparación**. Todavía no se
+ha concedido un certificado ni se presentan las descargas actuales como firmadas.
+Consulta la [política de firma y el estado de la integración](docs/code-signing.md).
+
+## Estructura del código fuente
+
 - `src`: lógica principal e interfaz.
 - `assets`: identidad visual, iconos diarios y sonido de finalización.
 - `installer`: definición del instalador y desinstalador Inno Setup.

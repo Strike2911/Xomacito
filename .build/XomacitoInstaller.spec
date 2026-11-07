@@ -2,6 +2,7 @@
 """Build instalado de Xomacito en modo one-folder."""
 
 from pathlib import Path
+import runpy
 
 from PyInstaller.utils.hooks import collect_all, collect_dynamic_libs, copy_metadata
 
@@ -9,6 +10,8 @@ from PyInstaller.utils.hooks import collect_all, collect_dynamic_libs, copy_meta
 PROJECT_ROOT = Path(SPECPATH).resolve().parent
 
 datas = [
+    (str(PROJECT_ROOT / "LICENSE"), "."),
+    (str(PROJECT_ROOT / "docs" / "licensing.md"), "licenses"),
     (str(PROJECT_ROOT / "assets" / "progress"), "assets/progress"),
     (str(PROJECT_ROOT / "src" / "ui" / "qml"), "src/ui/qml"),
     (str(PROJECT_ROOT / "src" / "ui" / "themes"), "src/ui/themes"),
@@ -110,6 +113,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name="Xomacito",
+    version=runpy.run_path(str(PROJECT_ROOT / "scripts" / "windows_version_info.py"))["make_version_info"](PROJECT_ROOT),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

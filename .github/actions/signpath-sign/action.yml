@@ -1,0 +1,75 @@
+name: Sign Xomacito artifacts
+description: Submit artifacts built in this GitHub-hosted job and verify the signed result.
+inputs:
+  unsigned-directory:
+    description: Directory containing only the two expected unsigned EXE files
+    required: true
+  signed-directory:
+    description: Empty destination for the signed EXE files
+    required: true
+  phase:
+    description: application or installers
+    required: true
+  version:
+    description: APP_VERSION from the built commit
+    required: true
+  organization-id:
+    description: Organization assigned by SignPath
+    required: true
+  project-slug:
+    description: Project assigned by SignPath
+    required: true
+  signing-policy-slug:
+    description: Policy requiring maintainer approval
+    required: true
+  artifact-configuration-slug:
+    description: Reviewed application or installers artifact configuration
+    required: true
+  api-token:
+    description: Submitter token stored in GitHub Secrets
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Validate build environment and unsigned metadata
+      shell: pwsh
+      env:
+        INPUT_DIRECTORY: ${{ inputs.unsigned-directory }}
+        OUTPUT_DIRECTORY: ${{ inputs.signed-directory }}
+        PHASE: ${{ inputs.phase }}
+        APP_VERSION: ${{ inputs.version }}
+        RUNNER_ENVIRONMENT: ${{ runner.environment }}
+      run: |
+        if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'A GitHub-hosted build is required.' }
+        if (Test-Path -LiteralPath $env:OUTPUT_DIRECTORY) { throw 'The signed destination must not already exist.' }
+        & "$env:GITHUB_WORKSPACE/scripts/verify_signed_artifacts.ps1" -Directory $env:INPUT_DIRECTORY -Phase $env:PHASE -Version $env:APP_VERSION -Unsigned
+    - name: Upload unsigned build artifacts
+      id: upload
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      with:
+        name: unsigned-${{ inputs.phase }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ inputs.unsigned-directory }}/*.exe
+        if-no-files-found: error
+        retention-days: 7
+    - name: Request signing and wait for manual approval
+      uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+      with:
+        api-token: ${{ inputs.api-token }}
+        organization-id: ${{ inputs.organization-id }}
+        project-slug: ${{ inputs.project-slug }}
+        signing-policy-slug: ${{ inputs.signing-policy-slug }}
+        artifact-configuration-slug: ${{ inputs.artifact-configuration-slug }}
+        github-artifact-id: ${{ steps.upload.outputs.artifact-id }}
+        wait-for-completion: true
+        wait-for-completion-timeout-in-seconds: 1800
+        output-artifact-directory: ${{ inputs.signed-directory }}
+        parameters: |
+          version: ${{ toJSON(inputs.version) }}
+    - name: Verify signed files before they can be packaged or published
+      shell: pwsh
+      env:
+        OUTPUT_DIRECTORY: ${{ inputs.signed-directory }}
+        PHASE: ${{ inputs.phase }}
+        APP_VERSION: ${{ inputs.version }}
+      run: |
+        & "$env:GITHUB_WORKSPACE/scripts/verify_signed_artifacts.ps1" -Directory $env:OUTPUT_DIRECTORY -Phase $env:PHASE -Version $env:APP_VERSION
