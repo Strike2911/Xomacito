@@ -26,7 +26,7 @@ Cada release estable de Windows debe incluir el `Xomacito-<versión>-Setup.exe` 
 
 Compila con `scripts/build_release.ps1` (sin `-LightOnly` para publicar). Sube los archivos a un borrador y publica con `python scripts/publish_release.py --tag v4.0.42` (sustituye el tag en versiones futuras). Este comando exige el instalador completo, su SHA-256 de GitHub y una versión interna que no retroceda. `--check-only` verifica sin publicar. El workflow **Validate legacy Windows updates** comprueba también los actualizadores históricos después de cada publicación.
 
-> Windows puede mostrar una advertencia de SmartScreen porque el instalador todavía no utiliza un certificado comercial de firma de código. Comprueba que el archivo provenga de este repositorio antes de ejecutarlo.
+> Las descargas actuales todavía no tienen firma de código y Windows puede mostrar advertencias de SmartScreen. La firma gratuita está en preparación; no garantiza eliminar de inmediato todas las advertencias. Comprueba que el archivo provenga de este repositorio antes de ejecutarlo.
 
 El error 225 de antivirus es distinto de la advertencia de reputación de SmartScreen. `scripts/publish_release.py` comprueba `docs/windows-security-review.json`; la resolución registra el dictamen de Microsoft sobre la muestra original. La excepción histórica de 4.0.45 y los bloqueos de versiones retiradas se conservan. Una prueba funcional o un análisis local no certifican que todos los antivirus o equipos aceptarán nuevas compilaciones.
 
