@@ -11,7 +11,7 @@ permissions:
   contents: read
 jobs:
   compatibility:
-    if: ${{ !github.event.release.prerelease }}
+    if: ${{ !github.event.release.prerelease && !startsWith(github.event.release.tag_name || inputs.tag, 'ultra-v') }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,3 +34,44 @@ jobs:
         run: |
           gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" | Set-Content release.json -Encoding utf8
           python scripts/check_legacy_updates.py release.json
+
+  ultra:
+    if: ${{ !github.event.release.prerelease && startsWith(github.event.release.tag_name || inputs.tag, 'ultra-v') }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate independent Ultra installer and original channel
+        shell: python
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          import json, os, re, urllib.request
+          tag = os.environ["RELEASE_TAG"]
+          match = re.fullmatch(r"ultra-v(\d+\.\d+\.\d+)", tag)
+          assert match, "Invalid Ultra release tag"
+          repository = os.environ["GH_REPOSITORY"]
+          def get(path):
+              request = urllib.request.Request(
+                  f"https://api.github.com/repos/{repository}/{path}",
+                  headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                           "Accept": "application/vnd.github+json"})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+          release = get("releases/tags/" + tag)
+          assert not release["draft"] and not release["prerelease"]
+          name = f"Xomacito-Ultra-{match[1]}-Setup.exe"
+          assets = [asset for asset in release["assets"] if asset["name"] == name]
+          assert len(assets) == 1, "Missing full Ultra installer"
+          asset = assets[0]
+          assert asset["state"] == "uploaded" and 0 < asset["size"] < 2 * 1024**3
+          assert re.fullmatch(r"sha256:[0-9a-f]{64}", asset.get("digest", ""))
+          assert asset["browser_download_url"] == f"https://github.com/{repository}/releases/download/{tag}/{name}"
+          latest = get("releases/latest")
+          assert not latest["tag_name"].startswith("ultra-"), "Ultra must not replace the original latest channel"
+          assert not any(re.fullmatch(r"Xomacito-\d+\.\d+\.\d+-Setup\.exe", a["name"]) for a in release["assets"])
+          print("Ultra release validated:", tag, asset["digest"])
+          print("Original latest channel preserved:", latest["tag_name"])
